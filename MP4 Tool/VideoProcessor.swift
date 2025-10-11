@@ -48,9 +48,11 @@ class VideoProcessor: ObservableObject {
     @Published var originalSize: Int64 = 0
     @Published var newSize: Int64 = 0
     @Published var logs: [String] = []
+    @Published var scanProgress: String = ""
 
     private var startTime: Date?
     private var timer: Timer?
+    private var shouldCancelScan = false
 
     private let ffmpegPath: String
     private let ffprobePath: String
@@ -429,6 +431,135 @@ class VideoProcessor: ObservableObject {
         } catch {
             addLog("❌ Process error: \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    func cancelScan() {
+        shouldCancelScan = true
+        addLog("⏸️ Cancelling scan...")
+    }
+
+    func scanForNonMP4Files(directoryPath: String) async {
+        DispatchQueue.main.async {
+            self.isProcessing = true
+            self.logs.removeAll()
+            self.scanProgress = "Starting scan..."
+            self.shouldCancelScan = false
+        }
+
+        addLog("🔍 Scanning directory for non-MP4 files...")
+        addLog("📂 Directory: \(directoryPath)")
+
+        guard FileManager.default.fileExists(atPath: directoryPath) else {
+            addLog("❌ Directory does not exist!")
+            DispatchQueue.main.async {
+                self.isProcessing = false
+                self.scanProgress = ""
+            }
+            return
+        }
+
+        // Skip counting and scan directly with incremental progress
+        addLog("ℹ️ Scanning files (this may take a while on network shares)...")
+
+        // Perform file scanning in a synchronous context
+        let result: ([String], Int, Bool) = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: ([], 0, false))
+                    return
+                }
+
+                let videoExtensions = ["mkv", "mp4", "avi", "mov", "m4v", "flv", "wmv", "webm", "mpeg", "mpg"]
+                var nonMP4Files: [String] = []
+                var totalVideoFiles = 0
+                var filesScanned = 0
+                var lastUpdateTime = Date()
+
+                // Configure enumerator to skip hidden files and packages
+                let fileManager = FileManager.default
+                guard let enumerator = fileManager.enumerator(
+                    at: URL(fileURLWithPath: directoryPath),
+                    includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) else {
+                    continuation.resume(returning: ([], 0, false))
+                    return
+                }
+
+                // Recursively scan directory
+                for case let fileURL as URL in enumerator {
+                    // Check for cancellation more frequently
+                    if self.shouldCancelScan {
+                        continuation.resume(returning: (nonMP4Files, totalVideoFiles, true))
+                        return
+                    }
+
+                    // Only process regular files
+                    guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
+                          resourceValues.isRegularFile == true else {
+                        continue
+                    }
+
+                    filesScanned += 1
+
+                    // Update progress every 50 files or every 0.5 seconds (whichever comes first)
+                    let now = Date()
+                    if filesScanned % 50 == 0 || now.timeIntervalSince(lastUpdateTime) > 0.5 {
+                        lastUpdateTime = now
+                        let scannedCount = filesScanned
+                        DispatchQueue.main.async {
+                            self.scanProgress = "Scanned \(scannedCount) files..."
+                        }
+                    }
+
+                    let ext = fileURL.pathExtension.lowercased()
+
+                    // Check if it's a video file
+                    if videoExtensions.contains(ext) {
+                        totalVideoFiles += 1
+
+                        // If it's not an MP4, add to list
+                        if ext != "mp4" {
+                            nonMP4Files.append(fileURL.path)
+                        }
+                    }
+                }
+
+                continuation.resume(returning: (nonMP4Files, totalVideoFiles, false))
+            }
+        }
+
+        let (nonMP4Files, totalVideoFiles, wasCancelled) = result
+
+        DispatchQueue.main.async {
+            self.scanProgress = ""
+        }
+
+        if wasCancelled {
+            addLog("⏸️ Scan cancelled by user")
+            addLog("ℹ️ Partial results: \(totalVideoFiles) video files found, \(nonMP4Files.count) non-MP4")
+        } else {
+            addLog("📊 Scan complete!")
+            addLog("ℹ️ Total video files found: \(totalVideoFiles)")
+            addLog("ℹ️ Non-MP4 video files: \(nonMP4Files.count)")
+        }
+
+        if nonMP4Files.isEmpty {
+            addLog("✅ All video files are already MP4 format!")
+        } else {
+            addLog("\n📝 Non-MP4 files:")
+            for (index, filePath) in nonMP4Files.enumerated() {
+                let fileName = (filePath as NSString).lastPathComponent
+                let ext = (fileName as NSString).pathExtension.uppercased()
+                addLog("  \(index + 1). [\(ext)] \(fileName)")
+                addLog("     Path: \(filePath)")
+            }
+        }
+
+        DispatchQueue.main.async {
+            self.isProcessing = false
+            self.shouldCancelScan = false
         }
     }
 }

@@ -97,32 +97,63 @@ struct ContentView: View {
             }
             .padding(.horizontal)
 
-            // Start Button
-            Button(action: startProcessing) {
-                HStack {
-                    if processor.isProcessing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .frame(width: 20, height: 20)
-                    } else {
-                        Image(systemName: "play.fill")
+            // Start/Stop Button
+            HStack(spacing: 12) {
+                Button(action: startProcessing) {
+                    HStack {
+                        if processor.isProcessing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .frame(width: 20, height: 20)
+                        } else {
+                            Image(systemName: "play.fill")
+                        }
+                        Text(processor.isProcessing ? "Processing..." : "Start Processing")
+                            .bold()
                     }
-                    Text(processor.isProcessing ? "Processing..." : "Start Processing")
-                        .bold()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(canStartProcessing ? Color.blue : Color.gray)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(canStartProcessing ? Color.blue : Color.gray)
-                .foregroundColor(.white)
-                .cornerRadius(10)
+                .disabled(!canStartProcessing || processor.isProcessing)
+
+                if processor.isProcessing {
+                    Button(action: {
+                        processor.cancelScan()
+                    }) {
+                        HStack {
+                            Image(systemName: "stop.fill")
+                            Text("Stop")
+                                .bold()
+                        }
+                        .frame(width: 100)
+                        .padding()
+                        .background(Color.red)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                }
             }
-            .disabled(!canStartProcessing || processor.isProcessing)
             .padding(.horizontal)
 
             // Progress Section
             if processor.isProcessing || !processor.logs.isEmpty {
                 VStack(spacing: 12) {
                     Divider()
+
+                    // Scan progress
+                    if !processor.scanProgress.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(processor.scanProgress)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                        }
+                        .padding(.horizontal)
+                    }
 
                     // Progress Bar
                     if processor.totalFiles > 0 {
@@ -226,6 +257,9 @@ struct ContentView: View {
         }
         .frame(minWidth: 600, minHeight: 700)
         .padding()
+        .onReceive(NotificationCenter.default.publisher(for: .scanForNonMP4)) { _ in
+            scanForNonMP4Files()
+        }
     }
 
     private var canStartProcessing: Bool {
@@ -259,6 +293,20 @@ struct ContentView: View {
                 createSubfolders: createSubfolders,
                 deleteOriginal: deleteOriginal
             )
+        }
+    }
+
+    private func scanForNonMP4Files() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Select directory to scan for non-MP4 files"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            Task {
+                await processor.scanForNonMP4Files(directoryPath: url.path)
+            }
         }
     }
 }
