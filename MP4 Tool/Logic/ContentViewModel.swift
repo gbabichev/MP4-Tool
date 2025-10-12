@@ -50,16 +50,24 @@ class ContentViewModel: ObservableObject {
         if panel.runModal() == .OK {
             if let url = panel.url {
                 if isInput {
-                    inputFolderPath = url.path
-                    // Auto-scan input folder for video files
-                    Task {
-                        await processor.scanInputFolder(directoryPath: url.path)
-                    }
+                    setInputFolder(path: url.path)
                 } else {
-                    outputFolderPath = url.path
+                    setOutputFolder(path: url.path)
                 }
             }
         }
+    }
+
+    func setInputFolder(path: String) {
+        inputFolderPath = path
+        // Auto-scan input folder for video files
+        Task {
+            await processor.scanInputFolder(directoryPath: path)
+        }
+    }
+
+    func setOutputFolder(path: String) {
+        outputFolderPath = path
     }
 
     func startProcessing(

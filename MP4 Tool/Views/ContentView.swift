@@ -63,6 +63,16 @@ struct ContentView: View {
                 .help(viewModel.outputFolderPath.isEmpty ? "Select output folder" : viewModel.outputFolderPath)
             }
 
+            ToolbarItem(placement: .navigation) {
+                Button(action: {
+                    viewModel.clearFolders()
+                }) {
+                    Label("Clear All", systemImage: "xmark.circle")
+                }
+                .disabled(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty)
+                .help("Clear input and output folders")
+            }
+
             ToolbarItem(placement: .status) {
                 if !viewModel.processor.ffmpegAvailable {
                     Button(action: {

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
@@ -16,79 +17,74 @@ struct MainContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Input/Output folder display
             VStack(spacing: 0) {
-                if !viewModel.inputFolderPath.isEmpty || !viewModel.outputFolderPath.isEmpty {
-                    // Input Folder
-                    HStack(alignment: .top) {
-                        if !viewModel.inputFolderPath.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Input Folder")
-                                    .bold()
-                                Text(viewModel.inputFolderPath)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Input Folder")
-                                    .bold()
-                                HStack(spacing: 4) {
-                                    Image(systemName: "folder")
-                                        .font(.caption2)
-                                    Text("Select input")
-                                }
+                // Input Folder
+                HStack(alignment: .top) {
+                    if !viewModel.inputFolderPath.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Input Folder")
+                                .bold()
+                            Text(viewModel.inputFolderPath)
                                 .font(.caption)
-                                .foregroundStyle(.tertiary)
-                            }
+                                .foregroundStyle(.secondary)
                         }
-                        Spacer()
-                    }
-                    .frame(minHeight: 35)
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-
-                    Divider()
-                        .padding(.vertical, 8)
-
-                    // Output Folder
-                    HStack(alignment: .top) {
-                        if !viewModel.outputFolderPath.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Output Folder")
-                                    .bold()
-                                Text(viewModel.outputFolderPath)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Input Folder")
+                                .bold()
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder")
+                                    .font(.caption2)
+                                Text("Select input or drop folder here")
                             }
-                        } else {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Output Folder")
-                                    .bold()
-                                HStack(spacing: 4) {
-                                    Image(systemName: "folder.badge.gearshape")
-                                        .font(.caption2)
-                                    Text("Select output")
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                            }
-                        }
-                        Spacer()
-                    }
-                    .frame(minHeight: 35)
-                    .padding(.horizontal)
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "folder")
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "folder.badge.gearshape")
-                            .foregroundStyle(.secondary)
-                        Text("Click buttons in toolbar to select folders")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
+                        }
                     }
-                    .frame(minHeight: 35)
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                    Spacer()
+                }
+                .frame(minHeight: 35)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .contentShape(Rectangle())
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleDrop(providers: providers, isInput: true)
+                }
+
+                Divider()
+                    .padding(.vertical, 8)
+
+                // Output Folder
+                HStack(alignment: .top) {
+                    if !viewModel.outputFolderPath.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Output Folder")
+                                .bold()
+                            Text(viewModel.outputFolderPath)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Output Folder")
+                                .bold()
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder.badge.gearshape")
+                                    .font(.caption2)
+                                Text("Select output or drop folder here")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        }
+                    }
+                    Spacer()
+                }
+                .frame(minHeight: 35)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+                .contentShape(Rectangle())
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleDrop(providers: providers, isInput: false)
                 }
             }
 
@@ -283,6 +279,28 @@ struct MainContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    private func handleDrop(providers: [NSItemProvider], isInput: Bool) -> Bool {
+        guard let provider = providers.first else { return false }
+
+        _ = provider.loadObject(ofClass: URL.self) { url, error in
+            guard let url = url, error == nil else { return }
+
+            // Check if it's a directory
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                DispatchQueue.main.async {
+                    if isInput {
+                        viewModel.setInputFolder(path: url.path)
+                    } else {
+                        viewModel.setOutputFolder(path: url.path)
+                    }
+                }
+            }
+        }
+
+        return true
     }
 }
 
