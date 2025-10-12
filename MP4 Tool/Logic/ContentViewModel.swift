@@ -92,4 +92,9 @@ class ContentViewModel: ObservableObject {
         logExportDocument = LogDocument(text: processor.logText)
         showingLogExporter = true
     }
+
+    func clearFolders() {
+        inputFolderPath = ""
+        outputFolderPath = ""
+    }
 }

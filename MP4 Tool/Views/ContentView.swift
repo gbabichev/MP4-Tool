@@ -26,16 +26,11 @@ struct ContentView: View {
                     }
                 }
 
-                SettingsRow("Output Folder", subtitle: "Where converted files will be saved") {
-                    HStack {
-                        TextField("Select output folder...", text: $viewModel.outputFolderPath)
-                            .textFieldStyle(.roundedBorder)
-                            .disabled(viewModel.processor.isProcessing)
-                        Button("Browse") {
-                            viewModel.selectFolder(isInput: false)
-                        }
-                        .disabled(viewModel.processor.isProcessing)
+                SettingsRow("Output Folder", subtitle: viewModel.outputFolderPath.isEmpty ? "Where converted files will be saved" : viewModel.outputFolderPath) {
+                    Button("Browse") {
+                        viewModel.selectFolder(isInput: false)
                     }
+                    .disabled(viewModel.processor.isProcessing)
                 }
 
                 SettingsRow("Mode", subtitle: "Encode converts to H.265, Remux copies streams") {
@@ -211,6 +206,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .exportLog)) { _ in
             viewModel.exportLogToFile()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clearFolders)) { _ in
+            viewModel.clearFolders()
         }
         .fileExporter(
             isPresented: $viewModel.showingLogExporter,

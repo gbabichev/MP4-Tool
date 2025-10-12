@@ -42,6 +42,15 @@ struct MP4_ToolApp: App {
                     Label("Select Output Folder...", systemImage: "folder.badge.gearshape")
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button(action: {
+                    NotificationCenter.default.post(name: .clearFolders, object: nil)
+                }) {
+                    Label("Clear List", systemImage: "xmark.circle")
+                }
+                .keyboardShortcut("l", modifiers: .command)
             }
 
             CommandMenu("Tools") {
@@ -77,6 +86,7 @@ struct MP4_ToolApp: App {
 extension Notification.Name {
     static let openInputFolder = Notification.Name("openInputFolder")
     static let selectOutputFolder = Notification.Name("selectOutputFolder")
+    static let clearFolders = Notification.Name("clearFolders")
     static let startProcessing = Notification.Name("startProcessing")
     static let scanForNonMP4 = Notification.Name("scanForNonMP4")
     static let exportLog = Notification.Name("exportLog")
