@@ -49,10 +49,13 @@ class VideoProcessor: ObservableObject {
     @Published var newSize: Int64 = 0
     @Published var logText: String = ""
     @Published var scanProgress: String = ""
+    @Published var encodingProgress: String = ""
 
     private var startTime: Date?
     private var timer: Timer?
     private var shouldCancelScan = false
+    private var encodingTimer: Timer?
+    private var currentProcess: Process?
 
     private let ffmpegPath: String
     private let ffprobePath: String
@@ -262,23 +265,30 @@ class VideoProcessor: ObservableObject {
         )
 
         addLog("ℹ️ Running in \(mode.rawValue) mode")
+        if mode == .encode {
+            addLog("⏳ Encoding started - this may take a while...")
+        }
 
-        // Start timer
+        // Start timer and file size monitoring
         DispatchQueue.main.async {
             self.startTime = Date()
             self.originalSize = (try? FileManager.default.attributesOfItem(atPath: inputFile)[.size] as? Int64) ?? 0
             self.newSize = 0
 
+            // Monitor file size every 0.5 seconds
             self.timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self = self else { return }
                 if let start = self.startTime {
                     self.elapsedTime = Date().timeIntervalSince(start)
                 }
-                self.newSize = (try? FileManager.default.attributesOfItem(atPath: tempFile)[.size] as? Int64) ?? 0
+                // Update output file size
+                if let size = try? FileManager.default.attributesOfItem(atPath: tempFile)[.size] as? Int64 {
+                    self.newSize = size
+                }
             }
         }
 
-        // Run ffmpeg
+        // Run ffmpeg (now async, won't block)
         let success = await runCommand(arguments: cmd)
 
         // Stop timer
@@ -390,18 +400,74 @@ class VideoProcessor: ObservableObject {
     }
 
     private func runCommand(arguments: [String]) async -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: ffmpegPath)
-        process.arguments = arguments
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: false)
+                    return
+                }
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
-            addLog("❌ Process error: \(error.localizedDescription)")
-            return false
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: self.ffmpegPath)
+                process.arguments = arguments
+
+                // Store process reference so we can monitor it
+                DispatchQueue.main.async {
+                    self.currentProcess = process
+                }
+
+                do {
+                    try process.run()
+
+                    // Start monitoring progress on main thread
+                    DispatchQueue.main.async {
+                        self.startEncodingProgress()
+                    }
+
+                    // Wait for completion in background
+                    process.waitUntilExit()
+
+                    // Stop monitoring
+                    DispatchQueue.main.async {
+                        self.stopEncodingProgress()
+                        self.currentProcess = nil
+                    }
+
+                    let success = process.terminationStatus == 0
+                    continuation.resume(returning: success)
+                } catch {
+                    DispatchQueue.main.async {
+                        self.stopEncodingProgress()
+                        self.currentProcess = nil
+                    }
+                    self.addLog("❌ Process error: \(error.localizedDescription)")
+                    continuation.resume(returning: false)
+                }
+            }
         }
+    }
+
+    private func startEncodingProgress() {
+        guard let startTime = self.startTime else { return }
+
+        encodingTimer?.invalidate()
+        encodingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            let elapsed = Int(Date().timeIntervalSince(startTime))
+            let minutes = elapsed / 60
+            let seconds = elapsed % 60
+
+            let outputSizeMB = self.newSize / (1024 * 1024)
+
+            self.encodingProgress = "Encoding... Time: \(minutes)m \(seconds)s • Output: \(outputSizeMB)MB"
+        }
+    }
+
+    private func stopEncodingProgress() {
+        encodingTimer?.invalidate()
+        encodingTimer = nil
+        encodingProgress = ""
     }
 
     private func runCommandWithOutput(path: String, arguments: [String]) async -> String? {

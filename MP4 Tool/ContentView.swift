@@ -160,6 +160,14 @@ struct ContentView: View {
                             .padding(.horizontal)
                     }
 
+                    // Encoding progress
+                    if !processor.encodingProgress.isEmpty {
+                        Text(processor.encodingProgress)
+                            .font(.caption)
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal)
+                    }
+
                     // Current file info
                     if processor.isProcessing && processor.totalFiles > 0 {
                         VStack(spacing: 8) {
