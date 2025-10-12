@@ -53,7 +53,7 @@ class VideoProcessor: ObservableObject {
 
     private var startTime: Date?
     private var timer: Timer?
-    private var shouldCancelScan = false
+    private nonisolated(unsafe) var shouldCancelScan = false
     private var encodingTimer: Timer?
     private var currentProcess: Process?
 
@@ -278,12 +278,14 @@ class VideoProcessor: ObservableObject {
             // Monitor file size every 0.5 seconds
             self.timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self = self else { return }
-                if let start = self.startTime {
-                    self.elapsedTime = Date().timeIntervalSince(start)
-                }
-                // Update output file size
-                if let size = try? FileManager.default.attributesOfItem(atPath: tempFile)[.size] as? Int64 {
-                    self.newSize = size
+                Task { @MainActor in
+                    if let start = self.startTime {
+                        self.elapsedTime = Date().timeIntervalSince(start)
+                    }
+                    // Update output file size
+                    if let size = try? FileManager.default.attributesOfItem(atPath: tempFile)[.size] as? Int64 {
+                        self.newSize = size
+                    }
                 }
             }
         }
@@ -436,11 +438,12 @@ class VideoProcessor: ObservableObject {
                     let success = process.terminationStatus == 0
                     continuation.resume(returning: success)
                 } catch {
+                    let errorMsg = error.localizedDescription
                     DispatchQueue.main.async {
                         self.stopEncodingProgress()
                         self.currentProcess = nil
+                        self.addLog("❌ Process error: \(errorMsg)")
                     }
-                    self.addLog("❌ Process error: \(error.localizedDescription)")
                     continuation.resume(returning: false)
                 }
             }
@@ -454,13 +457,15 @@ class VideoProcessor: ObservableObject {
         encodingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
 
-            let elapsed = Int(Date().timeIntervalSince(startTime))
-            let minutes = elapsed / 60
-            let seconds = elapsed % 60
+            Task { @MainActor in
+                let elapsed = Int(Date().timeIntervalSince(startTime))
+                let minutes = elapsed / 60
+                let seconds = elapsed % 60
 
-            let outputSizeMB = self.newSize / (1024 * 1024)
+                let outputSizeMB = self.newSize / (1024 * 1024)
 
-            self.encodingProgress = "Encoding... Time: \(minutes)m \(seconds)s • Output: \(outputSizeMB)MB"
+                self.encodingProgress = "Encoding... Time: \(minutes)m \(seconds)s • Output: \(outputSizeMB)MB"
+            }
         }
     }
 
@@ -558,8 +563,9 @@ class VideoProcessor: ObservableObject {
 
                 // Recursively scan directory
                 for case let fileURL as URL in enumerator {
-                    // Check for cancellation more frequently
-                    if self.shouldCancelScan {
+                    // Check for cancellation more frequently (local copy to avoid actor isolation warning)
+                    let shouldCancel = self.shouldCancelScan
+                    if shouldCancel {
                         continuation.resume(returning: (nonMP4Files, totalVideoFiles, true))
                         return
                     }
