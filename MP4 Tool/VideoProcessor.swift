@@ -79,16 +79,16 @@ class VideoProcessor: ObservableObject {
             self.ffprobePath = resourcePath + "/bin/ffprobe"
         }
 
-        addLog("ℹ️ Initialized with ffmpeg at: \(ffmpegPath)")
-        addLog("ℹ️ Initialized with ffprobe at: \(ffprobePath)")
-
         // Verify files exist
-        if !FileManager.default.fileExists(atPath: ffmpegPath) {
-            addLog("⚠️ WARNING: ffmpeg binary not found at expected path!")
-            addLog("ℹ️ Bundle resource path: \(Bundle.main.resourcePath ?? "unknown")")
-        }
-        if !FileManager.default.fileExists(atPath: ffprobePath) {
-            addLog("⚠️ WARNING: ffprobe binary not found at expected path!")
+        if FileManager.default.fileExists(atPath: ffmpegPath) && FileManager.default.fileExists(atPath: ffprobePath) {
+            addLog("ℹ️ Initialized with ffmpeg/ffprobe in Resources/bin")
+        } else {
+            if !FileManager.default.fileExists(atPath: ffmpegPath) {
+                addLog("⚠️ WARNING: ffmpeg binary not found!")
+            }
+            if !FileManager.default.fileExists(atPath: ffprobePath) {
+                addLog("⚠️ WARNING: ffprobe binary not found!")
+            }
         }
     }
 
@@ -324,20 +324,14 @@ class VideoProcessor: ObservableObject {
 
         arguments.append(inputFile)
 
-        addLog("🔍 Debug: Running ffprobe at: \(ffprobePath)")
-        addLog("🔍 Debug: File exists: \(FileManager.default.fileExists(atPath: ffprobePath))")
-        addLog("🔍 Debug: Arguments: \(arguments)")
-
         guard let output = await runCommandWithOutput(path: ffprobePath, arguments: arguments) else {
-            addLog("❌ Debug: runCommandWithOutput returned nil")
+            addLog("❌ Failed to probe streams")
             return nil
         }
 
-        addLog("🔍 Debug: Got output, length: \(output.count) chars")
-
         guard let data = output.data(using: .utf8),
               let result = try? JSONDecoder().decode(FFProbeOutput.self, from: data) else {
-            addLog("❌ Debug: Failed to decode JSON. Output: \(output.prefix(500))")
+            addLog("❌ Failed to parse stream data")
             return nil
         }
 
