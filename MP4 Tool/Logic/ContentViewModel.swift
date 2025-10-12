@@ -62,7 +62,14 @@ class ContentViewModel: ObservableObject {
         }
     }
 
-    func startProcessing(mode: ProcessingMode, crfValue: Int, createSubfolders: Bool, deleteOriginal: Bool, keepEnglishAudioOnly: Bool) {
+    func startProcessing(
+        mode: ProcessingMode,
+        crfValue: Int,
+        createSubfolders: Bool,
+        deleteOriginal: Bool,
+        keepEnglishAudioOnly: Bool,
+        keepEnglishSubtitlesOnly: Bool
+    ) {
         Task {
             await processor.processFolder(
                 inputPath: inputFolderPath,
@@ -71,7 +78,8 @@ class ContentViewModel: ObservableObject {
                 crfValue: crfValue,
                 createSubfolders: createSubfolders,
                 deleteOriginal: deleteOriginal,
-                keepEnglishAudioOnly: keepEnglishAudioOnly
+                keepEnglishAudioOnly: keepEnglishAudioOnly,
+                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
             )
         }
     }

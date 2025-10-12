@@ -16,6 +16,7 @@ struct ContentView: View {
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @AppStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
+    @AppStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @State private var isLogExpanded = true
 
@@ -34,6 +35,7 @@ struct ContentView: View {
                 createSubfolders: $createSubfolders,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
                 isProcessing: viewModel.processor.isProcessing
             )
             .frame(width: 400)
@@ -97,7 +99,8 @@ struct ContentView: View {
                             crfValue: Int(crfValue),
                             createSubfolders: createSubfolders,
                             deleteOriginal: deleteOriginal,
-                            keepEnglishAudioOnly: keepEnglishAudioOnly
+                            keepEnglishAudioOnly: keepEnglishAudioOnly,
+                            keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
                         )
                     }) {
                         Label("Start Processing", systemImage: "play.fill")
@@ -119,7 +122,8 @@ struct ContentView: View {
                         crfValue: Int(crfValue),
                         createSubfolders: createSubfolders,
                         deleteOriginal: deleteOriginal,
-                        keepEnglishAudioOnly: keepEnglishAudioOnly
+                        keepEnglishAudioOnly: keepEnglishAudioOnly,
+                        keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
                     )
                 }
             }

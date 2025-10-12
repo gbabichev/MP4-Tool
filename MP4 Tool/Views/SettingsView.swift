@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Binding var createSubfolders: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
+    @Binding var keepEnglishSubtitlesOnly: Bool
     let isProcessing: Bool
 
     var body: some View {
@@ -59,6 +60,12 @@ struct SettingsView: View {
 
             SettingsRow("Keep English Audio Only", subtitle: "Ignore non-English audio tracks during processing") {
                 Toggle("", isOn: $keepEnglishAudioOnly)
+                    .toggleStyle(.switch)
+                    .disabled(isProcessing)
+            }
+
+            SettingsRow("Keep English Subtitles Only", subtitle: "Ignore non-English subtitle tracks during processing") {
+                Toggle("", isOn: $keepEnglishSubtitlesOnly)
                     .toggleStyle(.switch)
                     .disabled(isProcessing)
             }
