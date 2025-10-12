@@ -170,7 +170,7 @@ class VideoProcessor: ObservableObject {
         }
     }
 
-    func processFolder(inputPath: String, outputPath: String, mode: ProcessingMode, crfValue: Int = 23, createSubfolders: Bool, deleteOriginal: Bool = true) async {
+    func processFolder(inputPath: String, outputPath: String, mode: ProcessingMode, crfValue: Int = 23, createSubfolders: Bool, deleteOriginal: Bool = true, keepEnglishAudioOnly: Bool) async {
         DispatchQueue.main.async {
             self.isProcessing = true
             self.logText = ""
@@ -188,6 +188,7 @@ class VideoProcessor: ObservableObject {
         }
         addLog("􀈕 Create Subfolders: \(createSubfolders)")
         addLog("􀈑 Delete Original: \(deleteOriginal)")
+        addLog("􀀁 Keep English Audio Only: \(keepEnglishAudioOnly)")
 
         // Verify directories exist
         guard FileManager.default.fileExists(atPath: inputPath) else {
@@ -258,7 +259,13 @@ class VideoProcessor: ObservableObject {
 
                 // Process the video
                 let fileStartTime = Date()
-                let success = await convertToMP4(inputFile: inputFilePath, tempFile: tempOutputFile, mode: mode, crfValue: crfValue)
+                let success = await convertToMP4(
+                    inputFile: inputFilePath,
+                    tempFile: tempOutputFile,
+                    mode: mode,
+                    crfValue: crfValue,
+                    keepEnglishAudioOnly: keepEnglishAudioOnly
+                )
                 let fileEndTime = Date()
 
                 if success {
@@ -318,7 +325,7 @@ class VideoProcessor: ObservableObject {
         }
     }
 
-    private func convertToMP4(inputFile: String, tempFile: String, mode: ProcessingMode, crfValue: Int = 23) async -> Bool {
+    private func convertToMP4(inputFile: String, tempFile: String, mode: ProcessingMode, crfValue: Int = 23, keepEnglishAudioOnly: Bool) async -> Bool {
         // Probe streams
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
               let videoStreams = await probeStreams(inputFile: inputFile, selectStreams: nil),
@@ -327,10 +334,13 @@ class VideoProcessor: ObservableObject {
             return false
         }
 
-        // Get English audio indices
-        let audioIndices = getEnglishAudioIndices(audioStreams: audioStreams)
-        if audioIndices.isEmpty {
-            addLog("􀁡 No English audio found. Skipping.")
+        // Determine audio stream mappings
+        let audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly)
+        if audioMappings.isEmpty {
+            let message = keepEnglishAudioOnly
+                ? "􀁡 No English audio found. Skipping."
+                : "􀁡 No audio tracks found. Skipping."
+            addLog(message)
             return false
         }
 
@@ -353,7 +363,7 @@ class VideoProcessor: ObservableObject {
             mode: mode,
             crfValue: crfValue,
             videoCodec: videoCodec,
-            audioIndices: audioIndices,
+            audioMappings: audioMappings,
             subtitleStreams: validSubtitles
         )
 
@@ -418,11 +428,23 @@ class VideoProcessor: ObservableObject {
         return result
     }
 
-    private func getEnglishAudioIndices(audioStreams: FFProbeOutput) -> [Int] {
-        return audioStreams.streams.filter { stream in
-            let language = stream.tags?["language"] ?? "und"
-            return language == "eng" || language == "und"
-        }.map { $0.index }
+    private func getAudioMappings(audioStreams: FFProbeOutput, keepEnglishOnly: Bool) -> [(index: Int, language: String?)] {
+        let streams = audioStreams.streams
+
+        if keepEnglishOnly {
+            return streams.compactMap { stream in
+                let language = (stream.tags?["language"] ?? "und").lowercased()
+                guard language == "eng" || language == "und" else {
+                    return nil
+                }
+                return (index: stream.index, language: "eng")
+            }
+        } else {
+            return streams.map { stream in
+                let language = stream.tags?["language"]?.lowercased()
+                return (index: stream.index, language: language)
+            }
+        }
     }
 
     private func getVideoCodec(videoStreams: FFProbeOutput) -> String? {
@@ -449,7 +471,7 @@ class VideoProcessor: ObservableObject {
         mode: ProcessingMode,
         crfValue: Int = 23,
         videoCodec: String?,
-        audioIndices: [Int],
+        audioMappings: [(index: Int, language: String?)],
         subtitleStreams: [(index: Int, codec: String, language: String)]
     ) -> [String] {
         var cmd: [String] = []
@@ -473,10 +495,12 @@ class VideoProcessor: ObservableObject {
             }
         }
 
-        // Map English audio
-        for idx in audioIndices {
-            cmd.append(contentsOf: ["-map", "0:\(idx)"])
-            cmd.append(contentsOf: ["-metadata:s:a:0", "language=eng"])
+        // Map audio tracks respecting language metadata when available
+        for (outputIndex, mapping) in audioMappings.enumerated() {
+            cmd.append(contentsOf: ["-map", "0:\(mapping.index)"])
+            if let language = mapping.language {
+                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "language=\(language)"])
+            }
         }
 
         // Map first subtitle

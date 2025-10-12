@@ -15,6 +15,7 @@ struct ContentView: View {
     @AppStorage("crfValue") private var crfValue: Double = 23
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
+    @AppStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @State private var isLogExpanded = true
 
@@ -32,9 +33,10 @@ struct ContentView: View {
                 crfValue: $crfValue,
                 createSubfolders: $createSubfolders,
                 deleteOriginal: $deleteOriginal,
+                keepEnglishAudioOnly: $keepEnglishAudioOnly,
                 isProcessing: viewModel.processor.isProcessing
             )
-            .frame(width: 350)
+            .frame(width: 400)
         }
         .frame(minWidth: 800, minHeight: 700)
         .toolbar {
@@ -94,7 +96,8 @@ struct ContentView: View {
                             mode: selectedMode,
                             crfValue: Int(crfValue),
                             createSubfolders: createSubfolders,
-                            deleteOriginal: deleteOriginal
+                            deleteOriginal: deleteOriginal,
+                            keepEnglishAudioOnly: keepEnglishAudioOnly
                         )
                     }) {
                         Label("Start Processing", systemImage: "play.fill")
@@ -111,14 +114,15 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .startProcessing)) { _ in
             if viewModel.canStartProcessing && !viewModel.processor.isProcessing {
-                viewModel.startProcessing(
-                    mode: selectedMode,
-                    crfValue: Int(crfValue),
-                    createSubfolders: createSubfolders,
-                    deleteOriginal: deleteOriginal
-                )
+                    viewModel.startProcessing(
+                        mode: selectedMode,
+                        crfValue: Int(crfValue),
+                        createSubfolders: createSubfolders,
+                        deleteOriginal: deleteOriginal,
+                        keepEnglishAudioOnly: keepEnglishAudioOnly
+                    )
+                }
             }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .scanForNonMP4)) { _ in
             viewModel.scanForNonMP4Files()
         }

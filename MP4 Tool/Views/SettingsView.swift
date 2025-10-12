@@ -12,6 +12,7 @@ struct SettingsView: View {
     @Binding var crfValue: Double
     @Binding var createSubfolders: Bool
     @Binding var deleteOriginal: Bool
+    @Binding var keepEnglishAudioOnly: Bool
     let isProcessing: Bool
 
     var body: some View {
@@ -52,6 +53,12 @@ struct SettingsView: View {
 
             SettingsRow("Delete Original", subtitle: "Remove source files after successful conversion") {
                 Toggle("", isOn: $deleteOriginal)
+                    .toggleStyle(.switch)
+                    .disabled(isProcessing)
+            }
+
+            SettingsRow("Keep English Audio Only", subtitle: "Ignore non-English audio tracks during processing") {
+                Toggle("", isOn: $keepEnglishAudioOnly)
                     .toggleStyle(.switch)
                     .disabled(isProcessing)
             }
