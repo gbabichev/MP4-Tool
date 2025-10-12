@@ -160,14 +160,6 @@ struct ContentView: View {
                             .padding(.horizontal)
                     }
 
-                    // Encoding progress
-                    if !processor.encodingProgress.isEmpty {
-                        Text(processor.encodingProgress)
-                            .font(.caption)
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal)
-                    }
-
                     // Current file info
                     if processor.isProcessing && processor.totalFiles > 0 {
                         VStack(spacing: 8) {
@@ -191,7 +183,7 @@ struct ContentView: View {
                                 HStack {
                                     Image(systemName: "clock")
                                         .foregroundStyle(.secondary)
-                                    Text("\(Int(processor.elapsedTime))s")
+                                    Text(formattedTime(processor.elapsedTime))
                                         .font(.caption)
                                 }
 
@@ -255,6 +247,13 @@ struct ContentView: View {
 
     private var canStartProcessing: Bool {
         !inputFolderPath.isEmpty && !outputFolderPath.isEmpty
+    }
+
+    private func formattedTime(_ seconds: TimeInterval) -> String {
+        let totalSeconds = Int(seconds)
+        let minutes = totalSeconds / 60
+        let remainingSeconds = totalSeconds % 60
+        return "\(minutes)m \(remainingSeconds)s"
     }
 
     private func selectFolder(isInput: Bool) {
