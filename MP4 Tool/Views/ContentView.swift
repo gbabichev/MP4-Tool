@@ -40,7 +40,7 @@ struct ContentView: View {
             )
             .frame(width: 400)
         }
-        .frame(minWidth: 800, minHeight: 700)
+        .frame(minWidth: 850, minHeight: 900)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button(action: {

@@ -40,10 +40,26 @@ struct TutorialView: View {
                 // Tutorial steps
                 VStack(alignment: .leading, spacing: 20) {
                     TutorialStep(
+                        icon: "film.stack",
+                        title: "Supported Formats"
+                    ) {
+                        Text("Input: ").bold() +
+                        Text("MKV, MP4, AVI, MOV, M4V") +
+                        Text("\nOutput: ").bold() +
+                        Text("MP4 (H.265 HEVC or original codec)")
+                    }
+
+                    TutorialStep(
                         icon: "folder",
-                        title: "1. Select Folders",
-                        description: "Click the folder icons in the toolbar to select input and output folders, or use ⌘O and ⌘⇧O."
-                    )
+                        title: "1. Add Files"
+                    ) {
+                        Text("• Drag folders onto ") +
+                        Text("Input Folder").bold() +
+                        Text(" to scan all videos\n") +
+                        Text("• Drag individual files into ") +
+                        Text("Files to Process").bold() +
+                        Text("\n• Or use toolbar buttons and keyboard shortcuts ⌘O and ⌘⇧O")
+                    }
 
                     TutorialStep(
                         icon: "arrow.left.arrow.right",
@@ -53,14 +69,13 @@ struct TutorialView: View {
                         Text("Encode").bold() +
                         Text(" to convert videos to H.265 (HEVC) for smaller file sizes, or ") +
                         Text("Remux").bold() +
-                        Text(" to copy streams without re-encoding (fast, no quality loss).") +
-                        Text("\nBoth modes save to MP4.")
+                        Text(" to copy streams without re-encoding (fast, no quality loss).")
                     }
 
                     TutorialStep(
                         icon: "slider.horizontal.3",
                         title: "3. Adjust Settings",
-                        description: "In Encode mode, adjust CRF quality (18-28, lower = better quality). Configure subfolders and deletion options as needed."
+                        description: "In Encode mode, adjust CRF quality (18-28, lower = better quality). Configure audio/subtitle language filtering, subfolders, and deletion options as needed."
                     )
 
                     TutorialStep(

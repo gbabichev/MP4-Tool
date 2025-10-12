@@ -90,6 +90,7 @@ struct MP4_ToolApp: App {
                 }) {
                     Label("Tutorial", systemImage: "lightbulb.fill")
                 }
+                .keyboardShortcut("/", modifiers: .command)
             }
         }
     }

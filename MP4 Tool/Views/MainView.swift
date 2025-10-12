@@ -100,98 +100,81 @@ struct MainContentView: View {
                     .padding(.top, 8)
             }
 
-            // File list - Resizable height
-            if !viewModel.processor.videoFiles.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Files to Process (\(viewModel.processor.videoFiles.count))")
-                            .font(.headline)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-
-                    List {
-                            ForEach(Array(viewModel.processor.videoFiles.enumerated()), id: \.element.id) { index, file in
-                                HStack {
-                                    // Status indicator
-                                    Group {
-                                        switch file.status {
-                                        case .pending:
-                                            Image(systemName: "film")
-                                                .foregroundStyle(.secondary)
-                                        case .processing:
-                                            ProgressView()
-                                                .scaleEffect(0.8)
-                                                .frame(width: 24, height: 24)
-                                        case .completed:
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundStyle(.green)
-                                        }
-                                    }
-                                    .frame(width: 24)
-
-                                    Text(file.fileName)
-                                        .font(.body)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .foregroundStyle(file.status == .completed ? .green : .primary)
-
-                                    Spacer()
-
-                                    if file.status == .completed && file.processingTimeSeconds > 0 {
-                                        let minutes = file.processingTimeSeconds / 60
-                                        let seconds = file.processingTimeSeconds % 60
-                                        Text("\(minutes)m \(seconds)s")
-                                            .font(.body)
-                                            .foregroundStyle(.green)
-                                            .monospacedDigit()
-                                    }
-
-                                    Text("[\(file.fileExtension)]")
-                                        .font(.body)
-                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                        .padding(.horizontal, 6)
-
-                                    Text("\(file.fileSizeMB) MB")
-                                        .font(.body)
-                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                        .monospacedDigit()
-                                        .frame(width: 80, alignment: .trailing)
-                                }
-                                .listRowBackground(index % 2 == 0 ? Color.clear : Color.secondary.opacity(0.08))
-                            }
-
-                            // Total processing time
-                            if viewModel.processor.videoFiles.contains(where: { $0.status == .completed }) {
-                                let totalSeconds = viewModel.processor.videoFiles
-                                    .filter { $0.status == .completed }
-                                    .reduce(0) { $0 + $1.processingTimeSeconds }
-                                let totalMinutes = totalSeconds / 60
-                                let totalRemainingSeconds = totalSeconds % 60
-
-                                HStack {
-                                    Text("Total Processing Time:")
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text("\(totalMinutes)m \(totalRemainingSeconds)s")
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-                                        .monospacedDigit()
-                                }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                            }
-                        }
-                        .frame(height: fileListHeight)
+            // File list - Resizable height (always visible)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Files to Process (\(viewModel.processor.videoFiles.count))")
+                        .font(.headline)
+                    Spacer()
                 }
+                .padding(.horizontal)
+                .padding(.top, 8)
 
-                // Resizable divider
-                ResizableDivider(height: $fileListHeight, minHeight: 150, maxHeight: 600)
+                if viewModel.processor.videoFiles.isEmpty {
+                    // Empty state with drop zone
+                    VStack(spacing: 8) {
+                        Image(systemName: "film.stack")
+                            .font(.largeTitle)
+                            .foregroundStyle(.tertiary)
+                        Text("Drop video files here")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: fileListHeight)
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(8)
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleFileDrop(providers: providers)
+                    }
+                } else {
+                    List {
+                        ForEach(Array(viewModel.processor.videoFiles.enumerated()), id: \.element.id) { index, file in
+                            FileListRow(
+                                file: file,
+                                index: index,
+                                isProcessing: viewModel.processor.isProcessing,
+                                onRemove: {
+                                    viewModel.removeFile(at: index)
+                                }
+                            )
+                        }
+
+                        // Total processing time
+                        if viewModel.processor.videoFiles.contains(where: { $0.status == .completed }) {
+                            let totalSeconds = viewModel.processor.videoFiles
+                                .filter { $0.status == .completed }
+                                .reduce(0) { $0 + $1.processingTimeSeconds }
+                            let totalMinutes = totalSeconds / 60
+                            let totalRemainingSeconds = totalSeconds % 60
+
+                            HStack {
+                                Text("Total Processing Time:")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text("\(totalMinutes)m \(totalRemainingSeconds)s")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                        }
+                    }
+                    .frame(height: fileListHeight)
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleFileDrop(providers: providers)
+                    }
+                }
             }
+
+            // Resizable divider
+            ResizableDivider(height: $fileListHeight, minHeight: 150, maxHeight: 600)
 
             // Current file info
             if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
@@ -301,6 +284,99 @@ struct MainContentView: View {
         }
 
         return true
+    }
+
+    private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
+        let videoFormats = ["mkv", "mp4", "avi", "mov", "m4v"]
+
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
+                guard let url = url, error == nil else { return }
+
+                // Check if it's a video file
+                let ext = url.pathExtension.lowercased()
+                if videoFormats.contains(ext) {
+                    DispatchQueue.main.async {
+                        viewModel.addVideoFile(url: url)
+                    }
+                }
+            }
+        }
+
+        return true
+    }
+}
+
+// File list row with hover to show remove button
+struct FileListRow: View {
+    let file: VideoFileInfo
+    let index: Int
+    let isProcessing: Bool
+    let onRemove: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack {
+            // Status indicator
+            Group {
+                switch file.status {
+                case .pending:
+                    Image(systemName: "film")
+                        .foregroundStyle(.secondary)
+                case .processing:
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .frame(width: 24, height: 24)
+                case .completed:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+            }
+            .frame(width: 24)
+
+            Text(file.fileName)
+                .font(.body)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(file.status == .completed ? .green : .primary)
+
+            Spacer()
+
+            if file.status == .completed && file.processingTimeSeconds > 0 {
+                let minutes = file.processingTimeSeconds / 60
+                let seconds = file.processingTimeSeconds % 60
+                Text("\(minutes)m \(seconds)s")
+                    .font(.body)
+                    .foregroundStyle(.green)
+                    .monospacedDigit()
+            }
+
+            Text("[\(file.fileExtension)]")
+                .font(.body)
+                .foregroundStyle(file.status == .completed ? .green : .secondary)
+                .padding(.horizontal, 6)
+
+            Text("\(file.fileSizeMB) MB")
+                .font(.body)
+                .foregroundStyle(file.status == .completed ? .green : .secondary)
+                .monospacedDigit()
+                .frame(width: 80, alignment: .trailing)
+
+            // Remove button (visible on hover)
+            if isHovering && !isProcessing {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.body)
+                }
+                .buttonStyle(.plain)
+                .help("Remove from list")
+            }
+        }
+        .listRowBackground(index % 2 == 0 ? Color.clear : Color.secondary.opacity(0.08))
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
 }
 

@@ -30,7 +30,7 @@ class ContentViewModel: ObservableObject {
     }
 
     var canStartProcessing: Bool {
-        !inputFolderPath.isEmpty && !outputFolderPath.isEmpty
+        !outputFolderPath.isEmpty && !processor.videoFiles.isEmpty
     }
 
     func formattedTime(_ seconds: TimeInterval) -> String {
@@ -64,10 +64,25 @@ class ContentViewModel: ObservableObject {
         Task {
             await processor.scanInputFolder(directoryPath: path)
         }
+        checkForSameFolderWarning()
     }
 
     func setOutputFolder(path: String) {
         outputFolderPath = path
+        checkForSameFolderWarning()
+    }
+
+    private func checkForSameFolderWarning() {
+        guard !inputFolderPath.isEmpty && !outputFolderPath.isEmpty else { return }
+
+        if inputFolderPath == outputFolderPath {
+            let alert = NSAlert()
+            alert.messageText = "Warning: Same Folder Selected"
+            alert.informativeText = "Input and output folders are the same. This may cause file deletion if the file extensions match. It's recommended to use different folders."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     func startProcessing(
@@ -120,6 +135,40 @@ class ContentViewModel: ObservableObject {
         inputFolderPath = ""
         outputFolderPath = ""
         processor.logText = ""
+        processor.videoFiles = []
+        processor.totalFiles = 0
+    }
+
+    func removeFile(at index: Int) {
+        guard index < processor.videoFiles.count else { return }
+        processor.videoFiles.remove(at: index)
+        processor.totalFiles = processor.videoFiles.count
+    }
+
+    func addVideoFile(url: URL) {
+        // Check if file already exists in list
+        if processor.videoFiles.contains(where: { $0.filePath == url.path }) {
+            return
+        }
+
+        // Get file info
+        let fileName = url.lastPathComponent
+        let fileExtension = url.pathExtension.uppercased()
+
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let fileSize = attributes[.size] as? Int64 {
+            let sizeMB = Int(fileSize / (1024 * 1024))
+
+            let fileInfo = VideoFileInfo(
+                fileName: fileName,
+                filePath: url.path,
+                fileExtension: fileExtension,
+                fileSizeMB: sizeMB
+            )
+
+            processor.videoFiles.append(fileInfo)
+            processor.totalFiles = processor.videoFiles.count
+        }
     }
 
     func showTutorial() {
