@@ -20,14 +20,9 @@ struct SettingsRow<Control: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                    if let subtitle {
-                        Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                Text(title)
                 Spacer(minLength: 16)
                 control
                     .labelsHidden()
@@ -35,6 +30,11 @@ struct SettingsRow<Control: View>: View {
             }
             .frame(minHeight: 35)
 
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
