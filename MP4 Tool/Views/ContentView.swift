@@ -15,7 +15,7 @@ struct ContentView: View {
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
-    @State private var isLogExpanded = false
+    @State private var isLogExpanded = true
 
     var body: some View {
         TabView {
@@ -105,41 +105,82 @@ struct ContentView: View {
                             }
                             .padding(.horizontal)
 
-                            ScrollView {
-                                VStack(spacing: 4) {
-                                    ForEach(viewModel.processor.videoFiles) { file in
-                                        HStack {
-                                            Image(systemName: "film")
-                                                .foregroundStyle(.secondary)
-                                                .frame(width: 20)
-
-                                            Text(file.fileName)
-                                                .font(.caption)
-                                                .lineLimit(1)
-                                                .truncationMode(.middle)
-
-                                            Spacer()
-
-                                            Text("[\(file.fileExtension)]")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .padding(.horizontal, 4)
-
-                                            Text("\(file.fileSizeMB) MB")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .monospacedDigit()
-                                                .frame(width: 70, alignment: .trailing)
+                            List {
+                                ForEach(Array(viewModel.processor.videoFiles.enumerated()), id: \.element.id) { index, file in
+                                    HStack {
+                                        // Status indicator
+                                        Group {
+                                            switch file.status {
+                                            case .pending:
+                                                Image(systemName: "film")
+                                                    .foregroundStyle(.secondary)
+                                            case .processing:
+                                                ProgressView()
+                                                    .scaleEffect(0.8)
+                                                    .frame(width: 24, height: 24)
+                                            case .completed:
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundStyle(.green)
+                                            }
                                         }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.secondary.opacity(0.05))
-                                        .cornerRadius(4)
+                                        .frame(width: 24)
+
+                                        Text(file.fileName)
+                                            .font(.body)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .foregroundStyle(file.status == .completed ? .green : .primary)
+
+                                        Spacer()
+
+                                        if file.status == .completed && file.processingTimeSeconds > 0 {
+                                            let minutes = file.processingTimeSeconds / 60
+                                            let seconds = file.processingTimeSeconds % 60
+                                            Text("\(minutes)m \(seconds)s")
+                                                .font(.body)
+                                                .foregroundStyle(.green)
+                                                .monospacedDigit()
+                                        }
+
+                                        Text("[\(file.fileExtension)]")
+                                            .font(.body)
+                                            .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                            .padding(.horizontal, 6)
+
+                                        Text("\(file.fileSizeMB) MB")
+                                            .font(.body)
+                                            .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                            .monospacedDigit()
+                                            .frame(width: 80, alignment: .trailing)
                                     }
+                                    .listRowBackground(index % 2 == 0 ? Color.clear : Color.secondary.opacity(0.08))
                                 }
-                                .padding(.horizontal)
+
+                                // Total processing time
+                                if viewModel.processor.videoFiles.contains(where: { $0.status == .completed }) {
+                                    let totalSeconds = viewModel.processor.videoFiles
+                                        .filter { $0.status == .completed }
+                                        .reduce(0) { $0 + $1.processingTimeSeconds }
+                                    let totalMinutes = totalSeconds / 60
+                                    let totalRemainingSeconds = totalSeconds % 60
+
+                                    HStack {
+                                        Text("Total Processing Time:")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        Text("\(totalMinutes)m \(totalRemainingSeconds)s")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                    }
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                }
                             }
-                            .frame(maxHeight: 200)
+                            .frame(height: 400)
                         }
                     }
 

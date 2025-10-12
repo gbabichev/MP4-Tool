@@ -38,12 +38,20 @@ enum ProcessingMode: String, CaseIterable {
     }
 }
 
+enum ProcessingStatus {
+    case pending
+    case processing
+    case completed
+}
+
 struct VideoFileInfo: Identifiable {
     let id = UUID()
     let fileName: String
     let filePath: String
     let fileExtension: String
     let fileSizeMB: Int
+    var status: ProcessingStatus = .pending
+    var processingTimeSeconds: Int = 0
 }
 
 class VideoProcessor: ObservableObject {
@@ -169,9 +177,13 @@ class VideoProcessor: ObservableObject {
                     break
                 }
 
+                // Mark file as processing
                 DispatchQueue.main.async {
                     self.currentFileIndex = index + 1
                     self.currentFile = file
+                    if index < self.videoFiles.count {
+                        self.videoFiles[index].status = .processing
+                    }
                 }
 
                 addLog("\n􀎶 File \(index + 1)/\(files.count)")
@@ -224,6 +236,14 @@ class VideoProcessor: ObservableObject {
                         addLog("􀈑 Deleted original file")
                     } else {
                         addLog("􀅴 Kept original file")
+                    }
+
+                    // Mark file as completed with processing time
+                    DispatchQueue.main.async {
+                        if index < self.videoFiles.count {
+                            self.videoFiles[index].status = .completed
+                            self.videoFiles[index].processingTimeSeconds = Int(duration)
+                        }
                     }
                 } else {
                     addLog("􀁡 Error processing video. Moving on...")
