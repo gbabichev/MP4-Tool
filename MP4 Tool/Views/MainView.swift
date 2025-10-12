@@ -14,12 +14,14 @@ struct MainContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Input/Output folder display
-            VStack(spacing: 16) {
+            VStack(spacing: 0) {
                 if !viewModel.inputFolderPath.isEmpty || !viewModel.outputFolderPath.isEmpty {
-                    HStack(alignment: .top, spacing: 20) {
+                    // Input Folder
+                    HStack(alignment: .top) {
                         if !viewModel.inputFolderPath.isEmpty {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Input Folder")
+                                    .bold()
                                 Text(viewModel.inputFolderPath)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -27,6 +29,7 @@ struct MainContentView: View {
                         } else {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Input Folder")
+                                    .bold()
                                 HStack(spacing: 4) {
                                     Image(systemName: "arrow.left")
                                         .font(.caption2)
@@ -36,10 +39,21 @@ struct MainContentView: View {
                                 .foregroundStyle(.tertiary)
                             }
                         }
+                        Spacer()
+                    }
+                    .frame(minHeight: 35)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
 
+                    Divider()
+                        .padding(.vertical, 8)
+
+                    // Output Folder
+                    HStack(alignment: .top) {
                         if !viewModel.outputFolderPath.isEmpty {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Output Folder")
+                                    .bold()
                                 Text(viewModel.outputFolderPath)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -47,6 +61,7 @@ struct MainContentView: View {
                         } else {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Output Folder")
+                                    .bold()
                                 HStack(spacing: 4) {
                                     Image(systemName: "arrow.left")
                                         .font(.caption2)
@@ -56,6 +71,7 @@ struct MainContentView: View {
                                 .foregroundStyle(.tertiary)
                             }
                         }
+                        Spacer()
                     }
                     .frame(minHeight: 35)
                     .padding(.horizontal)
@@ -69,9 +85,9 @@ struct MainContentView: View {
                     }
                     .frame(minHeight: 35)
                     .padding(.horizontal)
+                    .padding(.top, 8)
                 }
             }
-            .padding(.top, 8)
 
             Divider()
                 .padding(.top, 12)

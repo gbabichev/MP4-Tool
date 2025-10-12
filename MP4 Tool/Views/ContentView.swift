@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
@@ -56,6 +57,24 @@ struct ContentView: View {
                 }
                 .disabled(viewModel.processor.isProcessing)
                 .help(viewModel.outputFolderPath.isEmpty ? "Select output folder" : viewModel.outputFolderPath)
+            }
+
+            ToolbarItem(placement: .status) {
+                if !viewModel.processor.ffmpegAvailable {
+                    Button(action: {
+                        // Show alert with explanation
+                        let alert = NSAlert()
+                        alert.messageText = "FFmpeg Not Found"
+                        alert.informativeText = viewModel.processor.ffmpegMissingMessage
+                        alert.alertStyle = .warning
+                        alert.addButton(withTitle: "OK")
+                        alert.runModal()
+                    }) {
+                        Label("FFmpeg Missing", systemImage: "exclamationmark.triangle.fill")
+                    }
+                    .foregroundStyle(.orange)
+                    .help(viewModel.processor.ffmpegMissingMessage)
+                }
             }
 
             ToolbarItem(placement: .status){

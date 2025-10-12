@@ -67,6 +67,8 @@ class VideoProcessor: ObservableObject {
     @Published var scanProgress: String = ""
     @Published var encodingProgress: String = ""
     @Published var videoFiles: [VideoFileInfo] = []
+    @Published var ffmpegAvailable = false
+    @Published var ffmpegMissingMessage = ""
 
     private var startTime: Date?
     private var timer: Timer?
@@ -79,34 +81,83 @@ class VideoProcessor: ObservableObject {
     private let ffprobePath: String
 
     init() {
-        // Try multiple methods to locate bundled binaries
+        var foundFfmpeg = false
+        var foundFfprobe = false
+        var tempFfmpegPath = ""
+        var tempFfprobePath = ""
+
+        // 1. Try bundled binaries in Resources
         if let ffmpegURL = Bundle.main.url(forResource: "ffmpeg", withExtension: nil, subdirectory: "bin"),
            let ffprobeURL = Bundle.main.url(forResource: "ffprobe", withExtension: nil, subdirectory: "bin") {
-            self.ffmpegPath = ffmpegURL.path
-            self.ffprobePath = ffprobeURL.path
+            tempFfmpegPath = ffmpegURL.path
+            tempFfprobePath = ffprobeURL.path
+            foundFfmpeg = FileManager.default.fileExists(atPath: tempFfmpegPath)
+            foundFfprobe = FileManager.default.fileExists(atPath: tempFfprobePath)
         } else if let ffmpegURL = Bundle.main.url(forResource: "ffmpeg", withExtension: nil),
                   let ffprobeURL = Bundle.main.url(forResource: "ffprobe", withExtension: nil) {
             // If bin folder was flattened
-            self.ffmpegPath = ffmpegURL.path
-            self.ffprobePath = ffprobeURL.path
+            tempFfmpegPath = ffmpegURL.path
+            tempFfprobePath = ffprobeURL.path
+            foundFfmpeg = FileManager.default.fileExists(atPath: tempFfmpegPath)
+            foundFfprobe = FileManager.default.fileExists(atPath: tempFfprobePath)
         } else {
             // Fallback to resource path
             let resourcePath = Bundle.main.resourcePath ?? ""
-            self.ffmpegPath = resourcePath + "/bin/ffmpeg"
-            self.ffprobePath = resourcePath + "/bin/ffprobe"
+            tempFfmpegPath = resourcePath + "/bin/ffmpeg"
+            tempFfprobePath = resourcePath + "/bin/ffprobe"
+            foundFfmpeg = FileManager.default.fileExists(atPath: tempFfmpegPath)
+            foundFfprobe = FileManager.default.fileExists(atPath: tempFfprobePath)
         }
 
-        // Verify files exist
-        if FileManager.default.fileExists(atPath: ffmpegPath) && FileManager.default.fileExists(atPath: ffprobePath) {
-            addLog("􀅴 Initialized with ffmpeg/ffprobe in Resources/bin")
-        } else {
-            if !FileManager.default.fileExists(atPath: ffmpegPath) {
-                addLog("􀇾 WARNING: ffmpeg binary not found!")
-            }
-            if !FileManager.default.fileExists(atPath: ffprobePath) {
-                addLog("􀇾 WARNING: ffprobe binary not found!")
-            }
+        // 2. If bundled binaries not found, try system PATH
+        if !foundFfmpeg || !foundFfprobe {
+            tempFfmpegPath = Self.findInPath(command: "ffmpeg") ?? ""
+            tempFfprobePath = Self.findInPath(command: "ffprobe") ?? ""
+            foundFfmpeg = !tempFfmpegPath.isEmpty
+            foundFfprobe = !tempFfprobePath.isEmpty
         }
+
+        self.ffmpegPath = tempFfmpegPath
+        self.ffprobePath = tempFfprobePath
+
+        // Set availability status
+        if foundFfmpeg && foundFfprobe {
+            self.ffmpegAvailable = true
+            addLog("􀅴 Found ffmpeg and ffprobe")
+        } else {
+            self.ffmpegAvailable = false
+            var missing: [String] = []
+            if !foundFfmpeg { missing.append("ffmpeg") }
+            if !foundFfprobe { missing.append("ffprobe") }
+            self.ffmpegMissingMessage = "Missing required tools: \(missing.joined(separator: ", ")).\nPlease install ffmpeg & ffprobe. Or compile this app with binaries bundled into the Resource folder."
+            addLog("􀇾 WARNING: \(self.ffmpegMissingMessage)")
+        }
+    }
+
+    private static func findInPath(command: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "which \(command)"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !path.isEmpty {
+                    return path
+                }
+            }
+        } catch {
+            // Silent failure
+        }
+
+        return nil
     }
 
     func addLog(_ message: String) {

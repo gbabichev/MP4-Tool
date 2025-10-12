@@ -21,8 +21,6 @@ struct SettingsView: View {
                 .fontWeight(.semibold)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Divider()
-
             SettingsRow("Mode", subtitle: "Encode converts to H.265, Remux copies streams") {
                 Picker("", selection: $selectedMode) {
                     ForEach(ProcessingMode.allCases, id: \.self) { mode in
