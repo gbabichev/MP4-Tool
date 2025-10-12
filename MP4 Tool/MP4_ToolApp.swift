@@ -23,6 +23,13 @@ struct MP4_ToolApp: App {
                     NotificationCenter.default.post(name: .scanForNonMP4, object: nil)
                 }
                 .keyboardShortcut("S", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Export Log to TXT...") {
+                    NotificationCenter.default.post(name: .exportLog, object: nil)
+                }
+                .keyboardShortcut("E", modifiers: [.command, .shift])
             }
         }
     }
@@ -30,4 +37,5 @@ struct MP4_ToolApp: App {
 
 extension Notification.Name {
     static let scanForNonMP4 = Notification.Name("scanForNonMP4")
+    static let exportLog = Notification.Name("exportLog")
 }

@@ -47,7 +47,7 @@ class VideoProcessor: ObservableObject {
     @Published var elapsedTime: TimeInterval = 0
     @Published var originalSize: Int64 = 0
     @Published var newSize: Int64 = 0
-    @Published var logs: [String] = []
+    @Published var logText: String = ""
     @Published var scanProgress: String = ""
 
     private var startTime: Date?
@@ -90,7 +90,10 @@ class VideoProcessor: ObservableObject {
 
     func addLog(_ message: String) {
         DispatchQueue.main.async {
-            self.logs.append(message)
+            if !self.logText.isEmpty {
+                self.logText += "\n"
+            }
+            self.logText += message
             print(message)
         }
     }
@@ -98,7 +101,7 @@ class VideoProcessor: ObservableObject {
     func processFolder(inputPath: String, outputPath: String, mode: ProcessingMode, createSubfolders: Bool, deleteOriginal: Bool = true) async {
         DispatchQueue.main.async {
             self.isProcessing = true
-            self.logs.removeAll()
+            self.logText = ""
             self.currentFileIndex = 0
             self.progress = 0
         }
@@ -442,7 +445,7 @@ class VideoProcessor: ObservableObject {
     func scanForNonMP4Files(directoryPath: String) async {
         DispatchQueue.main.async {
             self.isProcessing = true
-            self.logs.removeAll()
+            self.logText = ""
             self.scanProgress = "Starting scan..."
             self.shouldCancelScan = false
         }
@@ -549,12 +552,11 @@ class VideoProcessor: ObservableObject {
             addLog("✅ All video files are already MP4 format!")
         } else {
             addLog("\n📝 Non-MP4 files:")
-            for (index, filePath) in nonMP4Files.enumerated() {
-                let fileName = (filePath as NSString).lastPathComponent
-                let ext = (fileName as NSString).pathExtension.uppercased()
-                addLog("  \(index + 1). [\(ext)] \(fileName)")
-                addLog("     Path: \(filePath)")
+            for filePath in nonMP4Files {
+                let ext = (filePath as NSString).pathExtension.uppercased()
+                addLog("[\(ext)] - \(filePath)")
             }
+            addLog("\n📊 Total non-MP4 files: \(nonMP4Files.count)")
         }
 
         DispatchQueue.main.async {
