@@ -54,6 +54,7 @@ class VideoProcessor: ObservableObject {
     private var startTime: Date?
     private var timer: Timer?
     private nonisolated(unsafe) var shouldCancelScan = false
+    private nonisolated(unsafe) var shouldCancelProcessing = false
     private var encodingTimer: Timer?
     private var currentProcess: Process?
 
@@ -107,6 +108,7 @@ class VideoProcessor: ObservableObject {
             self.logText = ""
             self.currentFileIndex = 0
             self.progress = 0
+            self.shouldCancelProcessing = false
         }
 
         addLog("▶️ Starting processing...")
@@ -149,6 +151,12 @@ class VideoProcessor: ObservableObject {
             addLog("📊 Found \(files.count) files to process")
 
             for (index, file) in files.enumerated() {
+                // Check for cancellation
+                if shouldCancelProcessing {
+                    addLog("⏹️ Processing cancelled by user")
+                    break
+                }
+
                 DispatchQueue.main.async {
                     self.currentFileIndex = index + 1
                     self.currentFile = file
@@ -223,6 +231,7 @@ class VideoProcessor: ObservableObject {
 
         DispatchQueue.main.async {
             self.isProcessing = false
+            self.shouldCancelProcessing = false
         }
     }
 
@@ -510,7 +519,15 @@ class VideoProcessor: ObservableObject {
 
     func cancelScan() {
         shouldCancelScan = true
-        addLog("⏸️ Cancelling scan...")
+        shouldCancelProcessing = true
+
+        // Terminate current process if one is running
+        if let process = currentProcess, process.isRunning {
+            process.terminate()
+            addLog("⏹️ Terminating current operation...")
+        } else {
+            addLog("⏸️ Cancelling...")
+        }
     }
 
     func scanForNonMP4Files(directoryPath: String) async {
