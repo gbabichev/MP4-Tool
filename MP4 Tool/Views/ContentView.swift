@@ -267,9 +267,17 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showTutorial)) { _ in
             viewModel.showTutorial()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .showAbout)) { _ in
+            viewModel.showAbout()
+        }
         .overlay {
             if viewModel.showingTutorial {
                 TutorialView(isPresented: $viewModel.showingTutorial)
+            }
+        }
+        .overlay {
+            if viewModel.showingAbout {
+                AboutView(isPresented: $viewModel.showingAbout)
             }
         }
         .onAppear {

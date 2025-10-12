@@ -17,8 +17,12 @@ struct MP4_ToolApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(after: .appInfo) {
-                Divider()
+            CommandGroup(replacing: .appInfo) {
+                Button(action: {
+                    NotificationCenter.default.post(name: .showAbout, object: nil)
+                }) {
+                    Text("About MP4 Tool")
+                }
             }
 
             CommandGroup(replacing: .newItem) {
@@ -99,4 +103,5 @@ extension Notification.Name {
     static let scanForNonMP4 = Notification.Name("scanForNonMP4")
     static let exportLog = Notification.Name("exportLog")
     static let showTutorial = Notification.Name("showTutorial")
+    static let showAbout = Notification.Name("showAbout")
 }

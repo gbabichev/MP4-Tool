@@ -17,6 +17,7 @@ class ContentViewModel: ObservableObject {
     @Published var showingLogExporter = false
     @Published var logExportDocument: LogDocument?
     @Published var showingTutorial = false
+    @Published var showingAbout = false
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -101,5 +102,9 @@ class ContentViewModel: ObservableObject {
 
     func showTutorial() {
         showingTutorial = true
+    }
+
+    func showAbout() {
+        showingAbout = true
     }
 }
