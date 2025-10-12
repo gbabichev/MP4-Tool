@@ -10,6 +10,7 @@ import SwiftUI
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
     @Binding var isLogExpanded: Bool
+    @State private var fileListHeight: CGFloat = 400
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,7 +32,7 @@ struct MainContentView: View {
                                 Text("Input Folder")
                                     .bold()
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.left")
+                                    Image(systemName: "folder")
                                         .font(.caption2)
                                     Text("Select input")
                                 }
@@ -63,7 +64,7 @@ struct MainContentView: View {
                                 Text("Output Folder")
                                     .bold()
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.left")
+                                    Image(systemName: "folder.badge.gearshape")
                                         .font(.caption2)
                                     Text("Select output")
                                 }
@@ -77,7 +78,9 @@ struct MainContentView: View {
                     .padding(.horizontal)
                 } else {
                     HStack(spacing: 8) {
-                        Image(systemName: "folder.badge.questionmark")
+                        Image(systemName: "folder")
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "folder.badge.gearshape")
                             .foregroundStyle(.secondary)
                         Text("Click buttons in toolbar to select folders")
                             .font(.caption)
@@ -101,7 +104,7 @@ struct MainContentView: View {
                     .padding(.top, 8)
             }
 
-            // File list - Fixed height, scrollable
+            // File list - Resizable height
             if !viewModel.processor.videoFiles.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -187,8 +190,11 @@ struct MainContentView: View {
                                 .listRowSeparator(.hidden)
                             }
                         }
-                        .frame(height: 400)
+                        .frame(height: fileListHeight)
                 }
+
+                // Resizable divider
+                ResizableDivider(height: $fileListHeight, minHeight: 150, maxHeight: 600)
             }
 
             // Current file info
@@ -269,11 +275,47 @@ struct MainContentView: View {
                         .transition(.opacity)
                         .padding(.horizontal)
                         .padding(.bottom, 8)
+                } else {
+                    Spacer(minLength: 0)
                 }
             }
-            .frame(maxHeight: .infinity)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+}
+
+// Resizable divider component
+struct ResizableDivider: View {
+    @Binding var height: CGFloat
+    let minHeight: CGFloat
+    let maxHeight: CGFloat
+    @State private var isDragging = false
+
+    var body: some View {
+        Rectangle()
+            .fill(isDragging ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.3))
+            .frame(height: 4)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeUpDown.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        isDragging = true
+                        let newHeight = height + value.translation.height
+                        height = min(max(newHeight, minHeight), maxHeight)
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                    }
+            )
     }
 }
