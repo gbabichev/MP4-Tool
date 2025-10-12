@@ -9,17 +9,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var processor = VideoProcessor()
-    @State private var inputFolderPath: String = ""
-    @State private var outputFolderPath: String = ""
+    @StateObject private var viewModel = ContentViewModel()
     @AppStorage("selectedMode") private var selectedMode: ProcessingMode = .remux
     @AppStorage("crfValue") private var crfValue: Double = 23
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
-    @State private var showingInputPicker = false
-    @State private var showingOutputPicker = false
-    @State private var showingLogExporter = false
-    @State private var logExportDocument: LogDocument?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -27,13 +21,13 @@ struct ContentView: View {
             VStack(spacing: 16) {
                 SettingsRow("Output Folder", subtitle: "Where converted files will be saved") {
                     HStack {
-                        TextField("Select output folder...", text: $outputFolderPath)
+                        TextField("Select output folder...", text: $viewModel.outputFolderPath)
                             .textFieldStyle(.roundedBorder)
-                            .disabled(processor.isProcessing)
+                            .disabled(viewModel.processor.isProcessing)
                         Button("Browse") {
-                            selectFolder(isInput: false)
+                            viewModel.selectFolder(isInput: false)
                         }
-                        .disabled(processor.isProcessing)
+                        .disabled(viewModel.processor.isProcessing)
                     }
                 }
 
@@ -44,7 +38,7 @@ struct ContentView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .disabled(processor.isProcessing)
+                    .disabled(viewModel.processor.isProcessing)
                 }
 
                 if selectedMode == .encode {
@@ -52,7 +46,7 @@ struct ContentView: View {
                         HStack {
                             Slider(value: $crfValue, in: 18...28, step: 1)
                                 .frame(width: 200)
-                                .disabled(processor.isProcessing)
+                                .disabled(viewModel.processor.isProcessing)
                             Text("\(Int(crfValue))")
                                 .frame(width: 30)
                                 .monospacedDigit()
@@ -63,42 +57,42 @@ struct ContentView: View {
                 SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
                     Toggle("", isOn: $createSubfolders)
                         .toggleStyle(.switch)
-                        .disabled(processor.isProcessing)
+                        .disabled(viewModel.processor.isProcessing)
                 }
 
                 SettingsRow("Delete Original", subtitle: "Remove source files after successful conversion") {
                     Toggle("", isOn: $deleteOriginal)
                         .toggleStyle(.switch)
-                        .disabled(processor.isProcessing)
+                        .disabled(viewModel.processor.isProcessing)
                 }
             }
             .padding(.horizontal)
 
             // Progress Section
-            if processor.isProcessing || !processor.logText.isEmpty {
+            if viewModel.processor.isProcessing || !viewModel.processor.logText.isEmpty {
                 VStack(spacing: 12) {
                     Divider()
 
                     // Scan progress
-                    if !processor.scanProgress.isEmpty {
-                        Text(processor.scanProgress)
+                    if !viewModel.processor.scanProgress.isEmpty {
+                        Text(viewModel.processor.scanProgress)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal)
                     }
 
                     // Current file info
-                    if processor.isProcessing && processor.totalFiles > 0 {
+                    if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
                         VStack(spacing: 8) {
                             HStack {
-                                Text("File \(processor.currentFileIndex)/\(processor.totalFiles)")
+                                Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                if !processor.currentFile.isEmpty {
+                                if !viewModel.processor.currentFile.isEmpty {
                                     Text("•")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    Text(processor.currentFile)
+                                    Text(viewModel.processor.currentFile)
                                         .font(.caption)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
@@ -110,24 +104,24 @@ struct ContentView: View {
                                 HStack {
                                     Image(systemName: "clock")
                                         .foregroundStyle(.secondary)
-                                    Text(formattedTime(processor.elapsedTime))
+                                    Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
                                         .font(.caption)
                                 }
 
                                 HStack {
                                     Image(systemName: "doc")
                                         .foregroundStyle(.secondary)
-                                    Text("\(processor.originalSize / (1024*1024))MB")
+                                    Text("\(viewModel.processor.originalSize / (1024*1024))MB")
                                         .font(.caption)
                                 }
 
-                                if processor.newSize > 0 {
+                                if viewModel.processor.newSize > 0 {
                                     Image(systemName: "arrow.right")
                                         .foregroundStyle(.secondary)
                                     HStack {
                                         Image(systemName: "doc.fill")
                                             .foregroundStyle(.secondary)
-                                        Text("\(processor.newSize / (1024*1024))MB")
+                                        Text("\(viewModel.processor.newSize / (1024*1024))MB")
                                             .font(.caption)
                                     }
                                 }
@@ -142,7 +136,7 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        LogView(logText: processor.logText)
+                        LogView(logText: viewModel.processor.logText)
                             .frame(maxHeight: .infinity)
                     }
                     .padding(.horizontal)
@@ -154,118 +148,59 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button(action: {
-                    selectFolder(isInput: true)
+                    viewModel.selectFolder(isInput: true)
                 }) {
                     Label("Input Folder", systemImage: "folder")
                 }
-                .disabled(processor.isProcessing)
-                .help(inputFolderPath.isEmpty ? "Select input folder" : inputFolderPath)
+                .disabled(viewModel.processor.isProcessing)
+                .help(viewModel.inputFolderPath.isEmpty ? "Select input folder" : viewModel.inputFolderPath)
             }
 
             ToolbarItem(placement: .status){
                 Spacer()
             }
-            
+
             ToolbarItem(placement: .primaryAction) {
-                if processor.isProcessing {
+                if viewModel.processor.isProcessing {
                     Button(action: {
-                        processor.cancelScan()
+                        viewModel.processor.cancelScan()
                     }) {
                         Label("Stop", systemImage: "stop.fill")
                     }
                 } else {
-                    Button(action: startProcessing) {
+                    Button(action: {
+                        viewModel.startProcessing(
+                            mode: selectedMode,
+                            crfValue: Int(crfValue),
+                            createSubfolders: createSubfolders,
+                            deleteOriginal: deleteOriginal
+                        )
+                    }) {
                         Label("Start Processing", systemImage: "play.fill")
                     }
-                    .disabled(!canStartProcessing)
+                    .disabled(!viewModel.canStartProcessing)
                 }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .scanForNonMP4)) { _ in
-            scanForNonMP4Files()
+            viewModel.scanForNonMP4Files()
         }
         .onReceive(NotificationCenter.default.publisher(for: .exportLog)) { _ in
-            exportLogToFile()
+            viewModel.exportLogToFile()
         }
         .fileExporter(
-            isPresented: $showingLogExporter,
-            document: logExportDocument,
+            isPresented: $viewModel.showingLogExporter,
+            document: viewModel.logExportDocument,
             contentType: .plainText,
             defaultFilename: "MP4_Tool_Log_\(Int(Date().timeIntervalSince1970))"
         ) { result in
             switch result {
             case .success(let url):
-                processor.addLog("📝 Log exported to: \(url.path)")
+                viewModel.processor.addLog("📝 Log exported to: \(url.path)")
             case .failure(let error):
-                processor.addLog("❌ Failed to export log: \(error.localizedDescription)")
+                viewModel.processor.addLog("❌ Failed to export log: \(error.localizedDescription)")
             }
         }
-    }
-
-    private var canStartProcessing: Bool {
-        !inputFolderPath.isEmpty && !outputFolderPath.isEmpty
-    }
-
-    private func formattedTime(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let remainingSeconds = totalSeconds % 60
-        return "\(minutes)m \(remainingSeconds)s"
-    }
-
-    private func selectFolder(isInput: Bool) {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
-
-        if panel.runModal() == .OK {
-            if let url = panel.url {
-                if isInput {
-                    inputFolderPath = url.path
-                } else {
-                    outputFolderPath = url.path
-                }
-            }
-        }
-    }
-
-    private func startProcessing() {
-        Task {
-            await processor.processFolder(
-                inputPath: inputFolderPath,
-                outputPath: outputFolderPath,
-                mode: selectedMode,
-                crfValue: Int(crfValue),
-                createSubfolders: createSubfolders,
-                deleteOriginal: deleteOriginal
-            )
-        }
-    }
-
-    private func scanForNonMP4Files() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.message = "Select directory to scan for non-MP4 files"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            Task {
-                await processor.scanForNonMP4Files(directoryPath: url.path)
-            }
-        }
-    }
-
-    private func exportLogToFile() {
-        guard !processor.logText.isEmpty else {
-            processor.addLog("⚠️ Cannot export: Log is empty")
-            return
-        }
-
-        logExportDocument = LogDocument(text: processor.logText)
-        showingLogExporter = true
     }
 }
 
