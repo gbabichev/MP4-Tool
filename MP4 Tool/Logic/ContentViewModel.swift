@@ -11,11 +11,21 @@ import Combine
 
 @MainActor
 class ContentViewModel: ObservableObject {
-    @Published var processor = VideoProcessor()
+    let processor = VideoProcessor()
     @Published var inputFolderPath: String = ""
     @Published var outputFolderPath: String = ""
     @Published var showingLogExporter = false
     @Published var logExportDocument: LogDocument?
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        // Forward processor's objectWillChange to our objectWillChange
+        processor.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        .store(in: &cancellables)
+    }
 
     var canStartProcessing: Bool {
         !inputFolderPath.isEmpty && !outputFolderPath.isEmpty

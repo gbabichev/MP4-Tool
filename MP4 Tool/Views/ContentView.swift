@@ -16,7 +16,7 @@ struct ContentView: View {
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 0) {
             // Configuration Section
             VStack(spacing: 16) {
                 SettingsRow("Output Folder", subtitle: "Where converted files will be saved") {
@@ -67,22 +67,23 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal)
+            .padding(.top, 8)
 
             // Progress Section
-            if viewModel.processor.isProcessing || !viewModel.processor.logText.isEmpty {
-                VStack(spacing: 12) {
-                    Divider()
+            VStack(spacing: 12) {
+                Divider()
+                    .padding(.top, 12)
 
-                    // Scan progress
-                    if !viewModel.processor.scanProgress.isEmpty {
-                        Text(viewModel.processor.scanProgress)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal)
-                    }
+                // Scan progress
+                if !viewModel.processor.scanProgress.isEmpty {
+                    Text(viewModel.processor.scanProgress)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                }
 
-                    // Current file info
-                    if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
+                // Current file info
+                if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
                         VStack(spacing: 8) {
                             HStack {
                                 Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
@@ -130,17 +131,16 @@ struct ContentView: View {
                         .padding(.horizontal)
                     }
 
-                    // Logs
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Log Output:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                // Logs
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Log Output:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                        LogView(logText: viewModel.processor.logText)
-                            .frame(maxHeight: .infinity)
-                    }
-                    .padding(.horizontal)
+                    LogView(logText: viewModel.processor.logText)
+                        .frame(maxHeight: .infinity)
                 }
+                .padding(.horizontal)
             }
         }
         .frame(minWidth: 800, minHeight: 700)
