@@ -33,7 +33,7 @@ struct SettingsRow<Control: View>: View {
                     .labelsHidden()
                     .controlSize(.large)
             }
-            .frame(minHeight: 44)
+            .frame(minHeight: 35)
 
         }
     }

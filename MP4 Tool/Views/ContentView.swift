@@ -19,6 +19,13 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Configuration Section
             VStack(spacing: 16) {
+                // Input folder display
+                if !viewModel.inputFolderPath.isEmpty {
+                    SettingsRow("Input Folder", subtitle: viewModel.inputFolderPath) {
+                        EmptyView()
+                    }
+                }
+
                 SettingsRow("Output Folder", subtitle: "Where converted files will be saved") {
                     HStack {
                         TextField("Select output folder...", text: $viewModel.outputFolderPath)
@@ -42,7 +49,7 @@ struct ContentView: View {
                 }
 
                 if selectedMode == .encode {
-                    SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file (18-28 recommended) GB Default 23.") {
+                    SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
                         HStack {
                             Slider(value: $crfValue, in: 18...28, step: 1)
                                 .frame(width: 200)
@@ -154,6 +161,7 @@ struct ContentView: View {
                 }
                 .disabled(viewModel.processor.isProcessing)
                 .help(viewModel.inputFolderPath.isEmpty ? "Select input folder" : viewModel.inputFolderPath)
+                //.foregroundStyle(.orange)
             }
 
             ToolbarItem(placement: .status){
@@ -184,6 +192,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openInputFolder)) { _ in
             viewModel.selectFolder(isInput: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .selectOutputFolder)) { _ in
+            viewModel.selectFolder(isInput: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: .startProcessing)) { _ in
             if viewModel.canStartProcessing && !viewModel.processor.isProcessing {

@@ -35,6 +35,13 @@ struct MP4_ToolApp: App {
                     Label("Open Input Folder...", systemImage: "folder")
                 }
                 .keyboardShortcut("o", modifiers: .command)
+
+                Button(action: {
+                    NotificationCenter.default.post(name: .selectOutputFolder, object: nil)
+                }) {
+                    Label("Select Output Folder...", systemImage: "folder.badge.gearshape")
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
             }
 
             CommandMenu("Tools") {
@@ -69,6 +76,7 @@ struct MP4_ToolApp: App {
 
 extension Notification.Name {
     static let openInputFolder = Notification.Name("openInputFolder")
+    static let selectOutputFolder = Notification.Name("selectOutputFolder")
     static let startProcessing = Notification.Name("startProcessing")
     static let scanForNonMP4 = Notification.Name("scanForNonMP4")
     static let exportLog = Notification.Name("exportLog")
