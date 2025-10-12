@@ -12,10 +12,10 @@ struct ContentView: View {
     @StateObject private var processor = VideoProcessor()
     @State private var inputFolderPath: String = ""
     @State private var outputFolderPath: String = ""
-    @State private var selectedMode: ProcessingMode = .remux
-    @State private var crfValue: Double = 23
-    @State private var createSubfolders: Bool = false
-    @State private var deleteOriginal: Bool = true
+    @AppStorage("selectedMode") private var selectedMode: ProcessingMode = .remux
+    @AppStorage("crfValue") private var crfValue: Double = 23
+    @AppStorage("createSubfolders") private var createSubfolders: Bool = false
+    @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @State private var showingInputPicker = false
     @State private var showingOutputPicker = false
     @State private var showingLogExporter = false
@@ -162,6 +162,10 @@ struct ContentView: View {
                 .help(inputFolderPath.isEmpty ? "Select input folder" : inputFolderPath)
             }
 
+            ToolbarItem(placement: .status){
+                Spacer()
+            }
+            
             ToolbarItem(placement: .primaryAction) {
                 if processor.isProcessing {
                     Button(action: {
