@@ -17,180 +17,161 @@ struct ContentView: View {
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Configuration Section
-            VStack(spacing: 16) {
+        TabView {
+            // Main Tab - Input/Output/Log
+            VStack(alignment: .leading, spacing: 0) {
                 // Input/Output folder display
-                if !viewModel.inputFolderPath.isEmpty || !viewModel.outputFolderPath.isEmpty {
-                    HStack(alignment: .top, spacing: 20) {
-                        if !viewModel.inputFolderPath.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Input Folder")
-                                Text(viewModel.inputFolderPath)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Input Folder")
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.left")
-                                        .font(.caption2)
-                                    Text("Select input")
+                VStack(spacing: 16) {
+                    if !viewModel.inputFolderPath.isEmpty || !viewModel.outputFolderPath.isEmpty {
+                        HStack(alignment: .top, spacing: 20) {
+                            if !viewModel.inputFolderPath.isEmpty {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Input Folder")
+                                    Text(viewModel.inputFolderPath)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                            } else {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Input Folder")
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.left")
+                                            .font(.caption2)
+                                        Text("Select input")
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                }
                             }
-                        }
 
-                        if !viewModel.outputFolderPath.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Output Folder")
-                                Text(viewModel.outputFolderPath)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Output Folder")
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.left")
-                                        .font(.caption2)
-                                    Text("Select output")
+                            if !viewModel.outputFolderPath.isEmpty {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Output Folder")
+                                    Text(viewModel.outputFolderPath)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                            } else {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Output Folder")
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.left")
+                                            .font(.caption2)
+                                        Text("Select output")
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                }
                             }
                         }
+                        .frame(minHeight: 35)
+                        .padding(.horizontal)
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder.badge.questionmark")
+                                .foregroundStyle(.secondary)
+                            Text("Click buttons in toolbar to select folders")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(minHeight: 35)
+                        .padding(.horizontal)
                     }
-                    .frame(minHeight: 35)
-                    .padding(.horizontal)
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "folder.badge.questionmark")
-                            .foregroundStyle(.secondary)
-                        Text("Click buttons in toolbar to select folders")
+                }
+                .padding(.top, 8)
+
+                // Progress Section
+                VStack(spacing: 12) {
+                    Divider()
+                        .padding(.top, 12)
+
+                    // Scan progress
+                    if !viewModel.processor.scanProgress.isEmpty {
+                        Text(viewModel.processor.scanProgress)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .padding(.horizontal)
                     }
-                    .frame(minHeight: 35)
-                    .padding(.horizontal)
-                }
 
-                SettingsRow("Mode", subtitle: "Encode converts to H.265, Remux copies streams") {
-                    Picker("", selection: $selectedMode) {
-                        ForEach(ProcessingMode.allCases, id: \.self) { mode in
-                            Text(mode.description).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(viewModel.processor.isProcessing)
-                }
-
-                if selectedMode == .encode {
-                    SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
-                        HStack {
-                            Slider(value: $crfValue, in: 18...28, step: 1)
-                                .frame(width: 200)
-                                .disabled(viewModel.processor.isProcessing)
-                            Text("\(Int(crfValue))")
-                                .frame(width: 30)
-                                .monospacedDigit()
-                        }
-                    }
-                }
-
-                SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
-                    Toggle("", isOn: $createSubfolders)
-                        .toggleStyle(.switch)
-                        .disabled(viewModel.processor.isProcessing)
-                }
-
-                SettingsRow("Delete Original", subtitle: "Remove source files after successful conversion") {
-                    Toggle("", isOn: $deleteOriginal)
-                        .toggleStyle(.switch)
-                        .disabled(viewModel.processor.isProcessing)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
-            // Progress Section
-            VStack(spacing: 12) {
-                Divider()
-                    .padding(.top, 12)
-
-                // Scan progress
-                if !viewModel.processor.scanProgress.isEmpty {
-                    Text(viewModel.processor.scanProgress)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal)
-                }
-
-                // Current file info
-                if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
-                        VStack(spacing: 8) {
-                            HStack {
-                                Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if !viewModel.processor.currentFile.isEmpty {
-                                    Text("•")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text(viewModel.processor.currentFile)
-                                        .font(.caption)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                }
-                                Spacer()
-                            }
-
-                            HStack(spacing: 20) {
+                    // Current file info
+                    if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
+                            VStack(spacing: 8) {
                                 HStack {
-                                    Image(systemName: "clock")
-                                        .foregroundStyle(.secondary)
-                                    Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
+                                    Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
                                         .font(.caption)
-                                }
-
-                                HStack {
-                                    Image(systemName: "doc")
                                         .foregroundStyle(.secondary)
-                                    Text("\(viewModel.processor.originalSize / (1024*1024))MB")
-                                        .font(.caption)
-                                }
-
-                                if viewModel.processor.newSize > 0 {
-                                    Image(systemName: "arrow.right")
-                                        .foregroundStyle(.secondary)
-                                    HStack {
-                                        Image(systemName: "doc.fill")
-                                            .foregroundStyle(.secondary)
-                                        Text("\(viewModel.processor.newSize / (1024*1024))MB")
+                                    if !viewModel.processor.currentFile.isEmpty {
+                                        Text("•")
                                             .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text(viewModel.processor.currentFile)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                    Spacer()
+                                }
+
+                                HStack(spacing: 20) {
+                                    HStack {
+                                        Image(systemName: "clock")
+                                            .foregroundStyle(.secondary)
+                                        Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
+                                            .font(.caption)
+                                    }
+
+                                    HStack {
+                                        Image(systemName: "doc")
+                                            .foregroundStyle(.secondary)
+                                        Text("\(viewModel.processor.originalSize / (1024*1024))MB")
+                                            .font(.caption)
+                                    }
+
+                                    if viewModel.processor.newSize > 0 {
+                                        Image(systemName: "arrow.right")
+                                            .foregroundStyle(.secondary)
+                                        HStack {
+                                            Image(systemName: "doc.fill")
+                                                .foregroundStyle(.secondary)
+                                            Text("\(viewModel.processor.newSize / (1024*1024))MB")
+                                                .font(.caption)
+                                        }
                                     }
                                 }
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
+
+                    // Logs
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Log Output:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        LogView(logText: viewModel.processor.logText)
+                            .frame(maxHeight: .infinity)
                     }
-
-                // Logs
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Log Output:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    LogView(logText: viewModel.processor.logText)
-                        .frame(maxHeight: .infinity)
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
+            }
+            .padding()
+            .tabItem {
+                Label("Main", systemImage: "play.rectangle")
+            }
+
+            // Settings Tab
+            SettingsView(
+                selectedMode: $selectedMode,
+                crfValue: $crfValue,
+                createSubfolders: $createSubfolders,
+                deleteOriginal: $deleteOriginal,
+                isProcessing: viewModel.processor.isProcessing
+            )
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
             }
         }
         .frame(minWidth: 800, minHeight: 700)
-        .padding()
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button(action: {
