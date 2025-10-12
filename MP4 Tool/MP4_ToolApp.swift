@@ -79,6 +79,14 @@ struct MP4_ToolApp: App {
                 }
                 .keyboardShortcut("E", modifiers: [.command, .shift])
             }
+
+            CommandGroup(after: .help) {
+                Button(action: {
+                    NotificationCenter.default.post(name: .showTutorial, object: nil)
+                }) {
+                    Label("Tutorial", systemImage: "lightbulb.fill")
+                }
+            }
         }
     }
 }
@@ -90,4 +98,5 @@ extension Notification.Name {
     static let startProcessing = Notification.Name("startProcessing")
     static let scanForNonMP4 = Notification.Name("scanForNonMP4")
     static let exportLog = Notification.Name("exportLog")
+    static let showTutorial = Notification.Name("showTutorial")
 }

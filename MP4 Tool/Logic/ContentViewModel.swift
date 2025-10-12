@@ -16,6 +16,7 @@ class ContentViewModel: ObservableObject {
     @Published var outputFolderPath: String = ""
     @Published var showingLogExporter = false
     @Published var logExportDocument: LogDocument?
+    @Published var showingTutorial = false
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -96,5 +97,9 @@ class ContentViewModel: ObservableObject {
     func clearFolders() {
         inputFolderPath = ""
         outputFolderPath = ""
+    }
+
+    func showTutorial() {
+        showingTutorial = true
     }
 }

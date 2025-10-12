@@ -14,23 +14,67 @@ struct ContentView: View {
     @AppStorage("crfValue") private var crfValue: Double = 23
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
+    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Configuration Section
             VStack(spacing: 16) {
-                // Input folder display
-                if !viewModel.inputFolderPath.isEmpty {
-                    SettingsRow("Input Folder", subtitle: viewModel.inputFolderPath) {
-                        EmptyView()
-                    }
-                }
+                // Input/Output folder display
+                if !viewModel.inputFolderPath.isEmpty || !viewModel.outputFolderPath.isEmpty {
+                    HStack(alignment: .top, spacing: 20) {
+                        if !viewModel.inputFolderPath.isEmpty {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Input Folder")
+                                Text(viewModel.inputFolderPath)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Input Folder")
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.left")
+                                        .font(.caption2)
+                                    Text("Select input")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                            }
+                        }
 
-                SettingsRow("Output Folder", subtitle: viewModel.outputFolderPath.isEmpty ? "Where converted files will be saved" : viewModel.outputFolderPath) {
-                    Button("Browse") {
-                        viewModel.selectFolder(isInput: false)
+                        if !viewModel.outputFolderPath.isEmpty {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Output Folder")
+                                Text(viewModel.outputFolderPath)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Output Folder")
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.left")
+                                        .font(.caption2)
+                                    Text("Select output")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                            }
+                        }
                     }
-                    .disabled(viewModel.processor.isProcessing)
+                    .frame(minHeight: 35)
+                    .padding(.horizontal)
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder.badge.questionmark")
+                            .foregroundStyle(.secondary)
+                        Text("Click buttons in toolbar to select folders")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 35)
+                    .padding(.horizontal)
                 }
 
                 SettingsRow("Mode", subtitle: "Encode converts to H.265, Remux copies streams") {
@@ -159,6 +203,16 @@ struct ContentView: View {
                 //.foregroundStyle(.orange)
             }
 
+            ToolbarItem(placement: .navigation) {
+                Button(action: {
+                    viewModel.selectFolder(isInput: false)
+                }) {
+                    Label("Output Folder", systemImage: "folder.badge.gearshape")
+                }
+                .disabled(viewModel.processor.isProcessing)
+                .help(viewModel.outputFolderPath.isEmpty ? "Select output folder" : viewModel.outputFolderPath)
+            }
+
             ToolbarItem(placement: .status){
                 Spacer()
             }
@@ -209,6 +263,19 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .clearFolders)) { _ in
             viewModel.clearFolders()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showTutorial)) { _ in
+            viewModel.showTutorial()
+        }
+        .overlay {
+            if viewModel.showingTutorial {
+                TutorialView(isPresented: $viewModel.showingTutorial)
+            }
+        }
+        .onAppear {
+            if !hasSeenTutorial {
+                viewModel.showingTutorial = true
+            }
         }
         .fileExporter(
             isPresented: $viewModel.showingLogExporter,
