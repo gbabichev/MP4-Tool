@@ -353,13 +353,20 @@ class VideoProcessor: ObservableObject {
         }
 
         // Determine audio stream mappings
-        let audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly)
+        var audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly)
         if audioMappings.isEmpty {
-            let message = keepEnglishAudioOnly
-                ? "􀁡 No English audio found. Skipping."
-                : "􀁡 No audio tracks found. Skipping."
-            addLog(message)
-            return false
+            if keepEnglishAudioOnly {
+                // If no English/undefined tracks found, fall back to keeping all tracks
+                addLog("􀇾 No English/undefined audio found. Processing all audio tracks.")
+                audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: false)
+                if audioMappings.isEmpty {
+                    addLog("􀁡 No audio tracks found. Skipping.")
+                    return false
+                }
+            } else {
+                addLog("􀁡 No audio tracks found. Skipping.")
+                return false
+            }
         }
 
         // Get video codec
@@ -372,10 +379,19 @@ class VideoProcessor: ObservableObject {
         }
 
         // Determine subtitle stream mappings
-        let subtitleMappings = getSubtitleMappings(
+        var subtitleMappings = getSubtitleMappings(
             subtitleStreams: subtitleStreams,
             keepEnglishOnly: keepEnglishSubtitlesOnly
         )
+
+        // If no English/undefined subtitles found and filter is enabled, fall back to all subtitles
+        if subtitleMappings.isEmpty && keepEnglishSubtitlesOnly {
+            addLog("􀇾 No English/undefined subtitles found. Processing all subtitles.")
+            subtitleMappings = getSubtitleMappings(
+                subtitleStreams: subtitleStreams,
+                keepEnglishOnly: false
+            )
+        }
 
         // Build ffmpeg command
         let cmd = buildFFmpegCommand(
