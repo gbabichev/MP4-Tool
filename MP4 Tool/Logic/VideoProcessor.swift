@@ -81,13 +81,13 @@ class VideoProcessor: ObservableObject {
 
         // Verify files exist
         if FileManager.default.fileExists(atPath: ffmpegPath) && FileManager.default.fileExists(atPath: ffprobePath) {
-            addLog("ℹ️ Initialized with ffmpeg/ffprobe in Resources/bin")
+            addLog("􀅴 Initialized with ffmpeg/ffprobe in Resources/bin")
         } else {
             if !FileManager.default.fileExists(atPath: ffmpegPath) {
-                addLog("⚠️ WARNING: ffmpeg binary not found!")
+                addLog("􀇾 WARNING: ffmpeg binary not found!")
             }
             if !FileManager.default.fileExists(atPath: ffprobePath) {
-                addLog("⚠️ WARNING: ffprobe binary not found!")
+                addLog("􀇾 WARNING: ffprobe binary not found!")
             }
         }
     }
@@ -111,25 +111,25 @@ class VideoProcessor: ObservableObject {
             self.shouldCancelProcessing = false
         }
 
-        addLog("▶️ Starting processing...")
-        addLog("📂 Input Directory: \(inputPath)")
-        addLog("📂 Output Directory: \(outputPath)")
-        addLog("⚙️ Mode: \(mode.rawValue)")
+        addLog("􀊄 Starting processing...")
+        addLog("􀈖 Input Directory: \(inputPath)")
+        addLog("􀈖 Output Directory: \(outputPath)")
+        addLog("􀣋 Mode: \(mode.rawValue)")
         if mode == .encode {
-            addLog("🎚️ CRF: \(crfValue)")
+            addLog("􀏃 CRF: \(crfValue)")
         }
-        addLog("📁 Create Subfolders: \(createSubfolders)")
-        addLog("🗑️ Delete Original: \(deleteOriginal)")
+        addLog("􀈕 Create Subfolders: \(createSubfolders)")
+        addLog("􀈑 Delete Original: \(deleteOriginal)")
 
         // Verify directories exist
         guard FileManager.default.fileExists(atPath: inputPath) else {
-            addLog("❌ Input directory does not exist!")
+            addLog("􀁡 Input directory does not exist!")
             DispatchQueue.main.async { self.isProcessing = false }
             return
         }
 
         guard FileManager.default.fileExists(atPath: outputPath) else {
-            addLog("❌ Output directory does not exist!")
+            addLog("􀁡 Output directory does not exist!")
             DispatchQueue.main.async { self.isProcessing = false }
             return
         }
@@ -151,12 +151,12 @@ class VideoProcessor: ObservableObject {
                 self.totalFiles = files.count
             }
 
-            addLog("📊 Found \(files.count) files to process")
+            addLog("􀐱 Found \(files.count) files to process")
 
             for (index, file) in files.enumerated() {
                 // Check for cancellation
                 if shouldCancelProcessing {
-                    addLog("⏹️ Processing cancelled by user")
+                    addLog("􀛶 Processing cancelled by user")
                     break
                 }
 
@@ -165,8 +165,8 @@ class VideoProcessor: ObservableObject {
                     self.currentFile = file
                 }
 
-                addLog("\n🎬 File \(index + 1)/\(files.count)")
-                addLog("ℹ️ Processing: \(file)")
+                addLog("\n􀎶 File \(index + 1)/\(files.count)")
+                addLog("􀅴 Processing: \(file)")
 
                 let inputFilePath = (inputPath as NSString).appendingPathComponent(file)
                 let outputFileName = ((file as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4")!
@@ -201,23 +201,23 @@ class VideoProcessor: ObservableObject {
                     try? FileManager.default.removeItem(atPath: outputFilePath)
                     try? FileManager.default.moveItem(atPath: tempOutputFile, toPath: outputFilePath)
 
-                    addLog("✅ Done processing")
-                    addLog("ℹ️ Moved file. Old Size: \(inputSizeMB)MB New Size: \(outputSizeMB)MB")
+                    addLog("􀁢 Done processing")
+                    addLog("􀅴 Moved file. Old Size: \(inputSizeMB)MB New Size: \(outputSizeMB)MB")
 
                     let duration = fileEndTime.timeIntervalSince(fileStartTime)
                     let minutes = Int(duration) / 60
                     let seconds = Int(duration) % 60
-                    addLog("ℹ️ Completed in \(minutes)m \(seconds)s")
+                    addLog("􀅴 Completed in \(minutes)m \(seconds)s")
 
                     // Delete original file if requested
                     if deleteOriginal {
                         try? FileManager.default.removeItem(atPath: inputFilePath)
-                        addLog("🗑️ Deleted original file")
+                        addLog("􀈑 Deleted original file")
                     } else {
-                        addLog("ℹ️ Kept original file")
+                        addLog("􀅴 Kept original file")
                     }
                 } else {
-                    addLog("❌ Error processing video. Moving on...")
+                    addLog("􀁡 Error processing video. Moving on...")
                     try? FileManager.default.removeItem(atPath: tempOutputFile)
                 }
 
@@ -226,10 +226,10 @@ class VideoProcessor: ObservableObject {
                 }
             }
 
-            addLog("\n🚀 All files processed!")
+            addLog("\n􀋚 All files processed!")
 
         } catch {
-            addLog("❌ Error: \(error.localizedDescription)")
+            addLog("􀁡 Error: \(error.localizedDescription)")
         }
 
         DispatchQueue.main.async {
@@ -243,14 +243,14 @@ class VideoProcessor: ObservableObject {
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
               let videoStreams = await probeStreams(inputFile: inputFile, selectStreams: nil),
               let subtitleStreams = await probeStreams(inputFile: inputFile, selectStreams: "s") else {
-            addLog("❌ Failed to probe streams")
+            addLog("􀁡 Failed to probe streams")
             return false
         }
 
         // Get English audio indices
         let audioIndices = getEnglishAudioIndices(audioStreams: audioStreams)
         if audioIndices.isEmpty {
-            addLog("❌ No English audio found. Skipping.")
+            addLog("􀁡 No English audio found. Skipping.")
             return false
         }
 
@@ -259,7 +259,7 @@ class VideoProcessor: ObservableObject {
 
         // Check for AV1 in remux mode
         if mode == .remux && videoCodec == "av1" {
-            addLog("❌ AV1 codec detected. Please use encode mode.")
+            addLog("􀁡 AV1 codec detected. Please use encode mode.")
             return false
         }
 
@@ -277,9 +277,9 @@ class VideoProcessor: ObservableObject {
             subtitleStreams: validSubtitles
         )
 
-        addLog("ℹ️ Running in \(mode.rawValue) mode")
+        addLog("􀅴 Running in \(mode.rawValue) mode")
         if mode == .encode {
-            addLog("⏳ Encoding started - this may take a while...")
+            addLog("􀐱 Encoding started - this may take a while...")
         }
 
         // Start timer and file size monitoring
@@ -325,13 +325,13 @@ class VideoProcessor: ObservableObject {
         arguments.append(inputFile)
 
         guard let output = await runCommandWithOutput(path: ffprobePath, arguments: arguments) else {
-            addLog("❌ Failed to probe streams")
+            addLog("􀁡 Failed to probe streams")
             return nil
         }
 
         guard let data = output.data(using: .utf8),
               let result = try? JSONDecoder().decode(FFProbeOutput.self, from: data) else {
-            addLog("❌ Failed to parse stream data")
+            addLog("􀁡 Failed to parse stream data")
             return nil
         }
 
@@ -450,7 +450,7 @@ class VideoProcessor: ObservableObject {
                     DispatchQueue.main.async {
                         self.stopEncodingProgress()
                         self.currentProcess = nil
-                        self.addLog("❌ Process error: \(errorMsg)")
+                        self.addLog("􀁡 Process error: \(errorMsg)")
                     }
                     continuation.resume(returning: false)
                 }
@@ -501,17 +501,17 @@ class VideoProcessor: ObservableObject {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
 
             if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
-                addLog("⚠️ Process stderr: \(errorOutput)")
+                addLog("􀇾 Process stderr: \(errorOutput)")
             }
 
             if process.terminationStatus != 0 {
-                addLog("❌ Process exited with status: \(process.terminationStatus)")
+                addLog("􀁡 Process exited with status: \(process.terminationStatus)")
                 return nil
             }
 
             return String(data: outputData, encoding: .utf8)
         } catch {
-            addLog("❌ Process error: \(error.localizedDescription)")
+            addLog("􀁡 Process error: \(error.localizedDescription)")
             return nil
         }
     }
@@ -523,9 +523,9 @@ class VideoProcessor: ObservableObject {
         // Terminate current process if one is running
         if let process = currentProcess, process.isRunning {
             process.terminate()
-            addLog("⏹️ Terminating current operation...")
+            addLog("􀛶 Terminating current operation...")
         } else {
-            addLog("⏸️ Cancelling...")
+            addLog("􀊆 Cancelling...")
         }
     }
 
@@ -537,11 +537,11 @@ class VideoProcessor: ObservableObject {
             self.shouldCancelScan = false
         }
 
-        addLog("🔍 Scanning directory for non-MP4 files...")
-        addLog("📂 Directory: \(directoryPath)")
+        addLog("􀊫 Scanning directory for non-MP4 files...")
+        addLog("􀈖 Directory: \(directoryPath)")
 
         guard FileManager.default.fileExists(atPath: directoryPath) else {
-            addLog("❌ Directory does not exist!")
+            addLog("􀁡 Directory does not exist!")
             DispatchQueue.main.async {
                 self.isProcessing = false
                 self.scanProgress = ""
@@ -550,7 +550,7 @@ class VideoProcessor: ObservableObject {
         }
 
         // Skip counting and scan directly with incremental progress
-        addLog("ℹ️ Scanning files (this may take a while on network shares)...")
+        addLog("􀅴 Scanning files (this may take a while on network shares)...")
 
         // Perform file scanning in a synchronous context
         let result: ([String], Int, Bool) = await withCheckedContinuation { continuation in
@@ -628,23 +628,23 @@ class VideoProcessor: ObservableObject {
         }
 
         if wasCancelled {
-            addLog("⏸️ Scan cancelled by user")
-            addLog("ℹ️ Partial results: \(totalVideoFiles) video files found, \(nonMP4Files.count) non-MP4")
+            addLog("􀊆 Scan cancelled by user")
+            addLog("􀅴 Partial results: \(totalVideoFiles) video files found, \(nonMP4Files.count) non-MP4")
         } else {
-            addLog("📊 Scan complete!")
-            addLog("ℹ️ Total video files found: \(totalVideoFiles)")
-            addLog("ℹ️ Non-MP4 video files: \(nonMP4Files.count)")
+            addLog("􀐱 Scan complete!")
+            addLog("􀅴 Total video files found: \(totalVideoFiles)")
+            addLog("􀅴 Non-MP4 video files: \(nonMP4Files.count)")
         }
 
         if nonMP4Files.isEmpty {
-            addLog("✅ All video files are already MP4 format!")
+            addLog("􀁢 All video files are already MP4 format!")
         } else {
-            addLog("\n📝 Non-MP4 files:")
+            addLog("\n􀈊 Non-MP4 files:")
             for filePath in nonMP4Files {
                 let ext = (filePath as NSString).pathExtension.uppercased()
                 addLog("[\(ext)] - \(filePath)")
             }
-            addLog("\n📊 Total non-MP4 files: \(nonMP4Files.count)")
+            addLog("\n􀐱 Total non-MP4 files: \(nonMP4Files.count)")
         }
 
         DispatchQueue.main.async {

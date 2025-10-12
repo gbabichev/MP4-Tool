@@ -24,9 +24,7 @@ struct TutorialView: View {
             VStack(spacing: 24) {
                 // Header
                 VStack(spacing: 8) {
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.accentColor)
+                    LiveAppIconView()
 
                     Text("MP4 Tool Tutorial")
                         .font(.title)
@@ -55,7 +53,8 @@ struct TutorialView: View {
                         Text("Encode").bold() +
                         Text(" to convert videos to H.265 (HEVC) for smaller file sizes, or ") +
                         Text("Remux").bold() +
-                        Text(" to copy streams without re-encoding (fast, no quality loss).")
+                        Text(" to copy streams without re-encoding (fast, no quality loss).") +
+                        Text("\nBoth modes save to MP4.")
                     }
 
                     TutorialStep(

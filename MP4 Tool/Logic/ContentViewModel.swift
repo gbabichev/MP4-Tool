@@ -87,7 +87,7 @@ class ContentViewModel: ObservableObject {
 
     func exportLogToFile() {
         guard !processor.logText.isEmpty else {
-            processor.addLog("⚠️ Cannot export: Log is empty")
+            processor.addLog("􀇾 Cannot export: Log is empty")
             return
         }
 
@@ -98,6 +98,7 @@ class ContentViewModel: ObservableObject {
     func clearFolders() {
         inputFolderPath = ""
         outputFolderPath = ""
+        processor.logText = ""
     }
 
     func showTutorial() {

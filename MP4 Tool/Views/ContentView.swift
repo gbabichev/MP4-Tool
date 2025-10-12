@@ -293,9 +293,9 @@ struct ContentView: View {
         ) { result in
             switch result {
             case .success(let url):
-                viewModel.processor.addLog("📝 Log exported to: \(url.path)")
+                viewModel.processor.addLog("􀈊 Log exported to: \(url.path)")
             case .failure(let error):
-                viewModel.processor.addLog("❌ Failed to export log: \(error.localizedDescription)")
+                viewModel.processor.addLog("􀁡 Failed to export log: \(error.localizedDescription)")
             }
         }
     }
