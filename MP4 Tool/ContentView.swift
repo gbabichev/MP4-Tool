@@ -22,44 +22,10 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            // Header
-            VStack(spacing: 8) {
-                Image(systemName: "film.stack")
-                    .imageScale(.large)
-                    .font(.system(size: 50))
-                    .foregroundStyle(.blue)
-                Text("MP4 Tool")
-                    .font(.largeTitle)
-                    .bold()
-                Text("Video Converter & Remuxer")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top)
-
-            Divider()
-
             // Configuration Section
-            HStack(alignment: .top, spacing: 20) {
-                // Left Column - Folder Selection
-                VStack(spacing: 16) {
-                    // Input Folder
+            VStack(spacing: 16) {
+                SettingsRow("Output Folder", subtitle: "Where converted files will be saved") {
                     HStack {
-                        Text("Input Folder:")
-                            .frame(width: 100, alignment: .leading)
-                        TextField("Select input folder...", text: $inputFolderPath)
-                            .textFieldStyle(.roundedBorder)
-                            .disabled(processor.isProcessing)
-                        Button("Browse") {
-                            selectFolder(isInput: true)
-                        }
-                        .disabled(processor.isProcessing)
-                    }
-
-                    // Output Folder
-                    HStack {
-                        Text("Output Folder:")
-                            .frame(width: 100, alignment: .leading)
                         TextField("Select output folder...", text: $outputFolderPath)
                             .textFieldStyle(.roundedBorder)
                             .disabled(processor.isProcessing)
@@ -70,79 +36,26 @@ struct ContentView: View {
                     }
                 }
 
-                // Right Column - Settings
-                VStack(spacing: 16) {
-                    // Mode Selection
-                    HStack {
-                        Text("Mode:")
-                            .frame(width: 120, alignment: .leading)
-                        Picker("", selection: $selectedMode) {
-                            ForEach(ProcessingMode.allCases, id: \.self) { mode in
-                                Text(mode.description).tag(mode)
-                            }
+                SettingsRow("Mode", subtitle: "Encode converts to H.265, Remux copies streams") {
+                    Picker("", selection: $selectedMode) {
+                        ForEach(ProcessingMode.allCases, id: \.self) { mode in
+                            Text(mode.description).tag(mode)
                         }
-                        .pickerStyle(.segmented)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(processor.isProcessing)
+                }
+
+                SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
+                    Toggle("", isOn: $createSubfolders)
+                        .toggleStyle(.switch)
                         .disabled(processor.isProcessing)
-                    }
-
-                    // Subfolder option
-                    HStack {
-                        Text("Create Subfolders:")
-                            .frame(width: 120, alignment: .leading)
-                        Toggle("", isOn: $createSubfolders)
-                            .disabled(processor.isProcessing)
-                        Spacer()
-                    }
-
-                    // Delete original option
-                    HStack {
-                        Text("Delete Original:")
-                            .frame(width: 120, alignment: .leading)
-                        Toggle("", isOn: $deleteOriginal)
-                            .disabled(processor.isProcessing)
-                        Spacer()
-                    }
                 }
-            }
-            .padding(.horizontal)
 
-            // Start/Stop Button
-            HStack(spacing: 12) {
-                Button(action: startProcessing) {
-                    HStack {
-                        if processor.isProcessing {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .frame(width: 20, height: 20)
-                        } else {
-                            Image(systemName: "play.fill")
-                        }
-                        Text(processor.isProcessing ? "Processing..." : "Start Processing")
-                            .bold()
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(canStartProcessing ? Color.blue : Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                }
-                .disabled(!canStartProcessing || processor.isProcessing)
-
-                if processor.isProcessing {
-                    Button(action: {
-                        processor.cancelScan()
-                    }) {
-                        HStack {
-                            Image(systemName: "stop.fill")
-                            Text("Stop")
-                                .bold()
-                        }
-                        .frame(width: 100)
-                        .padding()
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                    }
+                SettingsRow("Delete Original", subtitle: "Remove source files after successful conversion") {
+                    Toggle("", isOn: $deleteOriginal)
+                        .toggleStyle(.switch)
+                        .disabled(processor.isProcessing)
                 }
             }
             .padding(.horizontal)
@@ -224,6 +137,32 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 700)
         .padding()
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button(action: {
+                    selectFolder(isInput: true)
+                }) {
+                    Label("Input Folder", systemImage: "folder")
+                }
+                .disabled(processor.isProcessing)
+                .help(inputFolderPath.isEmpty ? "Select input folder" : inputFolderPath)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                if processor.isProcessing {
+                    Button(action: {
+                        processor.cancelScan()
+                    }) {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                } else {
+                    Button(action: startProcessing) {
+                        Label("Start Processing", systemImage: "play.fill")
+                    }
+                    .disabled(!canStartProcessing)
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .scanForNonMP4)) { _ in
             scanForNonMP4Files()
         }
