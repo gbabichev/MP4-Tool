@@ -15,11 +15,13 @@ struct ContentView: View {
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    @State private var isLogExpanded = false
 
     var body: some View {
         TabView {
             // Main Tab - Input/Output/Log
-            VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                 // Input/Output folder display
                 VStack(spacing: 16) {
                     if !viewModel.inputFolderPath.isEmpty || !viewModel.outputFolderPath.isEmpty {
@@ -93,6 +95,54 @@ struct ContentView: View {
                             .padding(.horizontal)
                     }
 
+                    // File list
+                    if !viewModel.processor.videoFiles.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Files to Process (\(viewModel.processor.videoFiles.count))")
+                                    .font(.headline)
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+
+                            ScrollView {
+                                VStack(spacing: 4) {
+                                    ForEach(viewModel.processor.videoFiles) { file in
+                                        HStack {
+                                            Image(systemName: "film")
+                                                .foregroundStyle(.secondary)
+                                                .frame(width: 20)
+
+                                            Text(file.fileName)
+                                                .font(.caption)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+
+                                            Spacer()
+
+                                            Text("[\(file.fileExtension)]")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .padding(.horizontal, 4)
+
+                                            Text("\(file.fileSizeMB) MB")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .monospacedDigit()
+                                                .frame(width: 70, alignment: .trailing)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.secondary.opacity(0.05))
+                                        .cornerRadius(4)
+                                    }
+                                }
+                                .padding(.horizontal)
+                            }
+                            .frame(maxHeight: 200)
+                        }
+                    }
+
                     // Current file info
                     if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
                             VStack(spacing: 8) {
@@ -142,19 +192,38 @@ struct ContentView: View {
                             .padding(.horizontal)
                         }
 
-                    // Logs
+                    // Collapsible Logs
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Log Output:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Button(action: {
+                            withAnimation {
+                                isLogExpanded.toggle()
+                            }
+                        }) {
+                            HStack {
+                                Text("Log Output")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: isLogExpanded ? "chevron.up" : "chevron.down")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
 
-                        LogView(logText: viewModel.processor.logText)
-                            .frame(maxHeight: .infinity)
+                        if isLogExpanded {
+                            LogView(logText: viewModel.processor.logText)
+                                .frame(height: 200)
+                                .transition(.opacity)
+                        }
                     }
                     .padding(.horizontal)
                 }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding()
             }
-            .padding()
             .tabItem {
                 Label("Main", systemImage: "play.rectangle")
             }

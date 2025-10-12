@@ -51,6 +51,10 @@ class ContentViewModel: ObservableObject {
             if let url = panel.url {
                 if isInput {
                     inputFolderPath = url.path
+                    // Auto-scan input folder for video files
+                    Task {
+                        await processor.scanInputFolder(directoryPath: url.path)
+                    }
                 } else {
                     outputFolderPath = url.path
                 }

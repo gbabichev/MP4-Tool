@@ -38,6 +38,14 @@ enum ProcessingMode: String, CaseIterable {
     }
 }
 
+struct VideoFileInfo: Identifiable {
+    let id = UUID()
+    let fileName: String
+    let filePath: String
+    let fileExtension: String
+    let fileSizeMB: Int
+}
+
 class VideoProcessor: ObservableObject {
     @Published var isProcessing = false
     @Published var currentFile = ""
@@ -50,6 +58,7 @@ class VideoProcessor: ObservableObject {
     @Published var logText: String = ""
     @Published var scanProgress: String = ""
     @Published var encodingProgress: String = ""
+    @Published var videoFiles: [VideoFileInfo] = []
 
     private var startTime: Date?
     private var timer: Timer?
@@ -526,6 +535,61 @@ class VideoProcessor: ObservableObject {
             addLog("􀛶 Terminating current operation...")
         } else {
             addLog("􀊆 Cancelling...")
+        }
+    }
+
+    func scanInputFolder(directoryPath: String) async {
+        DispatchQueue.main.async {
+            self.isProcessing = true
+            self.scanProgress = "Scanning for video files..."
+            self.videoFiles = []
+        }
+
+        let videoFormats = ["mkv", "mp4", "avi"]
+        let wordsToIgnore = ["sample", "SAMPLE", "Sample", ".DS_Store"]
+
+        do {
+            let allFiles = try FileManager.default.contentsOfDirectory(atPath: directoryPath)
+            let files = allFiles
+                .filter { file in
+                    let ext = (file as NSString).pathExtension.lowercased()
+                    return videoFormats.contains(ext) && !wordsToIgnore.contains { file.contains($0) }
+                }
+                .sorted()
+
+            var videoFileInfos: [VideoFileInfo] = []
+
+            for file in files {
+                let filePath = (directoryPath as NSString).appendingPathComponent(file)
+                let ext = (file as NSString).pathExtension.uppercased()
+
+                if let attributes = try? FileManager.default.attributesOfItem(atPath: filePath),
+                   let fileSize = attributes[.size] as? Int64 {
+                    let sizeMB = Int(fileSize / (1024 * 1024))
+
+                    videoFileInfos.append(VideoFileInfo(
+                        fileName: file,
+                        filePath: filePath,
+                        fileExtension: ext,
+                        fileSizeMB: sizeMB
+                    ))
+                }
+            }
+
+            DispatchQueue.main.async {
+                self.videoFiles = videoFileInfos
+                self.totalFiles = videoFileInfos.count
+                self.scanProgress = ""
+                self.isProcessing = false
+            }
+
+            addLog("􀅴 Found \(videoFileInfos.count) video files to process")
+        } catch {
+            addLog("􀁡 Error scanning folder: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.scanProgress = ""
+                self.isProcessing = false
+            }
         }
     }
 
