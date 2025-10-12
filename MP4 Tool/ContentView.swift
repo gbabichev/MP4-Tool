@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var inputFolderPath: String = ""
     @State private var outputFolderPath: String = ""
     @State private var selectedMode: ProcessingMode = .remux
+    @State private var crfValue: Double = 23
     @State private var createSubfolders: Bool = false
     @State private var deleteOriginal: Bool = true
     @State private var showingInputPicker = false
@@ -44,6 +45,19 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .disabled(processor.isProcessing)
+                }
+
+                if selectedMode == .encode {
+                    SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file (18-28 recommended) GB Default 23.") {
+                        HStack {
+                            Slider(value: $crfValue, in: 18...28, step: 1)
+                                .frame(width: 200)
+                                .disabled(processor.isProcessing)
+                            Text("\(Int(crfValue))")
+                                .frame(width: 30)
+                                .monospacedDigit()
+                        }
+                    }
                 }
 
                 SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
@@ -219,6 +233,7 @@ struct ContentView: View {
                 inputPath: inputFolderPath,
                 outputPath: outputFolderPath,
                 mode: selectedMode,
+                crfValue: Int(crfValue),
                 createSubfolders: createSubfolders,
                 deleteOriginal: deleteOriginal
             )

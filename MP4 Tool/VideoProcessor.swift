@@ -102,7 +102,7 @@ class VideoProcessor: ObservableObject {
         }
     }
 
-    func processFolder(inputPath: String, outputPath: String, mode: ProcessingMode, createSubfolders: Bool, deleteOriginal: Bool = true) async {
+    func processFolder(inputPath: String, outputPath: String, mode: ProcessingMode, crfValue: Int = 23, createSubfolders: Bool, deleteOriginal: Bool = true) async {
         DispatchQueue.main.async {
             self.isProcessing = true
             self.logText = ""
@@ -115,6 +115,9 @@ class VideoProcessor: ObservableObject {
         addLog("📂 Input Directory: \(inputPath)")
         addLog("📂 Output Directory: \(outputPath)")
         addLog("⚙️ Mode: \(mode.rawValue)")
+        if mode == .encode {
+            addLog("🎚️ CRF: \(crfValue)")
+        }
         addLog("📁 Create Subfolders: \(createSubfolders)")
         addLog("🗑️ Delete Original: \(deleteOriginal)")
 
@@ -183,7 +186,7 @@ class VideoProcessor: ObservableObject {
 
                 // Process the video
                 let fileStartTime = Date()
-                let success = await convertToMP4(inputFile: inputFilePath, tempFile: tempOutputFile, mode: mode)
+                let success = await convertToMP4(inputFile: inputFilePath, tempFile: tempOutputFile, mode: mode, crfValue: crfValue)
                 let fileEndTime = Date()
 
                 if success {
@@ -235,7 +238,7 @@ class VideoProcessor: ObservableObject {
         }
     }
 
-    private func convertToMP4(inputFile: String, tempFile: String, mode: ProcessingMode) async -> Bool {
+    private func convertToMP4(inputFile: String, tempFile: String, mode: ProcessingMode, crfValue: Int = 23) async -> Bool {
         // Probe streams
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
               let videoStreams = await probeStreams(inputFile: inputFile, selectStreams: nil),
@@ -268,6 +271,7 @@ class VideoProcessor: ObservableObject {
             inputFile: inputFile,
             tempFile: tempFile,
             mode: mode,
+            crfValue: crfValue,
             videoCodec: videoCodec,
             audioIndices: audioIndices,
             subtitleStreams: validSubtitles
@@ -369,6 +373,7 @@ class VideoProcessor: ObservableObject {
         inputFile: String,
         tempFile: String,
         mode: ProcessingMode,
+        crfValue: Int = 23,
         videoCodec: String?,
         audioIndices: [Int],
         subtitleStreams: [(index: Int, codec: String, language: String)]
@@ -378,7 +383,7 @@ class VideoProcessor: ObservableObject {
         if mode == .encode {
             cmd = [
                 "-i", inputFile, "-y",
-                "-c:v", "libx265", "-x265-params", "log-level=0", "-preset", "fast", "-crf", "23",
+                "-c:v", "libx265", "-x265-params", "log-level=0", "-preset", "fast", "-crf", "\(crfValue)",
                 "-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-tag:v", "hvc1", "-movflags", "+faststart", "-loglevel", "quiet"
