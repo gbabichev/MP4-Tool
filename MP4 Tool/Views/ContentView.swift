@@ -182,6 +182,19 @@ struct ContentView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openInputFolder)) { _ in
+            viewModel.selectFolder(isInput: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .startProcessing)) { _ in
+            if viewModel.canStartProcessing && !viewModel.processor.isProcessing {
+                viewModel.startProcessing(
+                    mode: selectedMode,
+                    crfValue: Int(crfValue),
+                    createSubfolders: createSubfolders,
+                    deleteOriginal: deleteOriginal
+                )
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .scanForNonMP4)) { _ in
             viewModel.scanForNonMP4Files()
         }
