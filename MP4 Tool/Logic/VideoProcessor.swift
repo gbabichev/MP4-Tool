@@ -313,9 +313,22 @@ class VideoProcessor: ObservableObject {
                 let inputSizeMB = (inputSize ?? 0) / (1024 * 1024)
                 let outputSizeMB = (outputSize ?? 0) / (1024 * 1024)
 
-                // Move to final location
-                try? FileManager.default.removeItem(atPath: outputFilePath)
-                try? FileManager.default.moveItem(atPath: tempOutputFile, toPath: outputFilePath)
+                // Move to final location (run in background to avoid blocking on network shares)
+                addLog("􀐱 Moving file to output location...")
+                let moveSuccess = await moveFileAsync(from: tempOutputFile, to: outputFilePath)
+
+                if !moveSuccess {
+                    addLog("􀁡 Failed to move file to output location")
+                    try? FileManager.default.removeItem(atPath: tempOutputFile)
+
+                    // Mark file as failed
+                    DispatchQueue.main.async {
+                        if index < self.videoFiles.count {
+                            self.videoFiles[index].status = .failed
+                        }
+                    }
+                    continue
+                }
 
                 addLog("􀁢 Done processing")
                 addLog("􀅴 Moved file. Old Size: \(inputSizeMB)MB New Size: \(outputSizeMB)MB")
@@ -325,10 +338,14 @@ class VideoProcessor: ObservableObject {
                 let seconds = Int(duration) % 60
                 addLog("􀅴 Completed in \(minutes)m \(seconds)s")
 
-                // Delete original file if requested
+                // Delete original file if requested (run in background to avoid blocking on network shares)
                 if deleteOriginal {
-                    try? FileManager.default.removeItem(atPath: inputFilePath)
-                    addLog("􀈑 Deleted original file")
+                    let deleteSuccess = await deleteFileAsync(at: inputFilePath)
+                    if deleteSuccess {
+                        addLog("􀈑 Deleted original file")
+                    } else {
+                        addLog("􀇾 Warning: Could not delete original file")
+                    }
                 } else {
                     addLog("􀅴 Kept original file")
                 }
@@ -707,6 +724,43 @@ class VideoProcessor: ObservableObject {
         } catch {
             addLog("􀁡 Process error: \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    private func moveFileAsync(from source: String, to destination: String) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    // Remove existing file if present
+                    if FileManager.default.fileExists(atPath: destination) {
+                        try FileManager.default.removeItem(atPath: destination)
+                    }
+                    // Move file
+                    try FileManager.default.moveItem(atPath: source, toPath: destination)
+                    continuation.resume(returning: true)
+                } catch {
+                    DispatchQueue.main.async {
+                        self.addLog("􀁡 File move error: \(error.localizedDescription)")
+                    }
+                    continuation.resume(returning: false)
+                }
+            }
+        }
+    }
+
+    private func deleteFileAsync(at path: String) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                    continuation.resume(returning: true)
+                } catch {
+                    DispatchQueue.main.async {
+                        self.addLog("􀁡 File delete error: \(error.localizedDescription)")
+                    }
+                    continuation.resume(returning: false)
+                }
+            }
         }
     }
 

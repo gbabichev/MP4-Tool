@@ -7,7 +7,7 @@
 </picture>
 <br/><br/>
 
-<h2>Fast, powerful, and beautifully simple screenshots for Mac.</h2>
+<h2>Easily convert video files for native playback on Mac & iOS</h2>
 <br><br>
 
 </div>
@@ -15,10 +15,15 @@
 <p align="center">
     <a href="Documentation/App1.png"><img src="Documentation/App1.png" width="35%"></a>
     <a href="Documentation/App2.png"><img src="Documentation/App2.png" width="35%"></a>
+    <a href="Documentation/App3.png"><img src="Documentation/App3.png" width="35%"></a>
+
 </p>
 
+MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files into MP4 containers with a streamlined macOS interface.
 
-MP4 Tool lets you convert or remux video files into MP4 containers with a streamlined macOS interface.
+MP4 Tool supports H264 & H265 encoding, and remuxing (copying streams but converting to MP4)
+
+You must have ffmpeg & ffprobe in your $PATH, or compile the app with ffmpeg & ffprobe in the Resources directory. I will not redistribute the binaries, but I have attached my ffmpeg build script. 
 
 ## Tutorial Summary
 
