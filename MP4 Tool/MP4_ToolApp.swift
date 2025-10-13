@@ -52,7 +52,7 @@ struct MP4_ToolApp: App {
                 Button(action: {
                     NotificationCenter.default.post(name: .clearFolders, object: nil)
                 }) {
-                    Label("Clear List", systemImage: "xmark.circle")
+                    Label("Clear List", systemImage: "arrow.counterclockwise")
                 }
                 .keyboardShortcut("l", modifiers: .command)
             }

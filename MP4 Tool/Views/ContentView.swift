@@ -67,9 +67,9 @@ struct ContentView: View {
                 Button(action: {
                     viewModel.clearFolders()
                 }) {
-                    Label("Clear All", systemImage: "xmark.circle")
+                    Label("Clear All", systemImage: "arrow.counterclockwise")
                 }
-                .disabled(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty)
+                .disabled(viewModel.processor.isProcessing || (viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty))
                 .help("Clear input and output folders")
             }
 

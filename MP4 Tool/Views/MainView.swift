@@ -91,15 +91,6 @@ struct MainContentView: View {
             Divider()
                 .padding(.top, 12)
 
-            // Scan progress
-            if !viewModel.processor.scanProgress.isEmpty {
-                Text(viewModel.processor.scanProgress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-            }
-
             // File list - Resizable height (always visible)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -176,52 +167,90 @@ struct MainContentView: View {
             // Resizable divider
             ResizableDivider(height: $fileListHeight, minHeight: 150, maxHeight: 600)
 
-            // Current file info
-            if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
-                VStack(spacing: 8) {
+            // Status Section - Shows active tasks (scan progress or encoding progress)
+            if !viewModel.processor.scanProgress.isEmpty || viewModel.processor.isProcessing {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if !viewModel.processor.currentFile.isEmpty {
-                            Text("•")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(viewModel.processor.currentFile)
-                                .font(.caption)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
+                        Text("Status")
+                            .font(.headline)
                         Spacer()
                     }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
 
-                    HStack(spacing: 20) {
-                        HStack {
-                            Image(systemName: "clock")
-                                .foregroundStyle(.secondary)
-                            Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
-                                .font(.caption)
-                        }
-
-                        HStack {
-                            Image(systemName: "doc")
-                                .foregroundStyle(.secondary)
-                            Text("\(viewModel.processor.originalSize / (1024*1024))MB")
-                                .font(.caption)
-                        }
-
-                        if viewModel.processor.newSize > 0 {
-                            Image(systemName: "arrow.right")
-                                .foregroundStyle(.secondary)
+                    VStack(spacing: 8) {
+                        // Scan progress
+                        if !viewModel.processor.scanProgress.isEmpty {
                             HStack {
-                                Image(systemName: "doc.fill")
-                                    .foregroundStyle(.secondary)
-                                Text("\(viewModel.processor.newSize / (1024*1024))MB")
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text(viewModel.processor.scanProgress)
                                     .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                        }
+
+                        // Processing progress
+                        if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
+                            VStack(spacing: 8) {
+                                HStack {
+                                    Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    if !viewModel.processor.currentFile.isEmpty {
+                                        Text("•")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text(viewModel.processor.currentFile)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                    Spacer()
+                                }
+
+                                HStack(spacing: 20) {
+                                    HStack {
+                                        Image(systemName: "clock")
+                                            .foregroundStyle(.secondary)
+                                        Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
+                                            .font(.caption)
+                                    }
+
+                                    HStack {
+                                        Image(systemName: "doc")
+                                            .foregroundStyle(.secondary)
+                                        Text("\(viewModel.processor.originalSize / (1024*1024))MB")
+                                            .font(.caption)
+                                    }
+
+                                    if viewModel.processor.newSize > 0 {
+                                        Image(systemName: "arrow.right")
+                                            .foregroundStyle(.secondary)
+                                        HStack {
+                                            Image(systemName: "doc.fill")
+                                                .foregroundStyle(.secondary)
+                                            Text("\(viewModel.processor.newSize / (1024*1024))MB")
+                                                .font(.caption)
+                                        }
+                                    }
+                                }
+
+                                // Encoding progress message
+                                if !viewModel.processor.encodingProgress.isEmpty {
+                                    Text(viewModel.processor.encodingProgress)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
                 }
+                .background(Color.secondary.opacity(0.05))
+                .cornerRadius(8)
                 .padding(.horizontal)
                 .padding(.top, 8)
             }
