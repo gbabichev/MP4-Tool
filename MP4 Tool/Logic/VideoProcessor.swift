@@ -60,7 +60,6 @@ struct VideoFileInfo: Identifiable {
 class VideoProcessor: ObservableObject {
     @Published var isProcessing = false
     @Published var currentFile = ""
-    @Published var progress: Double = 0.0
     @Published var totalFiles = 0
     @Published var currentFileIndex = 0
     @Published var elapsedTime: TimeInterval = 0
@@ -187,7 +186,6 @@ class VideoProcessor: ObservableObject {
             self.isProcessing = true
             self.logText = ""
             self.currentFileIndex = 0
-            self.progress = 0
             self.shouldCancelProcessing = false
         }
 
@@ -367,10 +365,6 @@ class VideoProcessor: ObservableObject {
                         self.videoFiles[index].status = .failed
                     }
                 }
-            }
-
-            DispatchQueue.main.async {
-                self.progress = Double(index + 1) / Double(filesToProcess.count)
             }
         }
 
