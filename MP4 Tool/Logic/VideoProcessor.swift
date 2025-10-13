@@ -784,52 +784,85 @@ class VideoProcessor: ObservableObject {
             self.videoFiles = []
         }
 
-        let videoFormats = ["mkv", "mp4", "avi"]
-        let wordsToIgnore = ["sample", "SAMPLE", "Sample", ".DS_Store"]
+        let videoFormats = ["mkv", "mp4", "avi", "mov", "m4v"]
+        let wordsToIgnore = ["sample", "SAMPLE", "Sample"]
 
-        do {
-            let allFiles = try FileManager.default.contentsOfDirectory(atPath: directoryPath)
-            let files = allFiles
-                .filter { file in
-                    let ext = (file as NSString).pathExtension.lowercased()
-                    return videoFormats.contains(ext) && !wordsToIgnore.contains { file.contains($0) }
+        // Perform recursive scan in background
+        let videoFileInfos: [VideoFileInfo] = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var files: [VideoFileInfo] = []
+                var filesScanned = 0
+                var lastUpdateTime = Date()
+
+                let fileManager = FileManager.default
+                guard let enumerator = fileManager.enumerator(
+                    at: URL(fileURLWithPath: directoryPath),
+                    includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) else {
+                    continuation.resume(returning: [])
+                    return
                 }
-                .sorted()
 
-            var videoFileInfos: [VideoFileInfo] = []
+                for case let fileURL as URL in enumerator {
+                    // Only process regular files
+                    guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
+                          resourceValues.isRegularFile == true else {
+                        continue
+                    }
 
-            for file in files {
-                let filePath = (directoryPath as NSString).appendingPathComponent(file)
-                let ext = (file as NSString).pathExtension.uppercased()
+                    filesScanned += 1
 
-                if let attributes = try? FileManager.default.attributesOfItem(atPath: filePath),
-                   let fileSize = attributes[.size] as? Int64 {
-                    let sizeMB = Int(fileSize / (1024 * 1024))
+                    // Update progress periodically
+                    let now = Date()
+                    if filesScanned % 50 == 0 || now.timeIntervalSince(lastUpdateTime) > 0.5 {
+                        lastUpdateTime = now
+                        let scannedCount = filesScanned
+                        DispatchQueue.main.async {
+                            self.scanProgress = "Scanned \(scannedCount) files..."
+                        }
+                    }
 
-                    videoFileInfos.append(VideoFileInfo(
-                        fileName: file,
-                        filePath: filePath,
-                        fileExtension: ext,
-                        fileSizeMB: sizeMB
-                    ))
+                    let fileName = fileURL.lastPathComponent
+                    let ext = fileURL.pathExtension.lowercased()
+
+                    // Check if it's a supported video file
+                    guard videoFormats.contains(ext) else { continue }
+
+                    // Skip files with ignored words
+                    if wordsToIgnore.contains(where: { fileName.contains($0) }) {
+                        continue
+                    }
+
+                    // Get file size
+                    if let attributes = try? fileManager.attributesOfItem(atPath: fileURL.path),
+                       let fileSize = attributes[.size] as? Int64 {
+                        let sizeMB = Int(fileSize / (1024 * 1024))
+
+                        files.append(VideoFileInfo(
+                            fileName: fileName,
+                            filePath: fileURL.path,
+                            fileExtension: ext.uppercased(),
+                            fileSizeMB: sizeMB
+                        ))
+                    }
                 }
-            }
 
-            DispatchQueue.main.async {
-                self.videoFiles = videoFileInfos
-                self.totalFiles = videoFileInfos.count
-                self.scanProgress = ""
-                self.isProcessing = false
-            }
+                // Sort by file path for consistent ordering
+                files.sort { $0.filePath < $1.filePath }
 
-            addLog("􀅴 Found \(videoFileInfos.count) video files to process")
-        } catch {
-            addLog("􀁡 Error scanning folder: \(error.localizedDescription)")
-            DispatchQueue.main.async {
-                self.scanProgress = ""
-                self.isProcessing = false
+                continuation.resume(returning: files)
             }
         }
+
+        DispatchQueue.main.async {
+            self.videoFiles = videoFileInfos
+            self.totalFiles = videoFileInfos.count
+            self.scanProgress = ""
+            self.isProcessing = false
+        }
+
+        addLog("􀅴 Found \(videoFileInfos.count) video files to process")
     }
 
     func scanForNonMP4Files(directoryPath: String) async {

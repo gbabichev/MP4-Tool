@@ -409,6 +409,19 @@ struct FileListRow: View {
         .onHover { hovering in
             isHovering = hovering
         }
+        .contextMenu {
+            Button(action: {
+                openParentFolderInFinder()
+            }) {
+                Label("Open Parent Folder in Finder", systemImage: "folder")
+            }
+        }
+    }
+
+    private func openParentFolderInFinder() {
+        let fileURL = URL(fileURLWithPath: file.filePath)
+        let parentURL = fileURL.deletingLastPathComponent()
+        NSWorkspace.shared.selectFile(file.filePath, inFileViewerRootedAtPath: parentURL.path)
     }
 }
 
