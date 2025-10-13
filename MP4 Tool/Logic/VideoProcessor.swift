@@ -27,13 +27,15 @@ struct FFProbeOutput: Codable {
 }
 
 enum ProcessingMode: String, CaseIterable {
-    case encode = "encode"
+    case encodeH264 = "encode_h264"
+    case encodeH265 = "encode_h265"
     case remux = "remux"
 
     var description: String {
         switch self {
-        case .encode: return "Encode (H.265)"
-        case .remux: return "Remux (Copy)"
+        case .encodeH264: return "Encode (H.264)"
+        case .encodeH265: return "Encode (H.265)"
+        case .remux: return "Remux (Copy to MP4)"
         }
     }
 }
@@ -42,6 +44,7 @@ enum ProcessingStatus {
     case pending
     case processing
     case completed
+    case failed
 }
 
 struct VideoFileInfo: Identifiable {
@@ -189,10 +192,12 @@ class VideoProcessor: ObservableObject {
         }
 
         addLog("􀊄 Starting processing...")
-        addLog("􀈖 Input Directory: \(inputPath)")
+        if !inputPath.isEmpty {
+            addLog("􀈖 Input Directory: \(inputPath)")
+        }
         addLog("􀈖 Output Directory: \(outputPath)")
         addLog("􀣋 Mode: \(mode.rawValue)")
-        if mode == .encode {
+        if mode == .encodeH265 || mode == .encodeH264 {
             addLog("􀏃 CRF: \(crfValue)")
         }
         addLog("􀈕 Create Subfolders: \(createSubfolders)")
@@ -200,135 +205,159 @@ class VideoProcessor: ObservableObject {
         addLog("􀀁 Keep English Audio Only: \(keepEnglishAudioOnly)")
         addLog("􀀃 Keep English Subtitles Only: \(keepEnglishSubtitlesOnly)")
 
-        // Verify directories exist
-        guard FileManager.default.fileExists(atPath: inputPath) else {
-            addLog("􀁡 Input directory does not exist!")
-            DispatchQueue.main.async { self.isProcessing = false }
-            return
-        }
-
+        // Verify output directory exists
         guard FileManager.default.fileExists(atPath: outputPath) else {
             addLog("􀁡 Output directory does not exist!")
             DispatchQueue.main.async { self.isProcessing = false }
             return
         }
 
-        // Get files to process
-        let videoFormats = ["mkv", "mp4", "avi"]
-        let wordsToIgnore = ["sample", "SAMPLE", "Sample", ".DS_Store"]
+        // Use files from queue if available, otherwise scan input directory
+        var filesToProcess: [(path: String, name: String)] = []
 
-        do {
-            let allFiles = try FileManager.default.contentsOfDirectory(atPath: inputPath)
-            let files = allFiles
-                .filter { file in
-                    let ext = (file as NSString).pathExtension.lowercased()
-                    return videoFormats.contains(ext) && !wordsToIgnore.contains { file.contains($0) }
+        if !videoFiles.isEmpty {
+            // Process files from the queue
+            filesToProcess = videoFiles.map { (path: $0.filePath, name: $0.fileName) }
+            addLog("􀐱 Processing \(filesToProcess.count) files from queue")
+        } else if !inputPath.isEmpty {
+            // Scan input directory
+            guard FileManager.default.fileExists(atPath: inputPath) else {
+                addLog("􀁡 Input directory does not exist!")
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+
+            let videoFormats = ["mkv", "mp4", "avi"]
+            let wordsToIgnore = ["sample", "SAMPLE", "Sample", ".DS_Store"]
+
+            do {
+                let allFiles = try FileManager.default.contentsOfDirectory(atPath: inputPath)
+                let files = allFiles
+                    .filter { file in
+                        let ext = (file as NSString).pathExtension.lowercased()
+                        return videoFormats.contains(ext) && !wordsToIgnore.contains { file.contains($0) }
+                    }
+                    .sorted()
+
+                filesToProcess = files.map {
+                    (path: (inputPath as NSString).appendingPathComponent($0), name: $0)
                 }
-                .sorted()
+                addLog("􀐱 Found \(filesToProcess.count) files to process")
+            } catch {
+                addLog("􀁡 Error scanning directory: \(error.localizedDescription)")
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+        } else {
+            addLog("􀁡 No files to process!")
+            DispatchQueue.main.async { self.isProcessing = false }
+            return
+        }
+
+        DispatchQueue.main.async {
+            self.totalFiles = filesToProcess.count
+        }
+
+        for (index, fileInfo) in filesToProcess.enumerated() {
+            // Check for cancellation
+            if shouldCancelProcessing {
+                addLog("􀛶 Processing cancelled by user")
+                break
+            }
+
+            // Mark file as processing
+            DispatchQueue.main.async {
+                self.currentFileIndex = index + 1
+                self.currentFile = fileInfo.name
+                if index < self.videoFiles.count {
+                    self.videoFiles[index].status = .processing
+                }
+            }
+
+            addLog("\n􀎶 File \(index + 1)/\(filesToProcess.count)")
+            addLog("􀅴 Processing: \(fileInfo.name)")
+
+            let inputFilePath = fileInfo.path
+            let outputFileName = ((fileInfo.name as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4")!
+
+            let outputFilePath: String
+            if createSubfolders {
+                let folderName = (fileInfo.name as NSString).deletingPathExtension
+                let outputDir = (outputPath as NSString).appendingPathComponent(folderName)
+                outputFilePath = (outputDir as NSString).appendingPathComponent(outputFileName)
+
+                try? FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
+            } else {
+                outputFilePath = (outputPath as NSString).appendingPathComponent(outputFileName)
+            }
+
+            let tempOutputFile = NSTemporaryDirectory() + UUID().uuidString + ".mp4"
+
+            // Process the video
+            let fileStartTime = Date()
+            let success = await convertToMP4(
+                inputFile: inputFilePath,
+                tempFile: tempOutputFile,
+                mode: mode,
+                crfValue: crfValue,
+                keepEnglishAudioOnly: keepEnglishAudioOnly,
+                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
+            )
+            let fileEndTime = Date()
+
+            if success {
+                // Get file sizes
+                let inputSize = try? FileManager.default.attributesOfItem(atPath: inputFilePath)[.size] as? Int64 ?? 0
+                let outputSize = try? FileManager.default.attributesOfItem(atPath: tempOutputFile)[.size] as? Int64 ?? 0
+
+                let inputSizeMB = (inputSize ?? 0) / (1024 * 1024)
+                let outputSizeMB = (outputSize ?? 0) / (1024 * 1024)
+
+                // Move to final location
+                try? FileManager.default.removeItem(atPath: outputFilePath)
+                try? FileManager.default.moveItem(atPath: tempOutputFile, toPath: outputFilePath)
+
+                addLog("􀁢 Done processing")
+                addLog("􀅴 Moved file. Old Size: \(inputSizeMB)MB New Size: \(outputSizeMB)MB")
+
+                let duration = fileEndTime.timeIntervalSince(fileStartTime)
+                let minutes = Int(duration) / 60
+                let seconds = Int(duration) % 60
+                addLog("􀅴 Completed in \(minutes)m \(seconds)s")
+
+                // Delete original file if requested
+                if deleteOriginal {
+                    try? FileManager.default.removeItem(atPath: inputFilePath)
+                    addLog("􀈑 Deleted original file")
+                } else {
+                    addLog("􀅴 Kept original file")
+                }
+
+                // Mark file as completed with processing time
+                DispatchQueue.main.async {
+                    if index < self.videoFiles.count {
+                        self.videoFiles[index].status = .completed
+                        self.videoFiles[index].processingTimeSeconds = Int(duration)
+                    }
+                }
+            } else {
+                addLog("􀁡 Error processing video. Moving on...")
+                try? FileManager.default.removeItem(atPath: tempOutputFile)
+
+                // Mark file as failed
+                DispatchQueue.main.async {
+                    if index < self.videoFiles.count {
+                        self.videoFiles[index].status = .failed
+                    }
+                }
+            }
 
             DispatchQueue.main.async {
-                self.totalFiles = files.count
+                self.progress = Double(index + 1) / Double(filesToProcess.count)
             }
-
-            addLog("􀐱 Found \(files.count) files to process")
-
-            for (index, file) in files.enumerated() {
-                // Check for cancellation
-                if shouldCancelProcessing {
-                    addLog("􀛶 Processing cancelled by user")
-                    break
-                }
-
-                // Mark file as processing
-                DispatchQueue.main.async {
-                    self.currentFileIndex = index + 1
-                    self.currentFile = file
-                    if index < self.videoFiles.count {
-                        self.videoFiles[index].status = .processing
-                    }
-                }
-
-                addLog("\n􀎶 File \(index + 1)/\(files.count)")
-                addLog("􀅴 Processing: \(file)")
-
-                let inputFilePath = (inputPath as NSString).appendingPathComponent(file)
-                let outputFileName = ((file as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4")!
-
-                let outputFilePath: String
-                if createSubfolders {
-                    let folderName = (file as NSString).deletingPathExtension
-                    let outputDir = (outputPath as NSString).appendingPathComponent(folderName)
-                    outputFilePath = (outputDir as NSString).appendingPathComponent(outputFileName)
-
-                    try? FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
-                } else {
-                    outputFilePath = (outputPath as NSString).appendingPathComponent(outputFileName)
-                }
-
-                let tempOutputFile = NSTemporaryDirectory() + UUID().uuidString + ".mp4"
-
-                // Process the video
-                let fileStartTime = Date()
-                let success = await convertToMP4(
-                    inputFile: inputFilePath,
-                    tempFile: tempOutputFile,
-                    mode: mode,
-                    crfValue: crfValue,
-                    keepEnglishAudioOnly: keepEnglishAudioOnly,
-                    keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
-                )
-                let fileEndTime = Date()
-
-                if success {
-                    // Get file sizes
-                    let inputSize = try? FileManager.default.attributesOfItem(atPath: inputFilePath)[.size] as? Int64 ?? 0
-                    let outputSize = try? FileManager.default.attributesOfItem(atPath: tempOutputFile)[.size] as? Int64 ?? 0
-
-                    let inputSizeMB = (inputSize ?? 0) / (1024 * 1024)
-                    let outputSizeMB = (outputSize ?? 0) / (1024 * 1024)
-
-                    // Move to final location
-                    try? FileManager.default.removeItem(atPath: outputFilePath)
-                    try? FileManager.default.moveItem(atPath: tempOutputFile, toPath: outputFilePath)
-
-                    addLog("􀁢 Done processing")
-                    addLog("􀅴 Moved file. Old Size: \(inputSizeMB)MB New Size: \(outputSizeMB)MB")
-
-                    let duration = fileEndTime.timeIntervalSince(fileStartTime)
-                    let minutes = Int(duration) / 60
-                    let seconds = Int(duration) % 60
-                    addLog("􀅴 Completed in \(minutes)m \(seconds)s")
-
-                    // Delete original file if requested
-                    if deleteOriginal {
-                        try? FileManager.default.removeItem(atPath: inputFilePath)
-                        addLog("􀈑 Deleted original file")
-                    } else {
-                        addLog("􀅴 Kept original file")
-                    }
-
-                    // Mark file as completed with processing time
-                    DispatchQueue.main.async {
-                        if index < self.videoFiles.count {
-                            self.videoFiles[index].status = .completed
-                            self.videoFiles[index].processingTimeSeconds = Int(duration)
-                        }
-                    }
-                } else {
-                    addLog("􀁡 Error processing video. Moving on...")
-                    try? FileManager.default.removeItem(atPath: tempOutputFile)
-                }
-
-                DispatchQueue.main.async {
-                    self.progress = Double(index + 1) / Double(files.count)
-                }
-            }
-
-            addLog("\n􀋚 All files processed!")
-
-        } catch {
-            addLog("􀁡 Error: \(error.localizedDescription)")
         }
+
+        addLog("\n􀋚 All files processed!")
 
         DispatchQueue.main.async {
             self.isProcessing = false
@@ -405,7 +434,7 @@ class VideoProcessor: ObservableObject {
         )
 
         addLog("􀅴 Running in \(mode.rawValue) mode")
-        if mode == .encode {
+        if mode == .encodeH265 || mode == .encodeH264 {
             addLog("􀐱 Encoding started - this may take a while...")
         }
 
@@ -525,7 +554,7 @@ class VideoProcessor: ObservableObject {
     ) -> [String] {
         var cmd: [String] = []
 
-        if mode == .encode {
+        if mode == .encodeH265 {
             cmd = [
                 "-i", inputFile, "-y",
                 "-c:v", "libx265", "-x265-params", "log-level=0", "-preset", "fast", "-crf", "\(crfValue)",
@@ -533,7 +562,15 @@ class VideoProcessor: ObservableObject {
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-tag:v", "hvc1", "-movflags", "+faststart", "-loglevel", "quiet"
             ]
-        } else {
+        } else if mode == .encodeH264 {
+            cmd = [
+                "-i", inputFile, "-y",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "\(crfValue)",
+                "-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1",
+                "-map", "0:v:0", "-map_metadata", "-1",
+                "-movflags", "+faststart", "-loglevel", "quiet"
+            ]
+        } else { // remux
             cmd = [
                 "-i", inputFile, "-y",
                 "-c:v", "copy", "-c:a", "copy", "-map", "0:v:0", "-map_metadata", "-1",

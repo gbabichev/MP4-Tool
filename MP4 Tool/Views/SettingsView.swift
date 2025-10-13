@@ -23,17 +23,17 @@ struct SettingsView: View {
                 .fontWeight(.semibold)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            SettingsRow("Mode", subtitle: "Encode converts to H.265, Remux copies streams") {
+            SettingsRow("Mode", subtitle: "Choose encoding codec or remux without re-encoding") {
                 Picker("", selection: $selectedMode) {
                     ForEach(ProcessingMode.allCases, id: \.self) { mode in
                         Text(mode.description).tag(mode)
                     }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .disabled(isProcessing)
             }
 
-            if selectedMode == .encode {
+            if selectedMode == .encodeH265 || selectedMode == .encodeH264 {
                 SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
                     HStack {
                         Slider(value: $crfValue, in: 18...28, step: 1)

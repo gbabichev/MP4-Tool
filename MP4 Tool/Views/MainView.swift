@@ -330,6 +330,9 @@ struct FileListRow: View {
                 case .completed:
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                case .failed:
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
                 }
             }
             .frame(width: 24)

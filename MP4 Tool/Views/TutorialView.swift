@@ -46,7 +46,7 @@ struct TutorialView: View {
                         Text("Input: ").bold() +
                         Text("MKV, MP4, AVI, MOV, M4V") +
                         Text("\nOutput: ").bold() +
-                        Text("MP4 (H.265 HEVC or original codec)")
+                        Text("MP4 (H.265, H.264, or original codec)")
                     }
 
                     TutorialStep(
@@ -66,8 +66,10 @@ struct TutorialView: View {
                         title: "2. Choose Mode"
                     ) {
                         Text("Select ") +
-                        Text("Encode").bold() +
-                        Text(" to convert videos to H.265 (HEVC) for smaller file sizes, or ") +
+                        Text("H.265").bold() +
+                        Text(" for smallest files, ") +
+                        Text("H.264").bold() +
+                        Text(" for better compatibility, or ") +
                         Text("Remux").bold() +
                         Text(" to copy streams without re-encoding (fast, no quality loss).")
                     }

@@ -11,7 +11,7 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
-    @AppStorage("selectedMode") private var selectedMode: ProcessingMode = .remux
+    @AppStorage("selectedMode") private var selectedMode: ProcessingMode = .encodeH265
     @AppStorage("crfValue") private var crfValue: Double = 23
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
