@@ -23,39 +23,46 @@ MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files 
 
 MP4 Tool supports H264 & H265 encoding, and remuxing (copying streams but converting to MP4)
 
-You must have ffmpeg & ffprobe in your $PATH, or compile the app with ffmpeg & ffprobe in the Resources directory. I will not redistribute the binaries, but I have attached my ffmpeg build script. 
+<b>You must have ffmpeg & ffprobe in your $PATH</b>, or compile the app with ffmpeg & ffprobe in the Resources directory.
+
+<a href="Documentation/build-ffmpeg-arm64.sh">FFmpeg ARM64 Build script is in the repo</a>
 
 ## Tutorial Summary
 
-### 1. Select Folders
-- Use the toolbar folder buttons to pick input and output directories.
+### 1. Install FFmpeg
+- brew install ffmpeg
+- or however else you want to do it. 
+
+
+### 2. Select Folders
+- Use the toolbar folder buttons to pick input and output directories. (or drag and drop)
 - Keyboard shortcuts: `⌘O` for input and `⌘⇧O` for output.
 
 ### 2. Choose Mode
-- `Encode`: Converts videos to H.265 (HEVC) for smaller files while preserving good quality.
+- `Encode`: Converts videos to H.265/H.264 (HEVC) for smaller files while preserving good quality.
 - `Remux`: Copies existing streams without re-encoding for a fast, lossless workflow.
 - Both modes save results as MP4 files.
 
 ### 3. Adjust Settings
 - In Encode mode, configure the CRF quality (recommended range 18–28, where lower values produce higher quality).
 - Optional settings let you manage subfolders and control whether original files are deleted after processing.
+- Optional settings let you remove any non-english Audio tracks and Subtitles. 
 
 ### 4. Start Processing
 - Click **Start Processing** or press `⌘P` to run the selected jobs.
 - Watch progress and logs in the lower section of the window.
 
-## Showing The Tutorial Again
 
-- Toggle **Don't show this again** off if you want the tutorial to appear on launch.
-- You can reopen the tutorial at any time from the menu: `Help → Tutorial`.
-
+## Additional Tools
+- In the Tools menu there are additional tools:
+  - Scan for Non-MP4 files. Recursively scan directories and output any non-MP4 files. 
+  - Export logs to TXT. 
 
 ## 🖥️ Install & Minimum Requirements
 
 - macOS 14.0 or later  
 - Apple Silicon & Intel (Not tested on Intel)
-- ~50 MB free disk space  
-
+- ~10 MB free disk space  
 
 ### ⚙️ Installation
 
