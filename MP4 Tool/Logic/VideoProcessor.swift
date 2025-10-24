@@ -73,6 +73,7 @@ class VideoProcessor: ObservableObject {
     @Published var videoFiles: [VideoFileInfo] = []
     @Published var ffmpegAvailable = false
     @Published var ffmpegMissingMessage = ""
+    @Published var processingHadError = false
 
     private var startTime: Date?
     private var timer: Timer?
@@ -189,6 +190,7 @@ class VideoProcessor: ObservableObject {
             self.logText = ""
             self.currentFileIndex = 0
             self.shouldCancelProcessing = false
+            self.processingHadError = false
         }
 
         addLog("􀊄 Starting processing...")
@@ -301,7 +303,7 @@ class VideoProcessor: ObservableObject {
 
             // Process the video
             let fileStartTime = Date()
-            let success = await convertToMP4(
+            let (conversionSuccess, errorReason) = await convertToMP4(
                 inputFile: inputFilePath,
                 tempFile: tempOutputFile,
                 mode: mode,
@@ -311,7 +313,7 @@ class VideoProcessor: ObservableObject {
             )
             let fileEndTime = Date()
 
-            if success {
+            if conversionSuccess {
                 // Get file sizes
                 let inputSize = try? FileManager.default.attributesOfItem(atPath: inputFilePath)[.size] as? Int64 ?? 0
                 let outputSize = try? FileManager.default.attributesOfItem(atPath: tempOutputFile)[.size] as? Int64 ?? 0
@@ -324,7 +326,11 @@ class VideoProcessor: ObservableObject {
                 let moveSuccess = await moveFileAsync(from: tempOutputFile, to: outputFilePath)
 
                 if !moveSuccess {
-                    addLog("􀁡 Failed to move file to output location")
+                    addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    addLog("􀁡 FAILED: Could not move file to output location")
+                    addLog("File: \(fileInfo.name)")
+                    addLog("Output path may not be writable or disk may be full")
+                    addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     try? FileManager.default.removeItem(atPath: tempOutputFile)
 
                     // Mark file as failed
@@ -332,6 +338,7 @@ class VideoProcessor: ObservableObject {
                         if index < self.videoFiles.count {
                             self.videoFiles[index].status = .failed
                         }
+                        self.processingHadError = true
                     }
                     continue
                 }
@@ -364,7 +371,10 @@ class VideoProcessor: ObservableObject {
                     }
                 }
             } else {
-                addLog("􀁡 Error processing video. Moving on...")
+                addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                addLog("􀁡 FAILED: \(fileInfo.name)")
+                addLog("Reason: \(errorReason)")
+                addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 try? FileManager.default.removeItem(atPath: tempOutputFile)
 
                 // Mark file as failed
@@ -372,6 +382,7 @@ class VideoProcessor: ObservableObject {
                     if index < self.videoFiles.count {
                         self.videoFiles[index].status = .failed
                     }
+                    self.processingHadError = true
                 }
             }
         }
@@ -396,13 +407,13 @@ class VideoProcessor: ObservableObject {
         crfValue: Int = 23,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool
-    ) async -> Bool {
+    ) async -> (success: Bool, errorReason: String) {
         // Probe streams
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
               let videoStreams = await probeStreams(inputFile: inputFile, selectStreams: nil),
               let subtitleStreams = await probeStreams(inputFile: inputFile, selectStreams: "s") else {
-            addLog("􀁡 Failed to probe streams")
-            return false
+            addLog("􀁡 Failed to probe streams (ffprobe couldn't analyze the file)")
+            return (false, "Failed to probe streams")
         }
 
         // Determine audio stream mappings
@@ -414,11 +425,11 @@ class VideoProcessor: ObservableObject {
                 audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: false)
                 if audioMappings.isEmpty {
                     addLog("􀁡 No audio tracks found. Skipping.")
-                    return false
+                    return (false, "No audio tracks found in file")
                 }
             } else {
                 addLog("􀁡 No audio tracks found. Skipping.")
-                return false
+                return (false, "No audio tracks found in file")
             }
         }
 
@@ -428,7 +439,7 @@ class VideoProcessor: ObservableObject {
         // Check for AV1 in remux mode
         if mode == .remux && videoCodec == "av1" {
             addLog("􀁡 AV1 codec detected. Please use encode mode.")
-            return false
+            return (false, "AV1 codec not supported in remux mode - use encode mode instead")
         }
 
         // Determine subtitle stream mappings
@@ -457,7 +468,11 @@ class VideoProcessor: ObservableObject {
             subtitleMappings: subtitleMappings
         )
 
+        // Log the ffmpeg command being run
         addLog("􀅴 Running in \(mode.rawValue) mode")
+        addLog("􀅴 FFmpeg command:")
+        let commandString = ([ffmpegPath] + cmd).joined(separator: " ")
+        addLog("  \(commandString)")
         if mode == .encodeH265 || mode == .encodeH264 {
             addLog("􀐱 Encoding started - this may take a while...")
         }
@@ -484,7 +499,7 @@ class VideoProcessor: ObservableObject {
         }
 
         // Run ffmpeg (now async, won't block)
-        let success = await runCommand(arguments: cmd)
+        let (success, ffmpegError) = await runCommand(arguments: cmd)
 
         // Stop timer
         DispatchQueue.main.async {
@@ -492,7 +507,11 @@ class VideoProcessor: ObservableObject {
             self.timer = nil
         }
 
-        return success
+        if success {
+            return (true, "")
+        } else {
+            return (false, ffmpegError)
+        }
     }
 
     private func probeStreams(inputFile: String, selectStreams: String?) async -> FFProbeOutput? {
@@ -627,17 +646,22 @@ class VideoProcessor: ObservableObject {
         return cmd
     }
 
-    private func runCommand(arguments: [String]) async -> Bool {
+    private func runCommand(arguments: [String]) async -> (success: Bool, errorMessage: String) {
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
-                    continuation.resume(returning: false)
+                    continuation.resume(returning: (false, "Process initialization failed"))
                     return
                 }
 
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: self.ffmpegPath)
                 process.arguments = arguments
+
+                let errorPipe = Pipe()
+                let outputPipe = Pipe()
+                process.standardError = errorPipe
+                process.standardOutput = outputPipe
 
                 // Store process reference so we can monitor it
                 DispatchQueue.main.async {
@@ -661,16 +685,71 @@ class VideoProcessor: ObservableObject {
                         self.currentProcess = nil
                     }
 
-                    let success = process.terminationStatus == 0
-                    continuation.resume(returning: success)
+                    if process.terminationStatus == 0 {
+                        continuation.resume(returning: (true, ""))
+                    } else {
+                        // Capture both stderr and stdout for error details
+                        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+
+                        var errorMessage = "Process exited with code \(process.terminationStatus)"
+
+                        // Try stderr first, then stdout
+                        if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+                            let lines = errorOutput.split(separator: "\n", omittingEmptySubsequences: true)
+
+                            // Log all stderr for debugging
+                            DispatchQueue.main.async {
+                                self.addLog("􀅴 FFmpeg output:")
+                                for line in lines {
+                                    self.addLog("  \(line)")
+                                }
+                            }
+
+                            // Look for meaningful error lines (skip progress and warnings)
+                            for line in lines.reversed() {
+                                let lineStr = String(line)
+                                if lineStr.lowercased().contains("error") ||
+                                   lineStr.lowercased().contains("invalid") ||
+                                   lineStr.lowercased().contains("not found") ||
+                                   lineStr.lowercased().contains("unknown") ||
+                                   lineStr.lowercased().contains("failed") ||
+                                   lineStr.lowercased().contains("incompatible") {
+                                    errorMessage = lineStr
+                                    break
+                                }
+                            }
+                            // If no specific error found, use last line
+                            if errorMessage.starts(with: "Process exited") {
+                                if let lastError = lines.last {
+                                    errorMessage = String(lastError)
+                                }
+                            }
+                        } else if let stdoutOutput = String(data: outputData, encoding: .utf8), !stdoutOutput.isEmpty {
+                            let lines = stdoutOutput.split(separator: "\n", omittingEmptySubsequences: true)
+
+                            // Log all output for debugging
+                            DispatchQueue.main.async {
+                                self.addLog("􀅴 FFmpeg output:")
+                                for line in lines {
+                                    self.addLog("  \(line)")
+                                }
+                            }
+
+                            if let lastLine = lines.last {
+                                errorMessage = String(lastLine)
+                            }
+                        }
+
+                        continuation.resume(returning: (false, errorMessage))
+                    }
                 } catch {
                     let errorMsg = error.localizedDescription
                     DispatchQueue.main.async {
                         self.stopEncodingProgress()
                         self.currentProcess = nil
-                        self.addLog("􀁡 Process error: \(errorMsg)")
                     }
-                    continuation.resume(returning: false)
+                    continuation.resume(returning: (false, errorMsg))
                 }
             }
         }

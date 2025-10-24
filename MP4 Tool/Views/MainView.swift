@@ -257,7 +257,7 @@ struct MainContentView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             }
-            .background(Color.secondary.opacity(0.05))
+            .background(viewModel.processor.processingHadError ? Color.red.opacity(0.15) : Color.secondary.opacity(0.05))
             .cornerRadius(8)
             .padding(.horizontal)
             .padding(.top, 8)

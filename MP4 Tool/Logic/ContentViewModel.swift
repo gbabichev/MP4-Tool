@@ -137,6 +137,7 @@ class ContentViewModel: ObservableObject {
         processor.logText = ""
         processor.videoFiles = []
         processor.totalFiles = 0
+        processor.processingHadError = false
     }
 
     func removeFile(at index: Int) {
@@ -150,6 +151,9 @@ class ContentViewModel: ObservableObject {
         if processor.videoFiles.contains(where: { $0.filePath == url.path }) {
             return
         }
+
+        // Reset error flag when new files are added
+        processor.processingHadError = false
 
         // Get file info
         let fileName = url.lastPathComponent
