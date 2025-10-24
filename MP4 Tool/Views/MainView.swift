@@ -42,129 +42,129 @@ struct MainContentView: View {
             .frame(minHeight: 35)
             .frame(maxWidth: .infinity)
             .padding(.horizontal)
-            .padding(.top, 8)
+            .padding(.top, 12)
             .contentShape(Rectangle())
             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                 handleDrop(providers: providers, isInput: false)
             }
 
-            Spacer()
-                .frame(height: 25)
-
             // Status Section - Always visible
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Status")
-                        .font(.headline)
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
+            HStack {
+                Text("Status")
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 12)
 
-                VStack(spacing: 8) {
-                    // Scan progress
-                    if !viewModel.processor.scanProgress.isEmpty {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text(viewModel.processor.scanProgress)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                    }
-
-                    // Processing progress
-                    if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
-                        VStack(spacing: 8) {
-                            HStack {
-                                Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if !viewModel.processor.currentFile.isEmpty {
-                                    Text("•")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text(viewModel.processor.currentFile)
-                                        .font(.caption)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                }
-                                Spacer()
-                            }
-
-                            HStack(spacing: 20) {
-                                HStack {
-                                    Image(systemName: "clock")
-                                        .foregroundStyle(.secondary)
-                                    Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
-                                        .font(.caption)
-                                }
-
-                                HStack {
-                                    Image(systemName: "doc")
-                                        .foregroundStyle(.secondary)
-                                    Text("\(viewModel.processor.originalSize / (1024*1024))MB")
-                                        .font(.caption)
-                                }
-
-                                if viewModel.processor.newSize > 0 {
-                                    Image(systemName: "arrow.right")
-                                        .foregroundStyle(.secondary)
-                                    HStack {
-                                        Image(systemName: "doc.fill")
-                                            .foregroundStyle(.secondary)
-                                        Text("\(viewModel.processor.newSize / (1024*1024))MB")
-                                            .font(.caption)
-                                    }
-                                }
-                            }
-
-                            // Encoding progress message
-                            if !viewModel.processor.encodingProgress.isEmpty {
-                                Text(viewModel.processor.encodingProgress)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    // Empty state when no activity
-                    if viewModel.processor.scanProgress.isEmpty && !viewModel.processor.isProcessing {
-                        Text("Ready")
+            VStack(spacing: 8) {
+                // Scan progress
+                if !viewModel.processor.scanProgress.isEmpty {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text(viewModel.processor.scanProgress)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .frame(height: 24)
+                        Spacer()
                     }
+                }
 
-                    // Total processing time
-                    if viewModel.processor.videoFiles.contains(where: { $0.status == .completed }) {
-                        let totalSeconds = viewModel.processor.videoFiles
-                            .filter { $0.status == .completed }
-                            .reduce(0) { $0 + $1.processingTimeSeconds }
-                        let totalMinutes = totalSeconds / 60
-                        let totalRemainingSeconds = totalSeconds % 60
-
-                        Divider()
-                            .padding(.vertical, 4)
-
+                // Processing progress
+                if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
+                    VStack(spacing: 8) {
                         HStack {
-                            Text("Total Processing Time:")
+                            Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
                                 .font(.caption)
-                                .fontWeight(.semibold)
                                 .foregroundStyle(.secondary)
+                            if !viewModel.processor.currentFile.isEmpty {
+                                Text("•")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(viewModel.processor.currentFile)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
                             Spacer()
-                            Text("\(totalMinutes)m \(totalRemainingSeconds)s")
+                        }
+
+                        HStack(spacing: 20) {
+                            HStack {
+                                Image(systemName: "clock")
+                                    .foregroundStyle(.secondary)
+                                Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
+                                    .font(.caption)
+                            }
+
+                            HStack {
+                                Image(systemName: "doc")
+                                    .foregroundStyle(.secondary)
+                                Text("\(viewModel.processor.originalSize / (1024*1024))MB")
+                                    .font(.caption)
+                            }
+
+                            if viewModel.processor.newSize > 0 {
+                                Image(systemName: "arrow.right")
+                                    .foregroundStyle(.secondary)
+                                HStack {
+                                    Image(systemName: "doc.fill")
+                                        .foregroundStyle(.secondary)
+                                    Text("\(viewModel.processor.newSize / (1024*1024))MB")
+                                        .font(.caption)
+                                }
+                            }
+                        }
+
+                        // Encoding progress message
+                        if !viewModel.processor.encodingProgress.isEmpty {
+                            Text(viewModel.processor.encodingProgress)
                                 .font(.caption)
-                                .fontWeight(.semibold)
                                 .foregroundStyle(.secondary)
-                                .monospacedDigit()
                         }
                     }
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+
+                // Empty state when no activity
+                if viewModel.processor.scanProgress.isEmpty && !viewModel.processor.isProcessing {
+                    HStack {
+                        Spacer()
+                        Text("Ready! Add files & select an output folder to begin")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                }
+
+                // Total processing time
+                if viewModel.processor.videoFiles.contains(where: { $0.status == .completed }) {
+                    let totalSeconds = viewModel.processor.videoFiles
+                        .filter { $0.status == .completed }
+                        .reduce(0) { $0 + $1.processingTimeSeconds }
+                    let totalMinutes = totalSeconds / 60
+                    let totalRemainingSeconds = totalSeconds % 60
+
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    HStack {
+                        Text("Total Processing Time:")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(totalMinutes)m \(totalRemainingSeconds)s")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+            .frame(minHeight: 80)
             .background(viewModel.processor.processingHadError ? Color.red.opacity(0.15) : Color.secondary.opacity(0.05))
             .cornerRadius(8)
             .padding(.horizontal)
@@ -178,7 +178,7 @@ struct MainContentView: View {
                     Spacer()
                 }
                 .padding(.horizontal)
-                .padding(.top, 8)
+                .padding(.top, 12)
 
                 if viewModel.processor.videoFiles.isEmpty {
                     // Empty state with drop zone
