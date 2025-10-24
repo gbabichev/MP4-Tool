@@ -8,6 +8,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
+import UserNotifications
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
@@ -152,6 +153,10 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showAbout)) { _ in
             viewModel.showAbout()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // Clear notifications when app gets focus
+            viewModel.processor.clearProcessingNotifications()
+        }
         .overlay {
             if viewModel.showingTutorial {
                 TutorialView(isPresented: $viewModel.showingTutorial)
@@ -165,6 +170,13 @@ struct ContentView: View {
         .onAppear {
             if !hasSeenTutorial {
                 viewModel.showingTutorial = true
+            }
+
+            // Request notification permissions
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                if let error = error {
+                    print("Error requesting notification permission: \(error)")
+                }
             }
         }
         .fileExporter(

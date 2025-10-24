@@ -7,6 +7,8 @@
 
 import Foundation
 import Combine
+import UserNotifications
+import AppKit
 
 struct VideoStream: Codable {
     let index: Int
@@ -379,6 +381,11 @@ class VideoProcessor: ObservableObject {
         DispatchQueue.main.async {
             self.isProcessing = false
             self.shouldCancelProcessing = false
+
+            // Send notification if app is not in focus
+            if !NSApplication.shared.isActive {
+                self.sendProcessingCompleteNotification()
+            }
         }
     }
 
@@ -988,6 +995,33 @@ class VideoProcessor: ObservableObject {
         DispatchQueue.main.async {
             self.isProcessing = false
             self.shouldCancelScan = false
+        }
+    }
+
+    // MARK: - Notifications
+
+    private func sendProcessingCompleteNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Processing Complete"
+        content.body = "Your video files have been processed successfully."
+        content.sound = .default
+        content.badge = NSNumber(value: 1)
+
+        let request = UNNotificationRequest(identifier: "processingComplete", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+
+        // Set app badge
+        DispatchQueue.main.async {
+            NSApplication.shared.dockTile.badgeLabel = "1"
+        }
+    }
+
+    func clearProcessingNotifications() {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["processingComplete"])
+
+        // Clear app badge
+        DispatchQueue.main.async {
+            NSApplication.shared.dockTile.badgeLabel = ""
         }
     }
 }
