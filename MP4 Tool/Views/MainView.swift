@@ -329,11 +329,32 @@ struct MainContentView: View {
             _ = provider.loadObject(ofClass: URL.self) { url, error in
                 guard let url = url, error == nil else { return }
 
-                // Check if it's a video file
-                let ext = url.pathExtension.lowercased()
-                if videoFormats.contains(ext) {
+                var isDirectory: ObjCBool = false
+                let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+
+                if exists && isDirectory.boolValue {
+                    // It's a folder - recursively enumerate all video files in it
                     DispatchQueue.main.async {
-                        viewModel.addVideoFile(url: url)
+                        if let enumerator = FileManager.default.enumerator(
+                            at: url,
+                            includingPropertiesForKeys: [.isRegularFileKey],
+                            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                        ) {
+                            for case let fileURL as URL in enumerator {
+                                let ext = fileURL.pathExtension.lowercased()
+                                if videoFormats.contains(ext) {
+                                    viewModel.addVideoFile(url: fileURL)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // It's a file - check if it's a video
+                    let ext = url.pathExtension.lowercased()
+                    if videoFormats.contains(ext) {
+                        DispatchQueue.main.async {
+                            viewModel.addVideoFile(url: url)
+                        }
                     }
                 }
             }
