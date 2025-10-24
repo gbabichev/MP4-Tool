@@ -200,18 +200,6 @@ struct MainContentView: View {
                     }
                 } else {
                     VStack(spacing: 8) {
-                        HStack {
-                            if !selectedFileIDs.isEmpty {
-                                Button(action: removeSelectedFiles) {
-                                    Image(systemName: "trash.fill")
-                                    Text("Remove Selected (\(selectedFileIDs.count))")
-                                }
-                                .foregroundStyle(.red)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-
                         Table(viewModel.processor.videoFiles, selection: $selectedFileIDs) {
                             TableColumn("Status") { file in
                                 statusIcon(for: file)
@@ -231,6 +219,25 @@ struct MainContentView: View {
                                         Text(file.conflictReason)
                                             .font(.caption)
                                             .foregroundStyle(.orange)
+                                    }
+                                }
+                                .contextMenu {
+                                    Button(action: {
+                                        openParentFolderInFinder(filePath: file.filePath)
+                                    }) {
+                                        Label("Open Parent Folder in Finder", systemImage: "folder")
+                                    }
+
+                                    Divider()
+
+                                    Button(role: .destructive, action: {
+                                        removeFile(filePath: file.filePath)
+                                    }) {
+                                        if selectedFileIDs.contains(file.id) && selectedFileIDs.count > 1 {
+                                            Label("Remove Selected (\(selectedFileIDs.count))", systemImage: "trash")
+                                        } else {
+                                            Label("Remove from List", systemImage: "trash")
+                                        }
                                     }
                                 }
                             }
@@ -372,6 +379,27 @@ struct MainContentView: View {
         }
 
         selectedFileIDs.removeAll()
+    }
+
+    private func removeFile(filePath: String) {
+        if let index = viewModel.processor.videoFiles.firstIndex(where: { $0.filePath == filePath }) {
+            let fileID = viewModel.processor.videoFiles[index].id
+
+            // If the file is part of a multi-selection, remove all selected files
+            if selectedFileIDs.contains(fileID) && selectedFileIDs.count > 1 {
+                removeSelectedFiles()
+            } else {
+                // Otherwise, just remove this one file
+                viewModel.removeFile(at: index)
+                selectedFileIDs.remove(fileID)
+            }
+        }
+    }
+
+    private func openParentFolderInFinder(filePath: String) {
+        let fileURL = URL(fileURLWithPath: filePath)
+        let parentURL = fileURL.deletingLastPathComponent()
+        NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: parentURL.path)
     }
 }
 
