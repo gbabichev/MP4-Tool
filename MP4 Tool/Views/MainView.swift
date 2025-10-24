@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
+    @State private var selectedFileIDs: Set<UUID> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -198,20 +199,74 @@ struct MainContentView: View {
                         handleFileDrop(providers: providers)
                     }
                 } else {
-                    List {
-                        ForEach(Array(viewModel.processor.videoFiles.enumerated()), id: \.element.id) { index, file in
-                            FileListRow(
-                                file: file,
-                                index: index,
-                                isProcessing: viewModel.processor.isProcessing,
-                                onRemove: {
-                                    viewModel.removeFile(at: index)
+                    VStack(spacing: 8) {
+                        HStack {
+                            if !selectedFileIDs.isEmpty {
+                                Button(action: removeSelectedFiles) {
+                                    Image(systemName: "trash.fill")
+                                    Text("Remove Selected (\(selectedFileIDs.count))")
                                 }
-                            )
+                                .foregroundStyle(.red)
+                            }
+                            Spacer()
                         }
-                    }
-                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                        handleFileDrop(providers: providers)
+                        .padding(.horizontal)
+
+                        Table(viewModel.processor.videoFiles, selection: $selectedFileIDs) {
+                            TableColumn("Status") { file in
+                                statusIcon(for: file)
+                                    .frame(width: 24)
+                            }
+                            .width(ideal: 30)
+
+                            TableColumn("Name") { file in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(file.fileName)
+                                        .font(.body)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .foregroundStyle(file.status == .completed ? .green : .primary)
+
+                                    if file.hasConflict && !file.conflictReason.isEmpty {
+                                        Text(file.conflictReason)
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    }
+                                }
+                            }
+
+                            TableColumn("Type") { file in
+                                Text("[\(file.fileExtension)]")
+                                    .font(.body)
+                                    .foregroundStyle(file.status == .completed ? .green : .secondary)
+                            }
+                            .width(ideal: 70)
+
+                            TableColumn("Size") { file in
+                                Text("\(file.fileSizeMB) MB")
+                                    .font(.body)
+                                    .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                    .monospacedDigit()
+                            }
+                            .width(ideal: 80)
+
+                            TableColumn("Time") { file in
+                                if file.status == .completed && file.processingTimeSeconds > 0 {
+                                    let minutes = file.processingTimeSeconds / 60
+                                    let seconds = file.processingTimeSeconds % 60
+                                    Text("\(minutes)m \(seconds)s")
+                                        .font(.body)
+                                        .foregroundStyle(.green)
+                                        .monospacedDigit()
+                                } else {
+                                    Text("")
+                                }
+                            }
+                            .width(ideal: 70)
+                        }
+                        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                            handleFileDrop(providers: providers)
+                        }
                     }
                 }
             }
@@ -278,6 +333,45 @@ struct MainContentView: View {
         }
 
         return true
+    }
+
+    private func statusIcon(for file: VideoFileInfo) -> some View {
+        Group {
+            if file.hasConflict {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.orange)
+                    .help(file.conflictReason)
+            } else {
+                switch file.status {
+                case .pending:
+                    Image(systemName: "film")
+                        .foregroundStyle(.secondary)
+                case .processing:
+                    ProgressView()
+                        .scaleEffect(0.8)
+                case .completed:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                case .failed:
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private func removeSelectedFiles() {
+        let indicesToRemove = viewModel.processor.videoFiles
+            .enumerated()
+            .filter { selectedFileIDs.contains($0.element.id) }
+            .map { $0.offset }
+            .sorted(by: >)
+
+        for index in indicesToRemove {
+            viewModel.removeFile(at: index)
+        }
+
+        selectedFileIDs.removeAll()
     }
 }
 
