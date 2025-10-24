@@ -62,7 +62,7 @@ class ContentViewModel: ObservableObject {
         inputFolderPath = path
         // Auto-scan input folder for video files
         Task {
-            await processor.scanInputFolder(directoryPath: path)
+            await processor.scanInputFolder(directoryPath: path, outputPath: outputFolderPath)
         }
         checkForSameFolderWarning()
     }
@@ -70,6 +70,11 @@ class ContentViewModel: ObservableObject {
     func setOutputFolder(path: String) {
         outputFolderPath = path
         checkForSameFolderWarning()
+
+        // Check for conflicts with existing files in queue
+        for (index, _) in processor.videoFiles.enumerated() {
+            processor.checkFileForConflicts(fileIndex: index, outputPath: path, createSubfolders: false)
+        }
     }
 
     private func checkForSameFolderWarning() {
@@ -93,6 +98,29 @@ class ContentViewModel: ObservableObject {
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool
     ) {
+        // Re-check for file conflicts in case settings changed (like createSubfolders)
+        _ = processor.checkForFileConflicts(
+            inputPath: inputFolderPath,
+            outputPath: outputFolderPath,
+            createSubfolders: createSubfolders
+        )
+
+        // Check if any files have conflicts
+        let hasConflicts = processor.videoFiles.contains { $0.hasConflict }
+
+        if hasConflicts {
+            // Show alert about file conflicts
+            let alert = NSAlert()
+            alert.messageText = "File Conflict Warning"
+            alert.informativeText = "Some files have conflicts (marked with ! in the list). Review them in the file list and proceed only if intentional."
+
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Proceed")
+
+            let response = alert.runModal()
+            guard response == .alertSecondButtonReturn else { return }
+        }
+
         Task {
             await processor.processFolder(
                 inputPath: inputFolderPath,
@@ -172,6 +200,12 @@ class ContentViewModel: ObservableObject {
 
             processor.videoFiles.append(fileInfo)
             processor.totalFiles = processor.videoFiles.count
+
+            // Check for conflicts with the output folder
+            if !outputFolderPath.isEmpty {
+                let fileIndex = processor.videoFiles.count - 1
+                processor.checkFileForConflicts(fileIndex: fileIndex, outputPath: outputFolderPath, createSubfolders: false)
+            }
         }
     }
 

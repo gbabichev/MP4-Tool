@@ -57,6 +57,8 @@ struct VideoFileInfo: Identifiable {
     let fileSizeMB: Int
     var status: ProcessingStatus = .pending
     var processingTimeSeconds: Int = 0
+    var hasConflict: Bool = false
+    var conflictReason: String = ""
 }
 
 class VideoProcessor: ObservableObject {
@@ -863,7 +865,7 @@ class VideoProcessor: ObservableObject {
         }
     }
 
-    func scanInputFolder(directoryPath: String) async {
+    func scanInputFolder(directoryPath: String, outputPath: String = "") async {
         DispatchQueue.main.async {
             self.isProcessing = true
             self.scanProgress = "Scanning for video files..."
@@ -946,6 +948,13 @@ class VideoProcessor: ObservableObject {
             self.totalFiles = videoFileInfos.count
             self.scanProgress = ""
             self.isProcessing = false
+
+            // Check for conflicts if output path is provided
+            if !outputPath.isEmpty {
+                for (index, _) in self.videoFiles.enumerated() {
+                    self.checkFileForConflicts(fileIndex: index, outputPath: outputPath, createSubfolders: false)
+                }
+            }
         }
 
         addLog("􀅴 Found \(videoFileInfos.count) video files to process")
@@ -1102,5 +1111,69 @@ class VideoProcessor: ObservableObject {
         DispatchQueue.main.async {
             NSApplication.shared.dockTile.badgeLabel = ""
         }
+    }
+
+    // Check for file conflicts for a specific file
+    func checkFileForConflicts(
+        fileIndex: Int,
+        outputPath: String,
+        createSubfolders: Bool
+    ) {
+        guard fileIndex < videoFiles.count else { return }
+
+        let fileInfo = videoFiles[fileIndex]
+        let inputFilePath = fileInfo.filePath
+        let outputFileName = ((fileInfo.fileName as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4")!
+
+        let outputFilePath: String
+        if createSubfolders {
+            let folderName = (fileInfo.fileName as NSString).deletingPathExtension
+            let outputDir = (outputPath as NSString).appendingPathComponent(folderName)
+            outputFilePath = (outputDir as NSString).appendingPathComponent(outputFileName)
+        } else {
+            outputFilePath = (outputPath as NSString).appendingPathComponent(outputFileName)
+        }
+
+        var fileConflicts: [String] = []
+
+        // Check 1: Is the input file in the same location as the output?
+        let inputDir = (inputFilePath as NSString).deletingLastPathComponent
+        if !createSubfolders && inputDir == outputPath {
+            fileConflicts.append("Same folder")
+        }
+
+        // Check 2: Does the output file already exist?
+        if FileManager.default.fileExists(atPath: outputFilePath) {
+            fileConflicts.append("File exists")
+        }
+
+        if !fileConflicts.isEmpty {
+            let conflictReason = fileConflicts.joined(separator: " • ")
+            DispatchQueue.main.async {
+                self.videoFiles[fileIndex].hasConflict = true
+                self.videoFiles[fileIndex].conflictReason = conflictReason
+            }
+        }
+    }
+
+    // Check for files that would be replaced/overwritten during processing
+    func checkForFileConflicts(
+        inputPath: String,
+        outputPath: String,
+        createSubfolders: Bool
+    ) -> Bool {
+        var hasConflicts = false
+
+        // Only check files in the queue
+        if !videoFiles.isEmpty {
+            for (index, _) in videoFiles.enumerated() {
+                checkFileForConflicts(fileIndex: index, outputPath: outputPath, createSubfolders: createSubfolders)
+                if videoFiles[index].hasConflict {
+                    hasConflicts = true
+                }
+            }
+        }
+
+        return hasConflicts
     }
 }

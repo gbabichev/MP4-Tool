@@ -19,7 +19,7 @@ struct ContentView: View {
     @AppStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @AppStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
-    @State private var isLogExpanded = true
+    @AppStorage("isLogExpanded") private var isLogExpanded = true
 
     var body: some View {
         HStack(spacing: 0) {

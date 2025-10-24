@@ -13,81 +13,42 @@ struct MainContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Input/Output folder display
-            VStack(spacing: 0) {
-                // Input Folder
-                HStack(alignment: .top) {
-                    if !viewModel.inputFolderPath.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Input Folder")
-                                .bold()
-                            Text(viewModel.inputFolderPath)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Input Folder")
-                                .bold()
-                            HStack(spacing: 4) {
-                                Image(systemName: "folder")
-                                    .font(.caption2)
-                                Text("Select input or drop folder here")
-                            }
+            // Output Folder
+            HStack(alignment: .top) {
+                if !viewModel.outputFolderPath.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Output Folder")
+                            .bold()
+                        Text(viewModel.outputFolderPath)
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
-                        }
+                            .foregroundStyle(.secondary)
                     }
-                    Spacer()
-                }
-                .frame(minHeight: 35)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .contentShape(Rectangle())
-                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                    handleDrop(providers: providers, isInput: true)
-                }
-
-                Divider()
-                    .padding(.vertical, 8)
-
-                // Output Folder
-                HStack(alignment: .top) {
-                    if !viewModel.outputFolderPath.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Output Folder")
-                                .bold()
-                            Text(viewModel.outputFolderPath)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Output Folder")
+                            .bold()
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder.badge.gearshape")
+                                .font(.caption2)
+                            Text("Select output or drop folder here")
                         }
-                    } else {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Output Folder")
-                                .bold()
-                            HStack(spacing: 4) {
-                                Image(systemName: "folder.badge.gearshape")
-                                    .font(.caption2)
-                                Text("Select output or drop folder here")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                        }
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                     }
-                    Spacer()
                 }
-                .frame(minHeight: 35)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal)
-                .contentShape(Rectangle())
-                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                    handleDrop(providers: providers, isInput: false)
-                }
+                Spacer()
+            }
+            .frame(minHeight: 35)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .contentShape(Rectangle())
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                handleDrop(providers: providers, isInput: false)
             }
 
-            Divider()
-                .padding(.top, 12)
+            Spacer()
+                .frame(height: 25)
 
             // Status Section - Always visible
             VStack(alignment: .leading, spacing: 8) {
@@ -270,11 +231,7 @@ struct MainContentView: View {
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
                 DispatchQueue.main.async {
-                    if isInput {
-                        viewModel.setInputFolder(path: url.path)
-                    } else {
-                        viewModel.setOutputFolder(path: url.path)
-                    }
+                    viewModel.setOutputFolder(path: url.path)
                 }
             }
         }
@@ -354,11 +311,28 @@ struct FileListRow: View {
             }
             .frame(width: 24)
 
-            Text(file.fileName)
-                .font(.body)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(file.status == .completed ? .green : .primary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(file.fileName)
+                        .font(.body)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(file.status == .completed ? .green : .primary)
+
+                    if file.hasConflict {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.body)
+                            .help(file.conflictReason)
+                    }
+                }
+
+                if file.hasConflict && !file.conflictReason.isEmpty {
+                    Text(file.conflictReason)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
 
             Spacer()
 
