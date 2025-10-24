@@ -12,6 +12,7 @@ struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
     @Binding var isLogExpanded: Bool
     @State private var fileListHeight: CGFloat = 400
+    @State private var fileListHeightBeforeCollapse: CGFloat = 400
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -90,58 +91,6 @@ struct MainContentView: View {
 
             Divider()
                 .padding(.top, 12)
-
-            // File list - Resizable height (always visible)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Files to Process (\(viewModel.processor.videoFiles.count))")
-                        .font(.headline)
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-
-                if viewModel.processor.videoFiles.isEmpty {
-                    // Empty state with drop zone
-                    VStack(spacing: 8) {
-                        Image(systemName: "film.stack")
-                            .font(.largeTitle)
-                            .foregroundStyle(.tertiary)
-                        Text("Drop video files here")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: fileListHeight)
-                    .background(Color.secondary.opacity(0.05))
-                    .cornerRadius(8)
-                    .padding(.horizontal)
-                    .padding(.bottom, 20)
-                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                        handleFileDrop(providers: providers)
-                    }
-                } else {
-                    List {
-                        ForEach(Array(viewModel.processor.videoFiles.enumerated()), id: \.element.id) { index, file in
-                            FileListRow(
-                                file: file,
-                                index: index,
-                                isProcessing: viewModel.processor.isProcessing,
-                                onRemove: {
-                                    viewModel.removeFile(at: index)
-                                }
-                            )
-                        }
-                    }
-                    .frame(height: fileListHeight)
-                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                        handleFileDrop(providers: providers)
-                    }
-                }
-            }
-
-            // Resizable divider
-            ResizableDivider(height: $fileListHeight, minHeight: 150, maxHeight: 600)
 
             // Status Section - Always visible
             VStack(alignment: .leading, spacing: 8) {
@@ -262,6 +211,58 @@ struct MainContentView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
+            // File list - Resizable height (always visible)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Files to Process (\(viewModel.processor.videoFiles.count))")
+                        .font(.headline)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+                if viewModel.processor.videoFiles.isEmpty {
+                    // Empty state with drop zone
+                    VStack(spacing: 8) {
+                        Image(systemName: "film.stack")
+                            .font(.largeTitle)
+                            .foregroundStyle(.tertiary)
+                        Text("Drop video files here")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: fileListHeight)
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(8)
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleFileDrop(providers: providers)
+                    }
+                } else {
+                    List {
+                        ForEach(Array(viewModel.processor.videoFiles.enumerated()), id: \.element.id) { index, file in
+                            FileListRow(
+                                file: file,
+                                index: index,
+                                isProcessing: viewModel.processor.isProcessing,
+                                onRemove: {
+                                    viewModel.removeFile(at: index)
+                                }
+                            )
+                        }
+                    }
+                    .frame(height: fileListHeight)
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleFileDrop(providers: providers)
+                    }
+                }
+            }
+
+            // Resizable divider
+            ResizableDivider(height: $fileListHeight, minHeight: 150, maxHeight: 600)
+
             // Log Section - Expands to fill remaining space
             VStack(alignment: .leading, spacing: 4) {
                 Button(action: {
@@ -298,6 +299,18 @@ struct MainContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+        .onChange(of: isLogExpanded) { oldValue, newValue in
+            withAnimation {
+                if newValue == false {
+                    // Log collapsed → save current height and expand file list to max
+                    fileListHeightBeforeCollapse = fileListHeight
+                    fileListHeight = 600
+                } else {
+                    // Log expanded → restore to previous height
+                    fileListHeight = fileListHeightBeforeCollapse
+                }
+            }
+        }
     }
 
     private func handleDrop(providers: [NSItemProvider], isInput: Bool) -> Bool {
