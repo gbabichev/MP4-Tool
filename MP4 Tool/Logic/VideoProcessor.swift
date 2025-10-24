@@ -263,6 +263,12 @@ class VideoProcessor: ObservableObject {
                 break
             }
 
+            // Check if file has been deleted from the queue
+            if !videoFiles.contains(where: { $0.filePath == fileInfo.path }) {
+                addLog("􀛷 Skipped: \(fileInfo.name) (removed from queue)")
+                continue
+            }
+
             // Mark file as processing
             DispatchQueue.main.async {
                 self.currentFileIndex = index + 1

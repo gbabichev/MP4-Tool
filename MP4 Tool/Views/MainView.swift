@@ -415,6 +415,12 @@ struct FileListRow: View {
             }) {
                 Label("Open Parent Folder in Finder", systemImage: "folder")
             }
+
+            Divider()
+
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove from List", systemImage: "trash")
+            }
         }
     }
 
