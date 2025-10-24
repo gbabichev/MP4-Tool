@@ -24,7 +24,7 @@ struct ContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             // Main Content - Left Side
-            MainContentView(viewModel: viewModel, isLogExpanded: $isLogExpanded)
+            MainContentView(viewModel: viewModel)
 
             // Divider
             Divider()
@@ -41,7 +41,63 @@ struct ContentView: View {
             )
             .frame(width: 400)
         }
-        .frame(minWidth: 850, minHeight: 900)
+        .frame(minWidth: 850, minHeight: 600)
+        .safeAreaInset(edge: .bottom) {
+            if isLogExpanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    Button(action: {
+                        withAnimation {
+                            isLogExpanded.toggle()
+                        }
+                    }) {
+                        HStack {
+                            Text("Log Output")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+
+                    LogView(logText: viewModel.processor.logText)
+                        .frame(height: 200)
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                }
+                .background(Color.gray.opacity(0.12))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                VStack(spacing: 0) {
+                    Button(action: {
+                        withAnimation {
+                            isLogExpanded.toggle()
+                        }
+                    }) {
+                        HStack {
+                            Text("Log Output")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.up")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color.gray.opacity(0.12))
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button(action: {
@@ -231,13 +287,14 @@ struct LogView: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        textView.backgroundColor = NSColor.textBackgroundColor
+        textView.backgroundColor = NSColor(white: 0.94, alpha: 1.0)
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.autoresizingMask = [.width, .height]
 
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
+        scrollView.backgroundColor = NSColor(white: 0.94, alpha: 1.0)
         scrollView.autoresizingMask = [.width, .height]
 
         return scrollView

@@ -10,9 +10,6 @@ import UniformTypeIdentifiers
 
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
-    @Binding var isLogExpanded: Bool
-    @State private var fileListHeight: CGFloat = 400
-    @State private var fileListHeightBeforeCollapse: CGFloat = 400
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -211,7 +208,7 @@ struct MainContentView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
-            // File list - Resizable height (always visible)
+            // File list - Fills available space
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Files to Process (\(viewModel.processor.videoFiles.count))")
@@ -231,12 +228,11 @@ struct MainContentView: View {
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: fileListHeight)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.secondary.opacity(0.05))
                     .cornerRadius(8)
                     .padding(.horizontal)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 8)
                     .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                         handleFileDrop(providers: providers)
                     }
@@ -253,64 +249,15 @@ struct MainContentView: View {
                             )
                         }
                     }
-                    .frame(height: fileListHeight)
                     .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                         handleFileDrop(providers: providers)
                     }
                 }
             }
-
-            // Resizable divider
-            ResizableDivider(height: $fileListHeight, minHeight: 150, maxHeight: 600)
-
-            // Log Section - Expands to fill remaining space
-            VStack(alignment: .leading, spacing: 4) {
-                Button(action: {
-                    withAnimation {
-                        isLogExpanded.toggle()
-                    }
-                }) {
-                    HStack {
-                        Text("Log Output")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: isLogExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .padding(.horizontal)
-                .padding(.top, 12)
-
-                if isLogExpanded {
-                    LogView(logText: viewModel.processor.logText)
-                        .frame(maxHeight: .infinity)
-                        .transition(.opacity)
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
-                } else {
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
-        .onChange(of: isLogExpanded) { oldValue, newValue in
-            withAnimation {
-                if newValue == false {
-                    // Log collapsed → save current height and expand file list to max
-                    fileListHeightBeforeCollapse = fileListHeight
-                    fileListHeight = 600
-                } else {
-                    // Log expanded → restore to previous height
-                    fileListHeight = fileListHeightBeforeCollapse
-                }
-            }
-        }
     }
 
     private func handleDrop(providers: [NSItemProvider], isInput: Bool) -> Bool {
@@ -469,39 +416,5 @@ struct FileListRow: View {
         let fileURL = URL(fileURLWithPath: file.filePath)
         let parentURL = fileURL.deletingLastPathComponent()
         NSWorkspace.shared.selectFile(file.filePath, inFileViewerRootedAtPath: parentURL.path)
-    }
-}
-
-// Resizable divider component
-struct ResizableDivider: View {
-    @Binding var height: CGFloat
-    let minHeight: CGFloat
-    let maxHeight: CGFloat
-    @State private var isDragging = false
-
-    var body: some View {
-        Rectangle()
-            .fill(isDragging ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.3))
-            .frame(height: 4)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.resizeUpDown.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        isDragging = true
-                        let newHeight = height + value.translation.height
-                        height = min(max(newHeight, minHeight), maxHeight)
-                    }
-                    .onEnded { _ in
-                        isDragging = false
-                    }
-            )
     }
 }
