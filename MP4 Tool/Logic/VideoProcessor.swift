@@ -976,7 +976,9 @@ class VideoProcessor: ObservableObject {
             addLog("􀁢 All video files are already MP4 format!")
         } else {
             addLog("\n􀈊 Non-MP4 files:")
-            for filePath in nonMP4Files {
+            // Sort files using natural (numeric-aware) sorting
+            let sortedFiles = nonMP4Files.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            for filePath in sortedFiles {
                 let ext = (filePath as NSString).pathExtension.uppercased()
                 addLog("[\(ext)] - \(filePath)")
             }
