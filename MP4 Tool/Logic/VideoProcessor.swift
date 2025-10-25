@@ -1226,15 +1226,6 @@ class VideoProcessor: ObservableObject {
             addLog("􀅴 Invalid MP4 files: \(invalidFiles.count)")
         }
 
-        if validFiles.count > 0 {
-            addLog("\n􀁢 Valid MP4 files:")
-            // Sort files using natural (numeric-aware) sorting
-            let sortedFiles = validFiles.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-            for filePath in sortedFiles {
-                addLog("  ✓ \(filePath)")
-            }
-        }
-
         if invalidFiles.isEmpty {
             addLog("\n􀁢 All MP4 files are valid!")
         } else {
@@ -1244,7 +1235,6 @@ class VideoProcessor: ObservableObject {
             for (filePath, reason) in sortedFiles {
                 addLog("  ✗ \(filePath) - \(reason)")
             }
-            addLog("\n􀐱 Total invalid files: \(invalidFiles.count)")
         }
 
         DispatchQueue.main.async {
