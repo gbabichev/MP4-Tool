@@ -1132,41 +1132,24 @@ class VideoProcessor: ObservableObject {
 
         addLog("􀅴 Scanning and validating files (this may take a while on network shares)...")
 
-        // Perform file validation in background
-        let result: (valid: [String], invalid: [(path: String, reason: String)], totalMP4s: Int, wasCancelled: Bool) = await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else {
-                    continuation.resume(returning: ([], [], 0, false))
-                    return
-                }
-
-                var validFiles: [String] = []
-                var invalidFiles: [(path: String, reason: String)] = []
-                var totalMP4Files = 0
-                var filesScanned = 0
-                var lastUpdateTime = Date()
-
-                // Configure enumerator to skip hidden files and packages
+        // First, collect all MP4 files synchronously
+        let (mp4FilePaths, totalMP4Files): ([URL], Int) = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
                 let fileManager = FileManager.default
                 guard let enumerator = fileManager.enumerator(
                     at: URL(fileURLWithPath: directoryPath),
                     includingPropertiesForKeys: [.isRegularFileKey],
                     options: [.skipsHiddenFiles, .skipsPackageDescendants]
                 ) else {
-                    continuation.resume(returning: ([], [], 0, false))
+                    continuation.resume(returning: ([], 0))
                     return
                 }
 
-                // Recursively scan directory for MP4 files
-                for case let fileURL as URL in enumerator {
-                    // Check for cancellation
-                    let shouldCancel = self.shouldCancelScan
-                    if shouldCancel {
-                        continuation.resume(returning: (validFiles, invalidFiles, totalMP4Files, true))
-                        return
-                    }
+                var collectedPaths: [URL] = []
+                var filesScanned = 0
+                var lastUpdateTime = Date()
 
-                    // Only process regular files
+                for case let fileURL as URL in enumerator {
                     guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
                           resourceValues.isRegularFile == true else {
                         continue
@@ -1186,27 +1169,48 @@ class VideoProcessor: ObservableObject {
 
                     let ext = fileURL.pathExtension.lowercased()
 
-                    // Only process MP4 files
+                    // Only collect MP4 files
                     guard ext == "mp4" else { continue }
 
-                    totalMP4Files += 1
-
-                    // Validate the MP4 file using AVFoundation
-                    let asset = AVURLAsset(url: fileURL)
-
-                    // Check if the asset is playable
-                    if asset.isPlayable {
-                        validFiles.append(fileURL.path)
-                    } else {
-                        invalidFiles.append((path: fileURL.path, reason: "Asset not playable"))
-                    }
+                    collectedPaths.append(fileURL)
                 }
 
-                continuation.resume(returning: (validFiles, invalidFiles, totalMP4Files, false))
+                continuation.resume(returning: (collectedPaths, collectedPaths.count))
             }
         }
 
-        let (validFiles, invalidFiles, totalMP4Files, wasCancelled) = result
+        // Now validate the collected MP4 files asynchronously
+        var validFiles: [String] = []
+        var invalidFiles: [(path: String, reason: String)] = []
+
+        for (index, fileURL) in mp4FilePaths.enumerated() {
+            // Check for cancellation
+            if shouldCancelScan {
+                break
+            }
+
+            // Validate the MP4 file using AVFoundation
+            let asset = AVURLAsset(url: fileURL)
+
+            do {
+                let isPlayable = try await asset.load(.isPlayable)
+                if isPlayable {
+                    validFiles.append(fileURL.path)
+                } else {
+                    invalidFiles.append((path: fileURL.path, reason: "Asset not playable"))
+                }
+            } catch {
+                invalidFiles.append((path: fileURL.path, reason: "Could not load asset: \(error.localizedDescription)"))
+            }
+
+            // Update progress
+            let scannedCount = index + 1
+            DispatchQueue.main.async {
+                self.scanProgress = "Validating \(scannedCount)/\(totalMP4Files) files..."
+            }
+        }
+
+        let wasCancelled = shouldCancelScan
 
         DispatchQueue.main.async {
             self.scanProgress = ""
