@@ -9,6 +9,7 @@ import Foundation
 import Combine
 import UserNotifications
 import AppKit
+import AVFoundation
 
 struct VideoStream: Codable {
     let index: Int
@@ -1078,6 +1079,145 @@ class VideoProcessor: ObservableObject {
                 addLog("[\(ext)] - \(filePath)")
             }
             addLog("\n􀐱 Total non-MP4 files: \(nonMP4Files.count)")
+        }
+
+        DispatchQueue.main.async {
+            self.isProcessing = false
+            self.shouldCancelScan = false
+        }
+    }
+
+    func validateMP4Files(directoryPath: String) async {
+        DispatchQueue.main.async {
+            self.isProcessing = true
+            self.logText = ""
+            self.scanProgress = "Starting validation..."
+            self.shouldCancelScan = false
+        }
+
+        addLog("􀊫 Validating MP4 files in directory...")
+        addLog("􀈖 Directory: \(directoryPath)")
+
+        guard FileManager.default.fileExists(atPath: directoryPath) else {
+            addLog("􀁡 Directory does not exist!")
+            DispatchQueue.main.async {
+                self.isProcessing = false
+                self.scanProgress = ""
+            }
+            return
+        }
+
+        addLog("􀅴 Scanning and validating files (this may take a while on network shares)...")
+
+        // Perform file validation in background
+        let result: (valid: [String], invalid: [(path: String, reason: String)], totalMP4s: Int, wasCancelled: Bool) = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: ([], [], 0, false))
+                    return
+                }
+
+                var validFiles: [String] = []
+                var invalidFiles: [(path: String, reason: String)] = []
+                var totalMP4Files = 0
+                var filesScanned = 0
+                var lastUpdateTime = Date()
+
+                // Configure enumerator to skip hidden files and packages
+                let fileManager = FileManager.default
+                guard let enumerator = fileManager.enumerator(
+                    at: URL(fileURLWithPath: directoryPath),
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) else {
+                    continuation.resume(returning: ([], [], 0, false))
+                    return
+                }
+
+                // Recursively scan directory for MP4 files
+                for case let fileURL as URL in enumerator {
+                    // Check for cancellation
+                    let shouldCancel = self.shouldCancelScan
+                    if shouldCancel {
+                        continuation.resume(returning: (validFiles, invalidFiles, totalMP4Files, true))
+                        return
+                    }
+
+                    // Only process regular files
+                    guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
+                          resourceValues.isRegularFile == true else {
+                        continue
+                    }
+
+                    filesScanned += 1
+
+                    // Update progress every 50 files or every 0.5 seconds
+                    let now = Date()
+                    if filesScanned % 50 == 0 || now.timeIntervalSince(lastUpdateTime) > 0.5 {
+                        lastUpdateTime = now
+                        let scannedCount = filesScanned
+                        DispatchQueue.main.async {
+                            self.scanProgress = "Scanned \(scannedCount) files..."
+                        }
+                    }
+
+                    let ext = fileURL.pathExtension.lowercased()
+
+                    // Only process MP4 files
+                    guard ext == "mp4" else { continue }
+
+                    totalMP4Files += 1
+
+                    // Validate the MP4 file using AVFoundation
+                    let asset = AVURLAsset(url: fileURL)
+
+                    // Check if the asset is playable
+                    if asset.isPlayable {
+                        validFiles.append(fileURL.path)
+                    } else {
+                        invalidFiles.append((path: fileURL.path, reason: "Asset not playable"))
+                    }
+                }
+
+                continuation.resume(returning: (validFiles, invalidFiles, totalMP4Files, false))
+            }
+        }
+
+        let (validFiles, invalidFiles, totalMP4Files, wasCancelled) = result
+
+        DispatchQueue.main.async {
+            self.scanProgress = ""
+        }
+
+        if wasCancelled {
+            addLog("􀊆 Validation cancelled by user")
+            addLog("􀅴 Partial results: \(totalMP4Files) MP4 files found, \(validFiles.count) valid, \(invalidFiles.count) invalid")
+        } else {
+            addLog("􀐱 Validation complete!")
+            addLog("􀅴 Total MP4 files found: \(totalMP4Files)")
+            addLog("􀅴 Valid MP4 files: \(validFiles.count)")
+            addLog("􀅴 Invalid MP4 files: \(invalidFiles.count)")
+        }
+
+        if validFiles.count > 0 {
+            addLog("\n􀁢 Valid MP4 files:")
+            // Sort files using natural (numeric-aware) sorting
+            let sortedFiles = validFiles.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            for filePath in sortedFiles {
+                addLog("  ✓ \(filePath)")
+            }
+        }
+
+        if invalidFiles.isEmpty {
+            addLog("\n􀁢 All MP4 files are valid!")
+        } else {
+            addLog("\n􀁡 Invalid MP4 files:")
+            // Sort files using natural sorting
+            let sortedFiles = invalidFiles.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+            for (filePath, reason) in sortedFiles {
+                addLog("  ✗ \(filePath) - \(reason)")
+            }
+            addLog("\n􀐱 Total invalid files: \(invalidFiles.count)")
         }
 
         DispatchQueue.main.async {

@@ -197,6 +197,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .scanForNonMP4)) { _ in
             viewModel.scanForNonMP4Files()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .validateMP4Files)) { _ in
+            viewModel.validateMP4Files()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .exportLog)) { _ in
             viewModel.exportLogToFile()
         }

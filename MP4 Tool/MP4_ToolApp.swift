@@ -74,6 +74,13 @@ struct MP4_ToolApp: App {
                 }
                 .keyboardShortcut("S", modifiers: [.command, .shift])
 
+                Button(action: {
+                    NotificationCenter.default.post(name: .validateMP4Files, object: nil)
+                }) {
+                    Label("Validate MP4 Files...", systemImage: "checkmark.circle")
+                }
+                .keyboardShortcut("V", modifiers: [.command, .shift])
+
                 Divider()
 
                 Button(action: {
@@ -102,6 +109,7 @@ extension Notification.Name {
     static let clearFolders = Notification.Name("clearFolders")
     static let startProcessing = Notification.Name("startProcessing")
     static let scanForNonMP4 = Notification.Name("scanForNonMP4")
+    static let validateMP4Files = Notification.Name("validateMP4Files")
     static let exportLog = Notification.Name("exportLog")
     static let showTutorial = Notification.Name("showTutorial")
     static let showAbout = Notification.Name("showAbout")

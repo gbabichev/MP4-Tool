@@ -149,6 +149,20 @@ class ContentViewModel: ObservableObject {
         }
     }
 
+    func validateMP4Files() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Select directory to validate MP4 files"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            Task {
+                await processor.validateMP4Files(directoryPath: url.path)
+            }
+        }
+    }
+
     func exportLogToFile() {
         guard !processor.logText.isEmpty else {
             processor.addLog("􀇾 Cannot export: Log is empty")
