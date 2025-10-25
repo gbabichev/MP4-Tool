@@ -45,6 +45,8 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom) {
             if isLogExpanded {
                 VStack(alignment: .leading, spacing: 4) {
+                    Divider()
+
                     Button(action: {
                         withAnimation {
                             isLogExpanded.toggle()
@@ -70,10 +72,11 @@ struct ContentView: View {
                         .padding(.horizontal)
                         .padding(.bottom, 8)
                 }
-                .background(Color.gray.opacity(0.12))
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
                 VStack(spacing: 0) {
+                    Divider()
+
                     Button(action: {
                         withAnimation {
                             isLogExpanded.toggle()
@@ -93,7 +96,6 @@ struct ContentView: View {
                     .contentShape(Rectangle())
                     .padding(.horizontal)
                     .padding(.vertical, 8)
-                    .background(Color.gray.opacity(0.12))
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -290,15 +292,18 @@ struct LogView: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        textView.backgroundColor = NSColor(white: 0.94, alpha: 1.0)
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.autoresizingMask = [.width, .height]
 
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
-        scrollView.backgroundColor = NSColor(white: 0.94, alpha: 1.0)
         scrollView.autoresizingMask = [.width, .height]
+
+        // Add rounded corners
+        scrollView.wantsLayer = true
+        scrollView.layer?.cornerRadius = 8
+        scrollView.layer?.masksToBounds = true
 
         return scrollView
     }

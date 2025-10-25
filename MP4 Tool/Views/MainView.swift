@@ -75,19 +75,21 @@ struct MainContentView: View {
                     VStack(spacing: 8) {
                         HStack {
                             Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.body)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
                             if !viewModel.processor.currentFile.isEmpty {
                                 Text("•")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text(viewModel.processor.currentFile)
-                                    .font(.caption)
+                                    .font(.body)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                             }
                             Spacer()
                         }
+                        .padding(.top, 4)
 
                         HStack(spacing: 20) {
                             HStack {
@@ -117,11 +119,9 @@ struct MainContentView: View {
                         }
 
                         // Encoding progress message
-                        if !viewModel.processor.encodingProgress.isEmpty {
-                            Text(viewModel.processor.encodingProgress)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text(viewModel.processor.encodingProgress.isEmpty ? "Getting ready..." : viewModel.processor.encodingProgress)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -145,7 +145,7 @@ struct MainContentView: View {
                     let totalRemainingSeconds = totalSeconds % 60
 
                     Divider()
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 8)
 
                     HStack {
                         Text("Total Processing Time:")
@@ -162,9 +162,8 @@ struct MainContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-            .padding(.bottom, 8)
-            .frame(minHeight: 80)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
             .background(viewModel.processor.processingHadError ? Color.red.opacity(0.15) : Color.secondary.opacity(0.05))
             .cornerRadius(8)
             .padding(.horizontal)

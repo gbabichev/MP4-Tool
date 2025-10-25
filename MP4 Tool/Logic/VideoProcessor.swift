@@ -793,9 +793,7 @@ class VideoProcessor: ObservableObject {
                 let minutes = elapsed / 60
                 let seconds = elapsed % 60
 
-                let outputSizeMB = self.newSize / (1024 * 1024)
-
-                self.encodingProgress = "Encoding... Time: \(minutes)m \(seconds)s • Output: \(outputSizeMB)MB"
+                self.encodingProgress = "Encoding... Time: \(minutes)m \(seconds)s"
             }
         }
     }
