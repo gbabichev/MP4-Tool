@@ -178,6 +178,24 @@ class VideoProcessor: ObservableObject {
         }
     }
 
+    private func getTimestampString() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: Date())
+    }
+
+    private func formatDuration(seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        let secs = seconds % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m \(secs)s"
+        } else {
+            return "\(minutes)m \(secs)s"
+        }
+    }
+
     func processFolder(
         inputPath: String,
         outputPath: String,
@@ -286,6 +304,7 @@ class VideoProcessor: ObservableObject {
             }
 
             addLog("\n􀎶 File \(index + 1)/\(filesToProcess.count)")
+            addLog("⏱ Start time: \(getTimestampString())")
             addLog("􀅴 Processing: \(fileInfo.name)")
 
             let inputFilePath = fileInfo.path
@@ -329,6 +348,7 @@ class VideoProcessor: ObservableObject {
                 let moveSuccess = await moveFileAsync(from: tempOutputFile, to: outputFilePath)
 
                 if !moveSuccess {
+                    addLog("⏱ End time: \(getTimestampString())")
                     addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     addLog("􀁡 FAILED: Could not move file to output location")
                     addLog("File: \(fileInfo.name)")
@@ -346,13 +366,12 @@ class VideoProcessor: ObservableObject {
                     continue
                 }
 
+                addLog("⏱ End time: \(getTimestampString())")
                 addLog("􀁢 Done processing")
                 addLog("􀅴 Moved file. Old Size: \(inputSizeMB)MB New Size: \(outputSizeMB)MB")
 
                 let duration = fileEndTime.timeIntervalSince(fileStartTime)
-                let minutes = Int(duration) / 60
-                let seconds = Int(duration) % 60
-                addLog("􀅴 Completed in \(minutes)m \(seconds)s")
+                addLog("􀅴 Completed in \(formatDuration(seconds: Int(duration)))")
 
                 // Delete original file if requested (run in background to avoid blocking on network shares)
                 if deleteOriginal {
@@ -374,6 +393,7 @@ class VideoProcessor: ObservableObject {
                     }
                 }
             } else {
+                addLog("⏱ End time: \(getTimestampString())")
                 addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 addLog("􀁡 FAILED: \(fileInfo.name)")
                 addLog("Reason: \(errorReason)")
@@ -390,7 +410,10 @@ class VideoProcessor: ObservableObject {
             }
         }
 
+        // Calculate total processing time from all files
+        let totalSeconds = videoFiles.reduce(0) { $0 + $1.processingTimeSeconds }
         addLog("\n􀋚 All files processed!")
+        addLog("􀅴 Total processing time: \(formatDuration(seconds: totalSeconds))")
 
         DispatchQueue.main.async {
             self.isProcessing = false
