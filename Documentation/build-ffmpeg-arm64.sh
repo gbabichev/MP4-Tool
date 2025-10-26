@@ -86,12 +86,45 @@ fi
 
 # Build FFmpeg
 echo "==================================="
-echo "Building FFmpeg..."
+echo "Building FFmpeg (8.0)..."
 echo "==================================="
-if [ ! -d "ffmpeg" ]; then
-    git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg
+
+FFMPEG_REMOTE="https://git.ffmpeg.org/ffmpeg.git"
+FFMPEG_DIR="ffmpeg"
+FFMPEG_TAG="${FFMPEG_TAG:-n8.0}"                  # expected FFmpeg tag name
+FFMPEG_BRANCH="${FFMPEG_BRANCH:-release/8.0}"     # fallback branch name
+FFMPEG_OID="${FFMPEG_OID:-a4044e04486d1136022498891088a90baf5b2775}" # your link's object id
+
+if [ ! -d "$FFMPEG_DIR/.git" ]; then
+  # Shallow clone without checking out HEAD history
+  git clone --no-checkout --filter=blob:none "$FFMPEG_REMOTE" "$FFMPEG_DIR"
 fi
-cd ffmpeg
+
+cd "$FFMPEG_DIR"
+
+# Ensure we have the remote set and up to date
+git remote set-url origin "$FFMPEG_REMOTE" >/dev/null 2>&1 || true
+
+# Try tag first (best for a validated release)
+if git fetch --depth 1 origin "tag" "$FFMPEG_TAG"; then
+  git -c advice.detachedHead=false checkout --detach "tags/$FFMPEG_TAG"
+else
+  echo "Tag '$FFMPEG_TAG' not found, trying branch '$FFMPEG_BRANCH'..."
+  if git fetch --depth 1 origin "$FFMPEG_BRANCH"; then
+    git -c advice.detachedHead=false checkout --detach FETCH_HEAD
+  else
+    echo "Branch '$FFMPEG_BRANCH' not found, falling back to exact object id..."
+    git fetch --depth 1 origin "$FFMPEG_OID"
+    git -c advice.detachedHead=false checkout --detach "$FFMPEG_OID"
+  fi
+fi
+
+# Optional: make a local branch name for clarity (still pinned to this commit)
+git branch -f "ffmpeg-8.0" >/dev/null 2>&1 || true
+
+echo "Checked out commit:"
+git show -s --format="  %H  %d%n  %s%n  (describe: %D)"
+git describe --tags --always 2>/dev/null || true
 
 ./configure \
     --prefix="$PREFIX" \

@@ -20,6 +20,7 @@ struct ContentView: View {
     @AppStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("isLogExpanded") private var isLogExpanded = true
+    @State private var showFFmpegAlert = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -135,18 +136,17 @@ struct ContentView: View {
             ToolbarItem(placement: .status) {
                 if !viewModel.processor.ffmpegAvailable {
                     Button(action: {
-                        // Show alert with explanation
-                        let alert = NSAlert()
-                        alert.messageText = "FFmpeg Not Found"
-                        alert.informativeText = viewModel.processor.ffmpegMissingMessage
-                        alert.alertStyle = .warning
-                        alert.addButton(withTitle: "OK")
-                        alert.runModal()
+                        showFFmpegAlert = true
                     }) {
                         Label("FFmpeg Missing", systemImage: "exclamationmark.triangle.fill")
                     }
                     .foregroundStyle(.orange)
                     .help(viewModel.processor.ffmpegMissingMessage)
+                    .alert("FFmpeg Not Found", isPresented: $showFFmpegAlert) {
+                        Button("OK") { }
+                    } message: {
+                        Text(viewModel.processor.ffmpegMissingMessage)
+                    }
                 }
             }
 

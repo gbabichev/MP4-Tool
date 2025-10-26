@@ -19,7 +19,8 @@ struct MainContentView: View {
                 if !viewModel.outputFolderPath.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Output Folder")
-                            .bold()
+                            .font(.title2)
+                            .fontWeight(.semibold)
                         Text(viewModel.outputFolderPath)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -27,7 +28,8 @@ struct MainContentView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Output Folder")
-                            .bold()
+                            .font(.title2)
+                            .fontWeight(.semibold)
                         HStack(spacing: 4) {
                             Image(systemName: "folder.badge.gearshape")
                                 .font(.caption2)
@@ -51,11 +53,12 @@ struct MainContentView: View {
             // Status Section - Always visible
             HStack {
                 Text("Status")
-                    .font(.headline)
+                    .font(.title2)
+                    .fontWeight(.semibold)
                 Spacer()
             }
             .padding(.horizontal)
-            .padding(.top, 12)
+            .padding(.top, 24)
 
             VStack(spacing: 8) {
                 // Scan progress
@@ -183,11 +186,12 @@ struct MainContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Files to Process (\(viewModel.processor.videoFiles.count))")
-                        .font(.headline)
+                        .font(.title2)
+                        .fontWeight(.semibold)
                     Spacer()
                 }
                 .padding(.horizontal)
-                .padding(.top, 12)
+                .padding(.top, 24)
 
                 if viewModel.processor.videoFiles.isEmpty {
                     // Empty state with drop zone

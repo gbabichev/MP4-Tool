@@ -145,26 +145,41 @@ class VideoProcessor: ObservableObject {
     }
 
     private static func findInPath(command: String) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "which \(command)"]
+        // Check common system paths first
+        let commonPaths = [
+            "/usr/local/bin/\(command)",
+            "/opt/homebrew/bin/\(command)",
+            "/usr/bin/\(command)",
+            "/bin/\(command)"
+        ]
+
+        for path in commonPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+
+        // Fallback to using 'which' command
+        let task = Process()
+        task.launchPath = "/bin/sh"
+        task.arguments = ["-c", "which \(command)"]
 
         let pipe = Pipe()
-        process.standardOutput = pipe
+        task.standardOutput = pipe
+        task.standardError = Pipe()
 
         do {
-            try process.run()
-            process.waitUntilExit()
+            try task.run()
 
-            if process.terminationStatus == 0 {
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !path.isEmpty {
-                    return path
-                }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+
+            if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !path.isEmpty {
+                return path
             }
         } catch {
-            // Silent failure
+            print("Error finding \(command) in PATH: \(error)")
         }
 
         return nil
