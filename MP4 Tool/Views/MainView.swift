@@ -44,7 +44,6 @@ struct MainContentView: View {
             .frame(minHeight: 35)
             .frame(maxWidth: .infinity)
             .padding(.horizontal)
-            .padding(.top, 12)
             .contentShape(Rectangle())
             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                 handleDrop(providers: providers)
