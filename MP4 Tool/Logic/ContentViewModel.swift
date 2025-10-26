@@ -46,6 +46,7 @@ class ContentViewModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
+        panel.message = isInput ? "Select folder containing video files to encode" : "Select folder where encoded files will be saved"
 
         if panel.runModal() == .OK {
             if let url = panel.url {

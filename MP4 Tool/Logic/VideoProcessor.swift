@@ -58,6 +58,7 @@ struct VideoFileInfo: Identifiable {
     let fileSizeMB: Int
     var status: ProcessingStatus = .pending
     var processingTimeSeconds: Int = 0
+    var newSizeMB: Int = 0
     var hasConflict: Bool = false
     var conflictReason: String = ""
 }
@@ -385,11 +386,12 @@ class VideoProcessor: ObservableObject {
                     addLog("􀅴 Kept original file")
                 }
 
-                // Mark file as completed with processing time
+                // Mark file as completed with processing time and new size
                 DispatchQueue.main.async {
                     if index < self.videoFiles.count {
                         self.videoFiles[index].status = .completed
                         self.videoFiles[index].processingTimeSeconds = Int(duration)
+                        self.videoFiles[index].newSizeMB = Int(outputSizeMB)
                     }
                 }
             } else {
@@ -410,10 +412,7 @@ class VideoProcessor: ObservableObject {
             }
         }
 
-        // Calculate total processing time from all files
-        let totalSeconds = videoFiles.reduce(0) { $0 + $1.processingTimeSeconds }
         addLog("\n􀋚 All files processed!")
-        addLog("􀅴 Total processing time: \(formatDuration(seconds: totalSeconds))")
 
         DispatchQueue.main.async {
             self.isProcessing = false

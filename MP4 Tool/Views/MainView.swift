@@ -141,8 +141,10 @@ struct MainContentView: View {
                     let totalSeconds = viewModel.processor.videoFiles
                         .filter { $0.status == .completed }
                         .reduce(0) { $0 + $1.processingTimeSeconds }
-                    let totalMinutes = totalSeconds / 60
-                    let totalRemainingSeconds = totalSeconds % 60
+                    let totalHours = totalSeconds / 3600
+                    let remainingAfterHours = totalSeconds % 3600
+                    let totalMinutes = remainingAfterHours / 60
+                    let totalRemainingSeconds = remainingAfterHours % 60
 
                     Divider()
                         .padding(.vertical, 8)
@@ -153,11 +155,19 @@ struct MainContentView: View {
                             .fontWeight(.semibold)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text("\(totalMinutes)m \(totalRemainingSeconds)s")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
+                        if totalHours > 0 {
+                            Text("\(totalHours)h \(totalMinutes)m \(totalRemainingSeconds)s")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        } else {
+                            Text("\(totalMinutes)m \(totalRemainingSeconds)s")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
                     }
                 }
             }
@@ -248,11 +258,23 @@ struct MainContentView: View {
                             }
                             .width(ideal: 70)
 
-                            TableColumn("Size") { file in
+                            TableColumn("Original Size") { file in
                                 Text("\(file.fileSizeMB) MB")
                                     .font(.body)
                                     .foregroundStyle(file.status == .completed ? .green : .secondary)
                                     .monospacedDigit()
+                            }
+                            .width(ideal: 90)
+
+                            TableColumn("New Size") { file in
+                                if file.status == .completed && file.newSizeMB > 0 {
+                                    Text("\(file.newSizeMB) MB")
+                                        .font(.body)
+                                        .foregroundStyle(.green)
+                                        .monospacedDigit()
+                                } else {
+                                    Text("")
+                                }
                             }
                             .width(ideal: 80)
 
