@@ -215,8 +215,10 @@ struct ContentView: View {
             viewModel.showAbout()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // Clear notifications when app gets focus
-            viewModel.processor.clearProcessingNotifications()
+            // Clear notifications only when app gets focus and processing is not active
+            if !viewModel.processor.isProcessing {
+                viewModel.processor.clearProcessingNotifications()
+            }
         }
         .overlay {
             if viewModel.showingTutorial {

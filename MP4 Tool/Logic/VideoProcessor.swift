@@ -197,6 +197,24 @@ class VideoProcessor: ObservableObject {
         }
     }
 
+    private func updateDockBadge(filesRemaining: Int) {
+        DispatchQueue.main.async {
+            NSApplication.shared.dockTile.badgeLabel = String(filesRemaining)
+        }
+    }
+
+    private func setDockBadgeCheckmark() {
+        DispatchQueue.main.async {
+            NSApplication.shared.dockTile.badgeLabel = "✓"
+        }
+    }
+
+    private func clearDockBadge() {
+        DispatchQueue.main.async {
+            NSApplication.shared.dockTile.badgeLabel = ""
+        }
+    }
+
     func processFolder(
         inputPath: String,
         outputPath: String,
@@ -282,10 +300,14 @@ class VideoProcessor: ObservableObject {
             self.totalFiles = filesToProcess.count
         }
 
+        // Set initial dock badge with total files
+        updateDockBadge(filesRemaining: filesToProcess.count)
+
         for (index, fileInfo) in filesToProcess.enumerated() {
             // Check for cancellation
             if shouldCancelProcessing {
                 addLog("􀛶 Processing cancelled by user")
+                clearDockBadge()
                 break
             }
 
@@ -387,12 +409,18 @@ class VideoProcessor: ObservableObject {
                 }
 
                 // Mark file as completed with processing time and new size
+                let filesRemaining = filesToProcess.count - (index + 1)
                 DispatchQueue.main.async {
                     if index < self.videoFiles.count {
                         self.videoFiles[index].status = .completed
                         self.videoFiles[index].processingTimeSeconds = Int(duration)
                         self.videoFiles[index].newSizeMB = Int(outputSizeMB)
                     }
+                }
+
+                // Update dock badge with remaining files
+                if filesRemaining > 0 {
+                    updateDockBadge(filesRemaining: filesRemaining)
                 }
             } else {
                 addLog("⏱ End time: \(getTimestampString())")
@@ -413,6 +441,9 @@ class VideoProcessor: ObservableObject {
         }
 
         addLog("\n􀋚 All files processed!")
+
+        // Set dock badge to checkmark when done
+        setDockBadgeCheckmark()
 
         DispatchQueue.main.async {
             self.isProcessing = false
@@ -884,6 +915,9 @@ class VideoProcessor: ObservableObject {
         } else {
             addLog("􀊆 Cancelling...")
         }
+
+        // Clear dock badge when cancelled
+        clearDockBadge()
     }
 
     func scanInputFolder(directoryPath: String, outputPath: String = "") async {
