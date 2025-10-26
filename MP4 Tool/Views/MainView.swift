@@ -214,7 +214,7 @@ struct MainContentView: View {
                                 statusIcon(for: file)
                                     .frame(width: 24)
                             }
-                            .width(ideal: 30)
+                            .width(ideal: 15)
 
                             TableColumn("Name") { file in
                                 VStack(alignment: .leading, spacing: 2) {
@@ -256,7 +256,7 @@ struct MainContentView: View {
                                     .font(.body)
                                     .foregroundStyle(file.status == .completed ? .green : .secondary)
                             }
-                            .width(ideal: 70)
+                            .width(ideal: 40)
 
                             TableColumn("Original Size") { file in
                                 Text("\(file.fileSizeMB) MB")
@@ -264,7 +264,7 @@ struct MainContentView: View {
                                     .foregroundStyle(file.status == .completed ? .green : .secondary)
                                     .monospacedDigit()
                             }
-                            .width(ideal: 90)
+                            .width(ideal: 50)
 
                             TableColumn("New Size") { file in
                                 if file.status == .completed && file.newSizeMB > 0 {
@@ -276,7 +276,7 @@ struct MainContentView: View {
                                     Text("")
                                 }
                             }
-                            .width(ideal: 80)
+                            .width(ideal: 50)
 
                             TableColumn("Time") { file in
                                 if file.status == .completed && file.processingTimeSeconds > 0 {
@@ -290,7 +290,7 @@ struct MainContentView: View {
                                     Text("")
                                 }
                             }
-                            .width(ideal: 70)
+                            .width(ideal: 50)
                         }
                         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                             handleFileDrop(providers: providers)
