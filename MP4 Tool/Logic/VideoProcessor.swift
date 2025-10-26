@@ -132,7 +132,8 @@ class VideoProcessor: ObservableObject {
         // Set availability status
         if foundFfmpeg && foundFfprobe {
             self.ffmpegAvailable = true
-            addLog("􀅴 Found ffmpeg and ffprobe")
+            addLog("􀅴 Found ffmpeg at: \(tempFfmpegPath)")
+            addLog("􀅴 Found ffprobe at: \(tempFfprobePath)")
         } else {
             self.ffmpegAvailable = false
             var missing: [String] = []
