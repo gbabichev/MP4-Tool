@@ -45,7 +45,7 @@ struct MainContentView: View {
             .padding(.top, 12)
             .contentShape(Rectangle())
             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                handleDrop(providers: providers, isInput: false)
+                handleDrop(providers: providers)
             }
 
             // Status Section - Always visible
@@ -304,7 +304,7 @@ struct MainContentView: View {
         .padding()
     }
 
-    private func handleDrop(providers: [NSItemProvider], isInput: Bool) -> Bool {
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first else { return false }
 
         _ = provider.loadObject(ofClass: URL.self) { url, error in
@@ -421,117 +421,5 @@ struct MainContentView: View {
         let fileURL = URL(fileURLWithPath: filePath)
         let parentURL = fileURL.deletingLastPathComponent()
         NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: parentURL.path)
-    }
-}
-
-// File list row with hover to show remove button
-struct FileListRow: View {
-    let file: VideoFileInfo
-    let index: Int
-    let isProcessing: Bool
-    let onRemove: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        HStack {
-            // Status indicator
-            Group {
-                switch file.status {
-                case .pending:
-                    Image(systemName: "film")
-                        .foregroundStyle(.secondary)
-                case .processing:
-                    ProgressView()
-                        .scaleEffect(0.8)
-                        .frame(width: 24, height: 24)
-                case .completed:
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                case .failed:
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.red)
-                }
-            }
-            .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(file.fileName)
-                        .font(.body)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(file.status == .completed ? .green : .primary)
-
-                    if file.hasConflict {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(.orange)
-                            .font(.body)
-                            .help(file.conflictReason)
-                    }
-                }
-
-                if file.hasConflict && !file.conflictReason.isEmpty {
-                    Text(file.conflictReason)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            Spacer()
-
-            if file.status == .completed && file.processingTimeSeconds > 0 {
-                let minutes = file.processingTimeSeconds / 60
-                let seconds = file.processingTimeSeconds % 60
-                Text("\(minutes)m \(seconds)s")
-                    .font(.body)
-                    .foregroundStyle(.green)
-                    .monospacedDigit()
-            }
-
-            Text("[\(file.fileExtension)]")
-                .font(.body)
-                .foregroundStyle(file.status == .completed ? .green : .secondary)
-                .padding(.horizontal, 6)
-
-            Text("\(file.fileSizeMB) MB")
-                .font(.body)
-                .foregroundStyle(file.status == .completed ? .green : .secondary)
-                .monospacedDigit()
-                .frame(width: 80, alignment: .trailing)
-
-            // Remove button (visible on hover)
-            if isHovering && !isProcessing {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.body)
-                }
-                .buttonStyle(.plain)
-                .help("Remove from list")
-            }
-        }
-        .listRowBackground(index % 2 == 0 ? Color.clear : Color.secondary.opacity(0.08))
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .contextMenu {
-            Button(action: {
-                openParentFolderInFinder()
-            }) {
-                Label("Open Parent Folder in Finder", systemImage: "folder")
-            }
-
-            Divider()
-
-            Button(role: .destructive, action: onRemove) {
-                Label("Remove from List", systemImage: "trash")
-            }
-        }
-    }
-
-    private func openParentFolderInFinder() {
-        let fileURL = URL(fileURLWithPath: file.filePath)
-        let parentURL = fileURL.deletingLastPathComponent()
-        NSWorkspace.shared.selectFile(file.filePath, inFileViewerRootedAtPath: parentURL.path)
     }
 }

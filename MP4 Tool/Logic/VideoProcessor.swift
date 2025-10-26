@@ -1346,7 +1346,6 @@ class VideoProcessor: ObservableObject {
 
     // Check for files that would be replaced/overwritten during processing
     func checkForFileConflicts(
-        inputPath: String,
         outputPath: String,
         createSubfolders: Bool
     ) -> Bool {

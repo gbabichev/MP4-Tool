@@ -102,7 +102,6 @@ class ContentViewModel: ObservableObject {
     ) {
         // Re-check for file conflicts in case settings changed (like createSubfolders)
         _ = processor.checkForFileConflicts(
-            inputPath: inputFolderPath,
             outputPath: outputFolderPath,
             createSubfolders: createSubfolders
         )
