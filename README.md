@@ -7,7 +7,7 @@
 </picture>
 <br/><br/>
 
-<h2>Easily convert video files for native playback on Mac & iOS</h2>
+<h2>Easily convert video files for native playback on Mac & iOS (and more)</h2>
 <br><br>
 
 </div>
@@ -21,18 +21,24 @@
 
 MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files into MP4 containers with a streamlined macOS interface.
 
-MP4 Tool supports H264 & H265 encoding, and remuxing (copying streams but converting to MP4)
-
 <b>You must have ffmpeg & ffprobe in your $PATH</b>, or compile the app with ffmpeg & ffprobe in the Resources directory.
-
 <a href="Documentation/build-ffmpeg-arm64.sh">FFmpeg ARM64 Build script is in the repo</a>
+
+## Features 
+- Batch Processing.
+- H264 & H265 Encoding Support.
+- Remux support.
+- Customization options to strip out non-english audio & subtitle tracks. 
+- System notification support. 
+- Thorough logging. 
+- Tool for recursively scanning a directory for non-MP4 files. 
+- Tool for validating that MP4 files are valid & playable. 
 
 ## Tutorial Summary
 
 ### 1. Install FFmpeg
 - brew install ffmpeg
 - or however else you want to do it. 
-
 
 ### 2. Select Folders
 - Use the toolbar folder buttons to pick input and output directories. (or drag and drop)
@@ -52,12 +58,6 @@ MP4 Tool supports H264 & H265 encoding, and remuxing (copying streams but conver
 - Click **Start Processing** or press `⌘P` to run the selected jobs.
 - Watch progress and logs in the lower section of the window.
 
-
-## Additional Tools
-- In the Tools menu there are additional tools:
-  - Scan for Non-MP4 files. Recursively scan directories and output any non-MP4 files. 
-  - Export logs to TXT. 
-
 ## 🖥️ Install & Minimum Requirements
 
 - macOS 14.0 or later  
@@ -72,23 +72,18 @@ Download from Releases. It's signed & notarized!
 
 Clone the repo and build with Xcode:
 
-<!-- ```bash
-git clone https://github.com/gbabichev/Screen-Snip.git
-cd Screen-Snip
-open "Screen Snip.xcodeproj"
-``` -->
+```bash
+git clone https://github.com/gbabichev/MP4-Tool.git
+```
 
 ## 📝 Changelog
 
-### 1.0 
+### 1.0.0
 - Initial Release. 
 
 ## 📄 License
 
 MIT — free for personal and commercial use. 
 
-## Privacy
-<a href="Documentation/PrivacyPolicy.html">Privacy Policy</a>
-
-## Support 
-<a href="Documentation/Support.html">Support</a>
+## Credits
+Thanks to the FFmpeg team for making an awesome utility. 
