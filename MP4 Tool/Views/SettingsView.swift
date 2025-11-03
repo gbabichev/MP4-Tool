@@ -15,13 +15,31 @@ struct SettingsView: View {
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
     let isProcessing: Bool
+    @Binding var isExpanded: Bool
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Settings")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Text("Settings")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+
+                Spacer()
+
+                Button(action: {
+                    withAnimation {
+                        isExpanded = false
+                    }
+                }) {
+                    Image(systemName: "chevron.right")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help("Collapse Settings")
+            }
+            .frame(maxWidth: .infinity)
 
             SettingsRow("Mode", subtitle: "Choose encoding codec or remux without re-encoding") {
                 Picker("", selection: $selectedMode) {

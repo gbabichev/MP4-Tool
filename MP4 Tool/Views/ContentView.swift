@@ -20,88 +20,49 @@ struct ContentView: View {
     @AppStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("isLogExpanded") private var isLogExpanded = true
+    @AppStorage("isSettingsExpanded") private var isSettingsExpanded = true
     @State private var showFFmpegAlert = false
 
-    var body: some View {
+    var mainContent: some View {
         HStack(spacing: 0) {
             // Main Content - Left Side
             MainContentView(viewModel: viewModel)
 
-            // Divider
-            Divider()
+            // Divider between panes
+            if isSettingsExpanded {
+                Divider()
+            }
 
             // Settings - Right Side
-            SettingsView(
+            SettingsPanelContainer(
                 selectedMode: $selectedMode,
                 crfValue: $crfValue,
                 createSubfolders: $createSubfolders,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
                 keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
-                isProcessing: viewModel.processor.isProcessing
+                isProcessing: viewModel.processor.isProcessing,
+                isExpanded: $isSettingsExpanded
             )
-            .frame(width: 400)
         }
         .frame(minWidth: 850, minHeight: 600)
         .safeAreaInset(edge: .bottom) {
-            if isLogExpanded {
-                VStack(alignment: .leading, spacing: 4) {
-                    Divider()
-
-                    Button(action: {
-                        withAnimation {
-                            isLogExpanded.toggle()
-                        }
-                    }) {
-                        HStack {
-                            Text("Log Output")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-
-                    LogView(logText: viewModel.processor.logText)
-                        .frame(height: 200)
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                VStack(spacing: 0) {
-                    Divider()
-
-                    Button(action: {
-                        withAnimation {
-                            isLogExpanded.toggle()
-                        }
-                    }) {
-                        HStack {
-                            Text("Log Output")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Image(systemName: "chevron.up")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            logPanel
         }
-        .toolbar {
+    }
+
+    @ViewBuilder
+    var logPanel: some View {
+        if isLogExpanded {
+            ExpandedLogPanel(isLogExpanded: $isLogExpanded, logText: viewModel.processor.logText)
+        } else {
+            CollapsedLogPanel(isLogExpanded: $isLogExpanded)
+        }
+    }
+
+    var body: some View {
+        mainContent
+            .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button(action: {
                     viewModel.selectFolder(isInput: true)
@@ -255,6 +216,161 @@ struct ContentView: View {
                 viewModel.processor.addLog("􀁡 Failed to export log: \(error.localizedDescription)")
             }
         }
+    }
+}
+
+// Log Panel Views
+struct ExpandedLogPanel: View {
+    @Binding var isLogExpanded: Bool
+    let logText: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Divider()
+
+            Button(action: {
+                withAnimation {
+                    isLogExpanded.toggle()
+                }
+            }) {
+                HStack {
+                    Text("Log Output")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .padding(.horizontal)
+            .padding(.top, 12)
+
+            LogView(logText: logText)
+                .frame(height: 200)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
+// Expanded Settings Panel
+struct ExpandedSettingsPanel: View {
+    @Binding var selectedMode: ProcessingMode
+    @Binding var crfValue: Double
+    @Binding var createSubfolders: Bool
+    @Binding var deleteOriginal: Bool
+    @Binding var keepEnglishAudioOnly: Bool
+    @Binding var keepEnglishSubtitlesOnly: Bool
+    let isProcessing: Bool
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsView(
+                selectedMode: $selectedMode,
+                crfValue: $crfValue,
+                createSubfolders: $createSubfolders,
+                deleteOriginal: $deleteOriginal,
+                keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                isProcessing: isProcessing,
+                isExpanded: $isExpanded
+            )
+            .frame(width: 400)
+        }
+    }
+}
+
+struct CollapsedLogPanel: View {
+    @Binding var isLogExpanded: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+
+            Button(action: {
+                withAnimation {
+                    isLogExpanded.toggle()
+                }
+            }) {
+                HStack {
+                    Text("Log Output")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.up")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
+// Settings Panel Container - Handles expanded/collapsed states
+struct SettingsPanelContainer: View {
+    @Binding var selectedMode: ProcessingMode
+    @Binding var crfValue: Double
+    @Binding var createSubfolders: Bool
+    @Binding var deleteOriginal: Bool
+    @Binding var keepEnglishAudioOnly: Bool
+    @Binding var keepEnglishSubtitlesOnly: Bool
+    let isProcessing: Bool
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        if isExpanded {
+            ExpandedSettingsPanel(
+                selectedMode: $selectedMode,
+                crfValue: $crfValue,
+                createSubfolders: $createSubfolders,
+                deleteOriginal: $deleteOriginal,
+                keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                isProcessing: isProcessing,
+                isExpanded: $isExpanded
+            )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+        } else {
+            CollapsedSettingsPanel(isExpanded: $isExpanded)
+                .transition(.move(edge: .leading).combined(with: .opacity))
+        }
+    }
+}
+
+// Collapsed Settings Panel
+struct CollapsedSettingsPanel: View {
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Button(action: {
+                withAnimation {
+                    isExpanded = true
+                }
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .help("Expand Settings")
+
+            Spacer()
+        }
+        .frame(width: 44)
+        .padding(.vertical)
     }
 }
 
