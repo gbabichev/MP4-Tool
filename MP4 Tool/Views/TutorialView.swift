@@ -25,6 +25,7 @@ struct TutorialView: View {
                 // Header
                 VStack(spacing: 8) {
                     LiveAppIconView()
+                        .scaleEffect(0.75)
 
                     Text("MP4 Tool Tutorial")
                         .font(.title)
@@ -37,56 +38,58 @@ struct TutorialView: View {
 
                 Divider()
 
-                // Tutorial steps
-                VStack(alignment: .leading, spacing: 20) {
-                    TutorialStep(
-                        icon: "film.stack",
-                        title: "Supported Formats"
-                    ) {
-                        Text("Input: ").bold() +
-                        Text("MKV, MP4, AVI, MOV, M4V") +
-                        Text("\nOutput: ").bold() +
-                        Text("MP4 (H.265, H.264, or original codec)")
+                // Tutorial steps (scrollable)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        TutorialStep(
+                            icon: "film.stack",
+                            title: "Supported Formats"
+                        ) {
+                            Text("Input: ").bold() +
+                            Text("MKV, MP4, AVI, MOV, M4V") +
+                            Text("\nOutput: ").bold() +
+                            Text("MP4 (H.265, H.264, or original codec)")
+                        }
+
+                        TutorialStep(
+                            icon: "folder",
+                            title: "1. Add Files"
+                        ) {
+                            Text("• Drag folders onto ") +
+                            Text("Input Folder").bold() +
+                            Text(" to scan all videos\n") +
+                            Text("• Drag individual files into ") +
+                            Text("Files to Process").bold() +
+                            Text("\n• Or use toolbar buttons and keyboard shortcuts ⌘O and ⌘⇧O")
+                        }
+
+                        TutorialStep(
+                            icon: "arrow.left.arrow.right",
+                            title: "2. Choose Mode"
+                        ) {
+                            Text("Select ") +
+                            Text("H.265").bold() +
+                            Text(" for smallest files, ") +
+                            Text("H.264").bold() +
+                            Text(" for better compatibility, or ") +
+                            Text("Remux").bold() +
+                            Text(" to copy streams without re-encoding (fast, no quality loss).")
+                        }
+
+                        TutorialStep(
+                            icon: "slider.horizontal.3",
+                            title: "3. Adjust Settings",
+                            description: "In Encode mode, adjust CRF quality (18-28, lower = better quality). Configure audio/subtitle language filtering, subfolders, and deletion options as needed."
+                        )
+
+                        TutorialStep(
+                            icon: "play.fill",
+                            title: "4. Start Processing",
+                            description: "Click Start Processing or press ⌘P to begin. Monitor progress in the log output below."
+                        )
                     }
-
-                    TutorialStep(
-                        icon: "folder",
-                        title: "1. Add Files"
-                    ) {
-                        Text("• Drag folders onto ") +
-                        Text("Input Folder").bold() +
-                        Text(" to scan all videos\n") +
-                        Text("• Drag individual files into ") +
-                        Text("Files to Process").bold() +
-                        Text("\n• Or use toolbar buttons and keyboard shortcuts ⌘O and ⌘⇧O")
-                    }
-
-                    TutorialStep(
-                        icon: "arrow.left.arrow.right",
-                        title: "2. Choose Mode"
-                    ) {
-                        Text("Select ") +
-                        Text("H.265").bold() +
-                        Text(" for smallest files, ") +
-                        Text("H.264").bold() +
-                        Text(" for better compatibility, or ") +
-                        Text("Remux").bold() +
-                        Text(" to copy streams without re-encoding (fast, no quality loss).")
-                    }
-
-                    TutorialStep(
-                        icon: "slider.horizontal.3",
-                        title: "3. Adjust Settings",
-                        description: "In Encode mode, adjust CRF quality (18-28, lower = better quality). Configure audio/subtitle language filtering, subfolders, and deletion options as needed."
-                    )
-
-                    TutorialStep(
-                        icon: "play.fill",
-                        title: "4. Start Processing",
-                        description: "Click Start Processing or press ⌘P to begin. Monitor progress in the log output below."
-                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Divider()
 

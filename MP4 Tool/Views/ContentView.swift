@@ -45,7 +45,7 @@ struct ContentView: View {
                 isExpanded: $isSettingsExpanded
             )
         }
-        .frame(minWidth: 850, minHeight: 600)
+        .frame(minWidth: 800, minHeight: 450)
         .safeAreaInset(edge: .bottom) {
             logPanel
         }
