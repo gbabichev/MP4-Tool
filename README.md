@@ -78,10 +78,11 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
-### 1.0.1
+### 1.1.0
+- Added batching. You can now drag in additional files to add to an existing processing batch. 
 - Enabled settings sidebar to be collapsible. 
 - Updated ffmpeg build script. 
-- Adjusted quality slider to allow for lower quality.
+- Adjusted quality slider to allow for more quality settings.
 
 ### 1.0.0
 - Initial Release. 
