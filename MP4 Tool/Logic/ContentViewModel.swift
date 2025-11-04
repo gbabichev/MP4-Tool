@@ -218,12 +218,18 @@ class ContentViewModel: ObservableObject {
             )
 
             processor.videoFiles.append(fileInfo)
+
+            // Sort files alphabetically by file path
+            processor.videoFiles.sort { $0.filePath < $1.filePath }
+
             processor.totalFiles = processor.videoFiles.count
 
             // Check for conflicts with the output folder
             if !outputFolderPath.isEmpty {
-                let fileIndex = processor.videoFiles.count - 1
-                processor.checkFileForConflicts(fileIndex: fileIndex, outputPath: outputFolderPath, createSubfolders: false)
+                // Find the index of the newly added file after sorting
+                if let fileIndex = processor.videoFiles.firstIndex(where: { $0.filePath == url.path }) {
+                    processor.checkFileForConflicts(fileIndex: fileIndex, outputPath: outputFolderPath, createSubfolders: false)
+                }
             }
         }
     }
