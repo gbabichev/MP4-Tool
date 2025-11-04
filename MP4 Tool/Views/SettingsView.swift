@@ -54,7 +54,7 @@ struct SettingsView: View {
             if selectedMode == .encodeH265 || selectedMode == .encodeH264 {
                 SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
                     HStack {
-                        Slider(value: $crfValue, in: 18...50, step: 1)
+                        Slider(value: $crfValue, in: 0...50, step: 1)
                             .frame(width: 200)
                             .disabled(isProcessing)
                         Text("\(Int(crfValue))")

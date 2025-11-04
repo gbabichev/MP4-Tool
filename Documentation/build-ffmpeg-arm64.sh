@@ -131,7 +131,7 @@ git describe --tags --always 2>/dev/null || true
     --arch="$ARCH" \
     --cc="clang" \
     --cxx="clang++" \
-    --extra-cflags="$CFLAGS -I$PREFIX/include" \
+    --extra-cflags="$CFLAGS -I$PREFIX/include -fPIC" \
     --extra-ldflags="$LDFLAGS -L$PREFIX/lib" \
     --pkg-config-flags="--static" \
     --enable-gpl \
@@ -147,7 +147,9 @@ git describe --tags --always 2>/dev/null || true
     --disable-podpages \
     --disable-txtpages \
     --enable-videotoolbox \
-    --enable-audiotoolbox
+    --enable-audiotoolbox \
+    --disable-xlib \
+    --disable-libxcb
 
 make -j$(sysctl -n hw.ncpu)
 make install
@@ -162,3 +164,37 @@ otool -L "$PREFIX/bin/ffmpeg"
 echo ""
 echo "Testing codecs:"
 "$PREFIX/bin/ffmpeg" -codecs | grep -E "h264|h265|hevc"
+
+# Code signing with Hardened Runtime entitlements
+echo ""
+echo "==================================="
+echo "Code signing with Hardened Runtime..."
+echo "==================================="
+
+# Create entitlements file for hardened runtime
+ENTITLEMENTS_FILE=$(mktemp)
+cat > "$ENTITLEMENTS_FILE" << 'ENTITLEMENTS_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.disable-executable-page-protection</key>
+	<true/>
+</dict>
+</plist>
+ENTITLEMENTS_EOF
+
+# Sign both binaries with hardened runtime entitlements
+codesign --force --deep --options=runtime --entitlements "$ENTITLEMENTS_FILE" --sign - "$PREFIX/bin/ffmpeg"
+codesign --force --deep --options=runtime --entitlements "$ENTITLEMENTS_FILE" --sign - "$PREFIX/bin/ffprobe"
+
+echo "Code signing complete!"
+echo "Verifying signatures:"
+codesign -v "$PREFIX/bin/ffmpeg"
+codesign -v "$PREFIX/bin/ffprobe"
+
+rm "$ENTITLEMENTS_FILE"
