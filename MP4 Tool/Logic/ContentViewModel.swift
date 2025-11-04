@@ -194,7 +194,7 @@ class ContentViewModel: ObservableObject {
     }
 
     func addVideoFile(url: URL) {
-        // Check if file already exists in list
+        // Check if file already exists in list or pending batch
         if processor.videoFiles.contains(where: { $0.filePath == url.path }) {
             return
         }
@@ -217,20 +217,26 @@ class ContentViewModel: ObservableObject {
                 fileSizeMB: sizeMB
             )
 
+            // Always add to videoFiles so UI sees the file immediately
             processor.videoFiles.append(fileInfo)
 
-            // Sort files alphabetically by file path
-            processor.videoFiles.sort { $0.filePath < $1.filePath }
+            if processor.isProcessing {
+                // Track in pending batch for processing later
+                processor.addToPendingBatch(fileInfo)
+            } else {
+                // Sort files alphabetically by file path if not processing
+                processor.videoFiles.sort { $0.filePath < $1.filePath }
 
-            processor.totalFiles = processor.videoFiles.count
-
-            // Check for conflicts with the output folder
-            if !outputFolderPath.isEmpty {
-                // Find the index of the newly added file after sorting
-                if let fileIndex = processor.videoFiles.firstIndex(where: { $0.filePath == url.path }) {
-                    processor.checkFileForConflicts(fileIndex: fileIndex, outputPath: outputFolderPath, createSubfolders: false)
+                // Check for conflicts with the output folder
+                if !outputFolderPath.isEmpty {
+                    // Find the index of the newly added file after sorting
+                    if let fileIndex = processor.videoFiles.firstIndex(where: { $0.filePath == url.path }) {
+                        processor.checkFileForConflicts(fileIndex: fileIndex, outputPath: outputFolderPath, createSubfolders: false)
+                    }
                 }
             }
+
+            processor.totalFiles = processor.videoFiles.count
         }
     }
 

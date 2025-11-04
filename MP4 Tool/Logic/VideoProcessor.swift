@@ -86,6 +86,10 @@ class VideoProcessor: ObservableObject {
     private var encodingTimer: Timer?
     private var currentProcess: Process?
 
+    // Batch processing tracking
+    private var initialBatchCount: Int = 0
+    private var pendingBatchFiles: [VideoFileInfo] = []
+
     private let ffmpegPath: String
     private let ffprobePath: String
 
@@ -231,6 +235,19 @@ class VideoProcessor: ObservableObject {
         }
     }
 
+    func addToPendingBatch(_ fileInfo: VideoFileInfo) {
+        pendingBatchFiles.append(fileInfo)
+        // Sort the pending batch alphabetically by file path
+        pendingBatchFiles.sort { $0.filePath < $1.filePath }
+
+        // Update dock badge to reflect new total remaining files
+        // currentFileIndex is 1-indexed (e.g., File 1/2), so subtract 1 to get processed count
+        let filesRemaining = videoFiles.count - (currentFileIndex - 1)
+        if filesRemaining > 0 {
+            updateDockBadge(filesRemaining: filesRemaining)
+        }
+    }
+
     func processFolder(
         inputPath: String,
         outputPath: String,
@@ -247,6 +264,8 @@ class VideoProcessor: ObservableObject {
             self.currentFileIndex = 0
             self.shouldCancelProcessing = false
             self.processingHadError = false
+            self.initialBatchCount = self.videoFiles.count
+            self.pendingBatchFiles = []
         }
 
         addLog("􀊄 Starting processing...")
@@ -319,7 +338,10 @@ class VideoProcessor: ObservableObject {
         // Set initial dock badge with total files
         updateDockBadge(filesRemaining: filesToProcess.count)
 
-        for (index, fileInfo) in filesToProcess.enumerated() {
+        var index = 0
+        while index < filesToProcess.count {
+            let fileInfo = filesToProcess[index]
+
             // Check for cancellation
             if shouldCancelProcessing {
                 addLog("􀛶 Processing cancelled by user")
@@ -330,15 +352,20 @@ class VideoProcessor: ObservableObject {
             // Check if file has been deleted from the queue
             if !videoFiles.contains(where: { $0.filePath == fileInfo.path }) {
                 addLog("􀛷 Skipped: \(fileInfo.name) (removed from queue)")
+                index += 1
                 continue
             }
 
             // Mark file as processing
+            let filePathForProcessing = fileInfo.path
+            let currentIndex = index
             DispatchQueue.main.async {
-                self.currentFileIndex = index + 1
+                self.currentFileIndex = currentIndex + 1
                 self.currentFile = fileInfo.name
-                if index < self.videoFiles.count {
-                    self.videoFiles[index].status = .processing
+                if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == filePathForProcessing }) {
+                    var updatedFile = self.videoFiles[fileIndex]
+                    updatedFile.status = .processing
+                    self.videoFiles[fileIndex] = updatedFile
                 }
             }
 
@@ -376,11 +403,11 @@ class VideoProcessor: ObservableObject {
 
             if conversionSuccess {
                 // Get file sizes
-                let inputSize = try? FileManager.default.attributesOfItem(atPath: inputFilePath)[.size] as? Int64 ?? 0
-                let outputSize = try? FileManager.default.attributesOfItem(atPath: tempOutputFile)[.size] as? Int64 ?? 0
+                let inputSize = (try? FileManager.default.attributesOfItem(atPath: inputFilePath))?[.size] as? Int64 ?? 0
+                let outputSize = (try? FileManager.default.attributesOfItem(atPath: tempOutputFile))?[.size] as? Int64 ?? 0
 
-                let inputSizeMB = (inputSize ?? 0) / (1024 * 1024)
-                let outputSizeMB = (outputSize ?? 0) / (1024 * 1024)
+                let inputSizeMB = inputSize / (1024 * 1024)
+                let outputSizeMB = outputSize / (1024 * 1024)
 
                 // Move to final location (run in background to avoid blocking on network shares)
                 addLog("􀐱 Moving file to output location...")
@@ -396,12 +423,16 @@ class VideoProcessor: ObservableObject {
                     try? FileManager.default.removeItem(atPath: tempOutputFile)
 
                     // Mark file as failed
+                    let failedFilePath = fileInfo.path
                     DispatchQueue.main.async {
-                        if index < self.videoFiles.count {
-                            self.videoFiles[index].status = .failed
+                        if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == failedFilePath }) {
+                            var updatedFile = self.videoFiles[fileIndex]
+                            updatedFile.status = .failed
+                            self.videoFiles[fileIndex] = updatedFile
                         }
                         self.processingHadError = true
                     }
+                    index += 1
                     continue
                 }
 
@@ -426,11 +457,15 @@ class VideoProcessor: ObservableObject {
 
                 // Mark file as completed with processing time and new size
                 let filesRemaining = filesToProcess.count - (index + 1)
+                let completedFilePath = fileInfo.path
                 DispatchQueue.main.async {
-                    if index < self.videoFiles.count {
-                        self.videoFiles[index].status = .completed
-                        self.videoFiles[index].processingTimeSeconds = Int(duration)
-                        self.videoFiles[index].newSizeMB = Int(outputSizeMB)
+                    if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == completedFilePath }) {
+                        // Replace the entire struct to ensure @Published detects the change
+                        var updatedFile = self.videoFiles[fileIndex]
+                        updatedFile.status = .completed
+                        updatedFile.processingTimeSeconds = Int(duration)
+                        updatedFile.newSizeMB = Int(outputSizeMB)
+                        self.videoFiles[fileIndex] = updatedFile
                     }
                 }
 
@@ -447,13 +482,53 @@ class VideoProcessor: ObservableObject {
                 try? FileManager.default.removeItem(atPath: tempOutputFile)
 
                 // Mark file as failed
+                let conversionFailedFilePath = fileInfo.path
                 DispatchQueue.main.async {
-                    if index < self.videoFiles.count {
-                        self.videoFiles[index].status = .failed
+                    if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == conversionFailedFilePath }) {
+                        var updatedFile = self.videoFiles[fileIndex]
+                        updatedFile.status = .failed
+                        self.videoFiles[fileIndex] = updatedFile
                     }
                     self.processingHadError = true
                 }
             }
+
+            // Check if we just finished the initial batch and have pending files
+            if index == initialBatchCount - 1 && !pendingBatchFiles.isEmpty {
+                addLog("\n􀐱 Processing additional batch...")
+
+                // Batch 2 files are already in videoFiles, but need to be sorted among themselves
+                // and added to filesToProcess
+                let batch2Start = initialBatchCount
+                let batch2End = videoFiles.count
+
+                if batch2Start < batch2End {
+                    // Sort batch 2 files in videoFiles
+                    let batch2 = Array(videoFiles[batch2Start..<batch2End])
+                    let sortedBatch2 = batch2.sorted { $0.filePath < $1.filePath }
+
+                    DispatchQueue.main.async {
+                        self.videoFiles.replaceSubrange(batch2Start..<batch2End, with: sortedBatch2)
+                    }
+
+                    // Add sorted batch 2 files to filesToProcess
+                    for sortedFile in sortedBatch2 {
+                        filesToProcess.append((path: sortedFile.filePath, name: sortedFile.fileName))
+                    }
+                }
+
+                pendingBatchFiles.removeAll()
+
+                // Update total files count
+                DispatchQueue.main.async {
+                    self.totalFiles = filesToProcess.count
+                }
+
+                // Update dock badge
+                updateDockBadge(filesRemaining: filesToProcess.count - (index + 1))
+            }
+
+            index += 1
         }
 
         addLog("\n􀋚 All files processed!")
