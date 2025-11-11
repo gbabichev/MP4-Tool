@@ -78,6 +78,10 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.2.0
+- Added Resolution options. Original, 1080, & 720. 
+- Added preset quality options from placebo->ultrafast. 
+
 ### 1.1.0
 - Added batching. You can now drag in additional files to add to an existing processing batch. 
 - Enabled settings sidebar to be collapsible. 

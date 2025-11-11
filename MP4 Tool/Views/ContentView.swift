@@ -14,6 +14,8 @@ struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
     @AppStorage("selectedMode") private var selectedMode: ProcessingMode = .encodeH265
     @AppStorage("crfValue") private var crfValue: Double = 23
+    @AppStorage("selectedResolution") private var selectedResolution: ResolutionOption = .default
+    @AppStorage("selectedPreset") private var selectedPreset: PresetOption = .fast
     @AppStorage("createSubfolders") private var createSubfolders: Bool = false
     @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @AppStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
@@ -37,6 +39,8 @@ struct ContentView: View {
             SettingsPanelContainer(
                 selectedMode: $selectedMode,
                 crfValue: $crfValue,
+                selectedResolution: $selectedResolution,
+                selectedPreset: $selectedPreset,
                 createSubfolders: $createSubfolders,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
@@ -127,6 +131,8 @@ struct ContentView: View {
                         viewModel.startProcessing(
                             mode: selectedMode,
                             crfValue: Int(crfValue),
+                            resolution: selectedResolution,
+                            preset: selectedPreset,
                             createSubfolders: createSubfolders,
                             deleteOriginal: deleteOriginal,
                             keepEnglishAudioOnly: keepEnglishAudioOnly,
@@ -150,6 +156,8 @@ struct ContentView: View {
                     viewModel.startProcessing(
                         mode: selectedMode,
                         crfValue: Int(crfValue),
+                        resolution: selectedResolution,
+                        preset: selectedPreset,
                         createSubfolders: createSubfolders,
                         deleteOriginal: deleteOriginal,
                         keepEnglishAudioOnly: keepEnglishAudioOnly,
@@ -261,6 +269,8 @@ struct ExpandedLogPanel: View {
 struct ExpandedSettingsPanel: View {
     @Binding var selectedMode: ProcessingMode
     @Binding var crfValue: Double
+    @Binding var selectedResolution: ResolutionOption
+    @Binding var selectedPreset: PresetOption
     @Binding var createSubfolders: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
@@ -273,6 +283,8 @@ struct ExpandedSettingsPanel: View {
             SettingsView(
                 selectedMode: $selectedMode,
                 crfValue: $crfValue,
+                selectedResolution: $selectedResolution,
+                selectedPreset: $selectedPreset,
                 createSubfolders: $createSubfolders,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
@@ -320,6 +332,8 @@ struct CollapsedLogPanel: View {
 struct SettingsPanelContainer: View {
     @Binding var selectedMode: ProcessingMode
     @Binding var crfValue: Double
+    @Binding var selectedResolution: ResolutionOption
+    @Binding var selectedPreset: PresetOption
     @Binding var createSubfolders: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
@@ -332,6 +346,8 @@ struct SettingsPanelContainer: View {
             ExpandedSettingsPanel(
                 selectedMode: $selectedMode,
                 crfValue: $crfValue,
+                selectedResolution: $selectedResolution,
+                selectedPreset: $selectedPreset,
                 createSubfolders: $createSubfolders,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,

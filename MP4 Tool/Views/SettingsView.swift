@@ -10,6 +10,8 @@ import SwiftUI
 struct SettingsView: View {
     @Binding var selectedMode: ProcessingMode
     @Binding var crfValue: Double
+    @Binding var selectedResolution: ResolutionOption
+    @Binding var selectedPreset: PresetOption
     @Binding var createSubfolders: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
@@ -61,6 +63,26 @@ struct SettingsView: View {
                             .frame(width: 30)
                             .monospacedDigit()
                     }
+                }
+
+                SettingsRow("Resolution", subtitle: "Scale video to specified resolution") {
+                    Picker("", selection: $selectedResolution) {
+                        ForEach(ResolutionOption.allCases, id: \.self) { resolution in
+                            Text(resolution.description).tag(resolution)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(isProcessing)
+                }
+
+                SettingsRow("Preset", subtitle: "Slower = better compression. Default: fast") {
+                    Picker("", selection: $selectedPreset) {
+                        ForEach(PresetOption.allCases, id: \.self) { preset in
+                            Text(preset.description).tag(preset)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(isProcessing)
                 }
             }
 

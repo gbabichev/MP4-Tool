@@ -95,6 +95,8 @@ class ContentViewModel: ObservableObject {
     func startProcessing(
         mode: ProcessingMode,
         crfValue: Int,
+        resolution: ResolutionOption,
+        preset: PresetOption,
         createSubfolders: Bool,
         deleteOriginal: Bool,
         keepEnglishAudioOnly: Bool,
@@ -128,6 +130,8 @@ class ContentViewModel: ObservableObject {
                 outputPath: outputFolderPath,
                 mode: mode,
                 crfValue: crfValue,
+                resolution: resolution,
+                preset: preset,
                 createSubfolders: createSubfolders,
                 deleteOriginal: deleteOriginal,
                 keepEnglishAudioOnly: keepEnglishAudioOnly,

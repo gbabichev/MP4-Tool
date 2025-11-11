@@ -43,6 +43,45 @@ enum ProcessingMode: String, CaseIterable {
     }
 }
 
+enum ResolutionOption: String, CaseIterable {
+    case `default` = "default"
+    case p1080 = "1080p"
+    case p720 = "720p"
+
+    var description: String {
+        switch self {
+        case .default: return "Default Resolution"
+        case .p1080: return "1080p"
+        case .p720: return "720p"
+        }
+    }
+
+    var scaleFilter: String? {
+        switch self {
+        case .default: return nil
+        case .p1080: return "scale=1920:1080:force_original_aspect_ratio=decrease"
+        case .p720: return "scale=1280:720:force_original_aspect_ratio=decrease"
+        }
+    }
+}
+
+enum PresetOption: String, CaseIterable {
+    case ultrafast
+    case superfast
+    case veryfast
+    case faster
+    case fast
+    case medium
+    case slow
+    case slower
+    case veryslow
+    case placebo
+
+    var description: String {
+        self.rawValue.capitalized
+    }
+}
+
 enum ProcessingStatus {
     case pending
     case processing
@@ -253,6 +292,8 @@ class VideoProcessor: ObservableObject {
         outputPath: String,
         mode: ProcessingMode,
         crfValue: Int = 23,
+        resolution: ResolutionOption = .default,
+        preset: PresetOption = .fast,
         createSubfolders: Bool,
         deleteOriginal: Bool = true,
         keepEnglishAudioOnly: Bool,
@@ -276,6 +317,8 @@ class VideoProcessor: ObservableObject {
         addLog("􀣋 Mode: \(mode.rawValue)")
         if mode == .encodeH265 || mode == .encodeH264 {
             addLog("􀏃 CRF: \(crfValue)")
+            addLog("􀠅 Resolution: \(resolution.description)")
+            addLog("⚙️ Preset: \(preset.description)")
         }
         addLog("􀈕 Create Subfolders: \(createSubfolders)")
         addLog("􀈑 Delete Original: \(deleteOriginal)")
@@ -396,6 +439,8 @@ class VideoProcessor: ObservableObject {
                 tempFile: tempOutputFile,
                 mode: mode,
                 crfValue: crfValue,
+                resolution: resolution,
+                preset: preset,
                 keepEnglishAudioOnly: keepEnglishAudioOnly,
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
             )
@@ -552,6 +597,8 @@ class VideoProcessor: ObservableObject {
         tempFile: String,
         mode: ProcessingMode,
         crfValue: Int = 23,
+        resolution: ResolutionOption = .default,
+        preset: PresetOption = .fast,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool
     ) async -> (success: Bool, errorReason: String) {
@@ -610,6 +657,8 @@ class VideoProcessor: ObservableObject {
             tempFile: tempFile,
             mode: mode,
             crfValue: crfValue,
+            resolution: resolution,
+            preset: preset,
             videoCodec: videoCodec,
             audioMappings: audioMappings,
             subtitleMappings: subtitleMappings
@@ -738,6 +787,8 @@ class VideoProcessor: ObservableObject {
         tempFile: String,
         mode: ProcessingMode,
         crfValue: Int = 23,
+        resolution: ResolutionOption = .default,
+        preset: PresetOption = .fast,
         videoCodec: String?,
         audioMappings: [(index: Int, language: String?)],
         subtitleMappings: [(index: Int, language: String?)]
@@ -747,19 +798,27 @@ class VideoProcessor: ObservableObject {
         if mode == .encodeH265 {
             cmd = [
                 "-i", inputFile, "-y",
-                "-c:v", "libx265", "-x265-params", "log-level=0", "-preset", "fast", "-crf", "\(crfValue)",
+                "-c:v", "libx265", "-x265-params", "log-level=0:threads=0", "-preset", preset.rawValue, "-crf", "\(crfValue)",
                 "-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-tag:v", "hvc1", "-movflags", "+faststart", "-loglevel", "quiet"
             ]
+            // Add video filter for resolution scaling if needed
+            if let scaleFilter = resolution.scaleFilter {
+                cmd.insert(contentsOf: ["-vf", scaleFilter], at: cmd.firstIndex(of: "-c:v") ?? 2)
+            }
         } else if mode == .encodeH264 {
             cmd = [
                 "-i", inputFile, "-y",
-                "-c:v", "libx264", "-preset", "fast", "-crf", "\(crfValue)",
+                "-c:v", "libx264", "-preset", preset.rawValue, "-crf", "\(crfValue)", "-threads", "0",
                 "-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-movflags", "+faststart", "-loglevel", "quiet"
             ]
+            // Add video filter for resolution scaling if needed
+            if let scaleFilter = resolution.scaleFilter {
+                cmd.insert(contentsOf: ["-vf", scaleFilter], at: cmd.firstIndex(of: "-c:v") ?? 2)
+            }
         } else { // remux
             cmd = [
                 "-i", inputFile, "-y",
