@@ -12,6 +12,16 @@ struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
     @State private var selectedFileIDs: Set<UUID> = []
 
+    var ffmpegSourceLabel: String {
+        if viewModel.processor.isUsingSystemFFmpeg {
+            return "FFmpeg: System"
+        } else if !viewModel.processor.bundledFfmpegPath.isEmpty {
+            return "FFmpeg: Bundled"
+        } else {
+            return "FFmpeg: None"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Output Folder
@@ -58,6 +68,26 @@ struct MainContentView: View {
             }
             .padding(.horizontal)
             .padding(.top, 24)
+
+            // FFmpeg Source Status
+            HStack(spacing: 8) {
+                if !viewModel.processor.ffmpegAvailable {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("FFmpeg: Not Available")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(ffmpegSourceLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
 
             VStack(spacing: 8) {
                 // Scan progress

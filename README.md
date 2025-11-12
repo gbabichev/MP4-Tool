@@ -78,6 +78,9 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.2.1
+- Added toggle to switch between bundled FFMpeg & system FFmpeg, if the app is compiled with FFmpeg.
+
 ### 1.2.0
 - Added Resolution options. Original, 1080, & 720. 
 - Added preset quality options from placebo->ultrafast. 

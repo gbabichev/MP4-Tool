@@ -129,44 +129,84 @@ class VideoProcessor: ObservableObject {
     private var initialBatchCount: Int = 0
     private var pendingBatchFiles: [VideoFileInfo] = []
 
-    private let ffmpegPath: String
-    private let ffprobePath: String
+    private var ffmpegPath: String = ""
+    private var ffprobePath: String = ""
+    var bundledFfmpegPath: String = ""
+    var bundledFfprobePath: String = ""
+    @Published var hasBundledFFmpeg: Bool = false
+    @Published var hasSystemFFmpeg: Bool = false
+    @Published var isUsingSystemFFmpeg: Bool = false
 
     init() {
-        var foundFfmpeg = false
-        var foundFfprobe = false
-        var tempFfmpegPath = ""
-        var tempFfprobePath = ""
+        var foundBundledFfmpeg = false
+        var foundBundledFfprobe = false
+        var bundledFfmpeg = ""
+        var bundledFfprobe = ""
 
-        // 1. Try bundled binaries in Resources
+        // 1. Try to find bundled binaries in Resources
         if let ffmpegURL = Bundle.main.url(forResource: "ffmpeg", withExtension: nil, subdirectory: "bin"),
            let ffprobeURL = Bundle.main.url(forResource: "ffprobe", withExtension: nil, subdirectory: "bin") {
-            tempFfmpegPath = ffmpegURL.path
-            tempFfprobePath = ffprobeURL.path
-            foundFfmpeg = FileManager.default.fileExists(atPath: tempFfmpegPath)
-            foundFfprobe = FileManager.default.fileExists(atPath: tempFfprobePath)
+            bundledFfmpeg = ffmpegURL.path
+            bundledFfprobe = ffprobeURL.path
+            foundBundledFfmpeg = FileManager.default.fileExists(atPath: bundledFfmpeg)
+            foundBundledFfprobe = FileManager.default.fileExists(atPath: bundledFfprobe)
         } else if let ffmpegURL = Bundle.main.url(forResource: "ffmpeg", withExtension: nil),
                   let ffprobeURL = Bundle.main.url(forResource: "ffprobe", withExtension: nil) {
             // If bin folder was flattened
-            tempFfmpegPath = ffmpegURL.path
-            tempFfprobePath = ffprobeURL.path
-            foundFfmpeg = FileManager.default.fileExists(atPath: tempFfmpegPath)
-            foundFfprobe = FileManager.default.fileExists(atPath: tempFfprobePath)
+            bundledFfmpeg = ffmpegURL.path
+            bundledFfprobe = ffprobeURL.path
+            foundBundledFfmpeg = FileManager.default.fileExists(atPath: bundledFfmpeg)
+            foundBundledFfprobe = FileManager.default.fileExists(atPath: bundledFfprobe)
         } else {
             // Fallback to resource path
             let resourcePath = Bundle.main.resourcePath ?? ""
-            tempFfmpegPath = resourcePath + "/bin/ffmpeg"
-            tempFfprobePath = resourcePath + "/bin/ffprobe"
-            foundFfmpeg = FileManager.default.fileExists(atPath: tempFfmpegPath)
-            foundFfprobe = FileManager.default.fileExists(atPath: tempFfprobePath)
+            bundledFfmpeg = resourcePath + "/bin/ffmpeg"
+            bundledFfprobe = resourcePath + "/bin/ffprobe"
+            foundBundledFfmpeg = FileManager.default.fileExists(atPath: bundledFfmpeg)
+            foundBundledFfprobe = FileManager.default.fileExists(atPath: bundledFfprobe)
         }
 
-        // 2. If bundled binaries not found, try system PATH
-        if !foundFfmpeg || !foundFfprobe {
-            tempFfmpegPath = Self.findInPath(command: "ffmpeg") ?? ""
-            tempFfprobePath = Self.findInPath(command: "ffprobe") ?? ""
+        // Store bundled paths for later toggling
+        self.bundledFfmpegPath = foundBundledFfmpeg ? bundledFfmpeg : ""
+        self.bundledFfprobePath = foundBundledFfprobe ? bundledFfprobe : ""
+        self.hasBundledFFmpeg = foundBundledFfmpeg && foundBundledFfprobe
+
+        // Check for system FFmpeg availability
+        let systemFfmpeg = Self.findInPath(command: "ffmpeg")
+        let systemFfprobe = Self.findInPath(command: "ffprobe")
+        let hasSystemFfmpeg = systemFfmpeg != nil && systemFfprobe != nil
+        self.hasSystemFFmpeg = hasSystemFfmpeg
+
+        // Log FFmpeg availability enumeration
+        addLog("═══ FFmpeg Enumeration ═══")
+        addLog("Bundled FFmpeg: \(self.hasBundledFFmpeg ? "✓ Available" : "✗ Not Available")")
+        addLog("System FFmpeg: \(hasSystemFfmpeg ? "✓ Available" : "✗ Not Available")")
+
+        // If multiple FFmpeg options available, show how to change
+        let availableCount = (self.hasBundledFFmpeg ? 1 : 0) + (hasSystemFfmpeg ? 1 : 0)
+        if availableCount > 1 {
+            addLog("Multiple FFmpeg versions available - use Tools > Toggle FFmpeg Source to switch")
+        }
+
+        // Default to bundled if available, otherwise try system
+        var tempFfmpegPath = ""
+        var tempFfprobePath = ""
+        var foundFfmpeg = false
+        var foundFfprobe = false
+
+        if self.hasBundledFFmpeg {
+            tempFfmpegPath = bundledFfmpeg
+            tempFfprobePath = bundledFfprobe
+            foundFfmpeg = true
+            foundFfprobe = true
+            self.isUsingSystemFFmpeg = false
+        } else if hasSystemFfmpeg {
+            // Try system PATH
+            tempFfmpegPath = systemFfmpeg ?? ""
+            tempFfprobePath = systemFfprobe ?? ""
             foundFfmpeg = !tempFfmpegPath.isEmpty
             foundFfprobe = !tempFfprobePath.isEmpty
+            self.isUsingSystemFFmpeg = true
         }
 
         self.ffmpegPath = tempFfmpegPath
@@ -175,8 +215,8 @@ class VideoProcessor: ObservableObject {
         // Set availability status
         if foundFfmpeg && foundFfprobe {
             self.ffmpegAvailable = true
-            addLog("􀅴 Found ffmpeg at: \(tempFfmpegPath)")
-            addLog("􀅴 Found ffprobe at: \(tempFfprobePath)")
+            addLog("Active FFmpeg: \(tempFfmpegPath)")
+            addLog("Active FFprobe: \(tempFfprobePath)")
         } else {
             self.ffmpegAvailable = false
             var missing: [String] = []
@@ -235,6 +275,38 @@ class VideoProcessor: ObservableObject {
             }
             self.logText += message
             print(message)
+        }
+    }
+
+    func toggleFFmpegSource(useSystem: Bool) {
+        guard hasBundledFFmpeg else {
+            addLog("􀇾 Cannot toggle: no bundled FFmpeg available")
+            return
+        }
+
+        if useSystem {
+            // Switch to system FFmpeg
+            let systemFfmpeg = Self.findInPath(command: "ffmpeg")
+            let systemFfprobe = Self.findInPath(command: "ffprobe")
+
+            if let systemFfmpeg = systemFfmpeg, let systemFfprobe = systemFfprobe {
+                self.ffmpegPath = systemFfmpeg
+                self.ffprobePath = systemFfprobe
+                self.ffmpegAvailable = true
+                self.isUsingSystemFFmpeg = true
+                addLog("✓ Switched to system FFmpeg at: \(systemFfmpeg)")
+            } else {
+                self.ffmpegAvailable = false
+                self.ffmpegMissingMessage = "System FFmpeg not found. Please install ffmpeg and ffprobe."
+                addLog("􀇾 WARNING: System FFmpeg not found")
+            }
+        } else {
+            // Switch back to bundled FFmpeg
+            self.ffmpegPath = bundledFfmpegPath
+            self.ffprobePath = bundledFfprobePath
+            self.ffmpegAvailable = true
+            self.isUsingSystemFFmpeg = false
+            addLog("✓ Switched to bundled FFmpeg")
         }
     }
 

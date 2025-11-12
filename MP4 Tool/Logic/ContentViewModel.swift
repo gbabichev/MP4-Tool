@@ -251,4 +251,9 @@ class ContentViewModel: ObservableObject {
     func showAbout() {
         showingAbout = true
     }
+
+    func toggleFFmpegSource() {
+        // Toggle between bundled and system FFmpeg
+        processor.toggleFFmpegSource(useSystem: !processor.isUsingSystemFFmpeg)
+    }
 }

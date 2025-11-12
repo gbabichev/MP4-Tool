@@ -6,14 +6,27 @@
 //
 
 import SwiftUI
+import Combine
+
+class AppState: ObservableObject {
+    @Published var hasBundledFFmpeg: Bool = false
+    @Published var hasSystemFFmpeg: Bool = false
+
+    var canToggleFFmpeg: Bool {
+        // Only enable toggle if both bundled AND system FFmpeg are available
+        return hasBundledFFmpeg && hasSystemFFmpeg
+    }
+}
 
 @main
 struct MP4_ToolApp: App {
     @Environment(\.openWindow) private var openWindow
+    @StateObject private var appState = AppState()
 
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
+                .environmentObject(appState)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -67,6 +80,18 @@ struct MP4_ToolApp: App {
 
                 Divider()
 
+                if appState.canToggleFFmpeg {
+                    Button(action: {
+                        NotificationCenter.default.post(name: .toggleFFmpegSource, object: nil)
+                    }) {
+                        Label("Toggle FFmpeg Source", systemImage: "arrow.triangle.swap")
+                    }
+                    .help("Switch between bundled and system FFmpeg")
+
+                    Divider()
+                }
+
+
                 Button(action: {
                     NotificationCenter.default.post(name: .scanForNonMP4, object: nil)
                 }) {
@@ -113,4 +138,5 @@ extension Notification.Name {
     static let exportLog = Notification.Name("exportLog")
     static let showTutorial = Notification.Name("showTutorial")
     static let showAbout = Notification.Name("showAbout")
+    static let toggleFFmpegSource = Notification.Name("toggleFFmpegSource")
 }

@@ -12,6 +12,7 @@ import UserNotifications
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
+    @EnvironmentObject var appState: AppState
     @AppStorage("selectedMode") private var selectedMode: ProcessingMode = .encodeH265
     @AppStorage("crfValue") private var crfValue: Double = 23
     @AppStorage("selectedResolution") private var selectedResolution: ResolutionOption = .default
@@ -98,22 +99,6 @@ struct ContentView: View {
                 .help("Clear input and output folders")
             }
 
-            ToolbarItem(placement: .status) {
-                if !viewModel.processor.ffmpegAvailable {
-                    Button(action: {
-                        showFFmpegAlert = true
-                    }) {
-                        Label("FFmpeg Missing", systemImage: "exclamationmark.triangle.fill")
-                    }
-                    .foregroundStyle(.orange)
-                    .help(viewModel.processor.ffmpegMissingMessage)
-                    .alert("FFmpeg Not Found", isPresented: $showFFmpegAlert) {
-                        Button("OK") { }
-                    } message: {
-                        Text(viewModel.processor.ffmpegMissingMessage)
-                    }
-                }
-            }
 
             ToolbarItem(placement: .status){
                 Spacer()
@@ -204,11 +189,24 @@ struct ContentView: View {
                 viewModel.showingTutorial = true
             }
 
+            // Set FFmpeg availability state in app state
+            appState.hasBundledFFmpeg = viewModel.processor.hasBundledFFmpeg
+            appState.hasSystemFFmpeg = viewModel.processor.hasSystemFFmpeg
+
             // Request notification permissions
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                 if let error = error {
                     print("Error requesting notification permission: \(error)")
                 }
+            }
+
+            // Subscribe to FFmpeg toggle notification
+            NotificationCenter.default.addObserver(
+                forName: .toggleFFmpegSource,
+                object: nil,
+                queue: .main
+            ) { _ in
+                viewModel.toggleFFmpegSource()
             }
         }
         .fileExporter(
