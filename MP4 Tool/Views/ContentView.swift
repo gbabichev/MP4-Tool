@@ -205,8 +205,10 @@ struct ContentView: View {
                 forName: .toggleFFmpegSource,
                 object: nil,
                 queue: .main
-            ) { _ in
-                viewModel.toggleFFmpegSource()
+            ) { [viewModel] _ in
+                MainActor.assumeIsolated {
+                    viewModel.toggleFFmpegSource()
+                }
             }
         }
         .fileExporter(

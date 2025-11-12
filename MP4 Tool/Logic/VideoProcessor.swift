@@ -926,6 +926,7 @@ class VideoProcessor: ObservableObject {
 
     private func runCommand(arguments: [String]) async -> (success: Bool, errorMessage: String) {
         return await withCheckedContinuation { continuation in
+            let ffmpegPath = self.ffmpegPath
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
                     continuation.resume(returning: (false, "Process initialization failed"))
@@ -933,7 +934,7 @@ class VideoProcessor: ObservableObject {
                 }
 
                 let process = Process()
-                process.executableURL = URL(fileURLWithPath: self.ffmpegPath)
+                process.executableURL = URL(fileURLWithPath: ffmpegPath)
                 process.arguments = arguments
 
                 let errorPipe = Pipe()
