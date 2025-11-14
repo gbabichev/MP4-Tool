@@ -54,7 +54,7 @@ enum ResolutionOption: String, CaseIterable {
 
     var description: String {
         switch self {
-        case .default: return "Default Resolution"
+        case .default: return "Original Resolution"
         case .p1080: return "1080p"
         case .p720: return "720p"
         }
