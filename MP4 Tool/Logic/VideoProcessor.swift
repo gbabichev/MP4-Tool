@@ -416,6 +416,13 @@ class VideoProcessor: ObservableObject {
             self.processingHadError = false
             self.initialBatchCount = self.videoFiles.count
             self.pendingBatchFiles = []
+
+            // Reset all video file statuses to pending when starting a new batch
+            for index in 0..<self.videoFiles.count {
+                self.videoFiles[index].status = .pending
+                self.videoFiles[index].processingTimeSeconds = 0
+                self.videoFiles[index].newSizeMB = 0
+            }
         }
 
         addLog("􀊄 Starting processing...")
