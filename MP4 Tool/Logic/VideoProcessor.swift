@@ -16,12 +16,16 @@ struct VideoStream: Codable {
     let codecType: String?
     let codecName: String?
     let tags: [String: String]?
+    let width: Int?
+    let height: Int?
 
     enum CodingKeys: String, CodingKey {
         case index
         case codecType = "codec_type"
         case codecName = "codec_name"
         case tags
+        case width
+        case height
     }
 }
 
@@ -56,11 +60,44 @@ enum ResolutionOption: String, CaseIterable {
         }
     }
 
-    var scaleFilter: String? {
+    func scaleFilter(width: Int, height: Int) -> String? {
         switch self {
-        case .default: return nil
-        case .p1080: return "scale=w=1920:h=1080:force_original_aspect_ratio=decrease:out_range=tv,format=yuv420p"
-        case .p720: return "scale=w=1280:h=720:force_original_aspect_ratio=decrease:out_range=tv,format=yuv420p"
+        case .default:
+            return nil
+        case .p1080:
+            let targetSize = 1080
+            // Smart scaling: if portrait (height > width), scale by width; otherwise by height
+            // Never upscale - only downscale or maintain original resolution
+            if height > width {
+                // Portrait: check width
+                if width > targetSize {
+                    return "scale=w=\(targetSize):h=-2:out_range=tv,format=yuv420p"
+                }
+            } else {
+                // Landscape: check height
+                if height > targetSize {
+                    return "scale=w=-2:h=\(targetSize):out_range=tv,format=yuv420p"
+                }
+            }
+            // Don't upscale - return nil to keep original resolution
+            return nil
+        case .p720:
+            let targetSize = 720
+            // Smart scaling: if portrait (height > width), scale by width; otherwise by height
+            // Never upscale - only downscale or maintain original resolution
+            if height > width {
+                // Portrait: check width
+                if width > targetSize {
+                    return "scale=w=\(targetSize):h=-2:out_range=tv,format=yuv420p"
+                }
+            } else {
+                // Landscape: check height
+                if height > targetSize {
+                    return "scale=w=-2:h=\(targetSize):out_range=tv,format=yuv420p"
+                }
+            }
+            // Don't upscale - return nil to keep original resolution
+            return nil
         }
     }
 }
@@ -687,20 +724,21 @@ class VideoProcessor: ObservableObject {
         if audioMappings.isEmpty {
             if keepEnglishAudioOnly {
                 // If no English/undefined tracks found, fall back to keeping all tracks
-                addLog("􀇾 No English/undefined audio found. Processing all audio tracks.")
+                addLog("􀇾 No English/undefined audio found. Trying all audio tracks.")
                 audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: false)
-                if audioMappings.isEmpty {
-                    addLog("􀁡 No audio tracks found. Skipping.")
-                    return (false, "No audio tracks found in file")
-                }
-            } else {
-                addLog("􀁡 No audio tracks found. Skipping.")
-                return (false, "No audio tracks found in file")
+            }
+
+            if audioMappings.isEmpty {
+                // No audio tracks at all - continue processing video-only
+                addLog("􀇾 No audio tracks found. Processing as video-only file.")
             }
         }
 
         // Get video codec
         let videoCodec = getVideoCodec(videoStreams: videoStreams)
+
+        // Get video dimensions
+        let videoDimensions = getVideoDimensions(videoStreams: videoStreams)
 
         // Check for AV1 in remux mode
         if mode == .remux && videoCodec == "av1" {
@@ -732,6 +770,8 @@ class VideoProcessor: ObservableObject {
             resolution: resolution,
             preset: preset,
             videoCodec: videoCodec,
+            videoWidth: videoDimensions?.width,
+            videoHeight: videoDimensions?.height,
             audioMappings: audioMappings,
             subtitleMappings: subtitleMappings
         )
@@ -828,6 +868,15 @@ class VideoProcessor: ObservableObject {
         return videoStreams.streams.first(where: { $0.codecType == "video" })?.codecName?.lowercased()
     }
 
+    private func getVideoDimensions(videoStreams: FFProbeOutput) -> (width: Int, height: Int)? {
+        guard let videoStream = videoStreams.streams.first(where: { $0.codecType == "video" }),
+              let width = videoStream.width,
+              let height = videoStream.height else {
+            return nil
+        }
+        return (width, height)
+    }
+
     private func getSubtitleMappings(
         subtitleStreams: FFProbeOutput,
         keepEnglishOnly: Bool
@@ -862,6 +911,8 @@ class VideoProcessor: ObservableObject {
         resolution: ResolutionOption = .default,
         preset: PresetOption = .fast,
         videoCodec: String?,
+        videoWidth: Int?,
+        videoHeight: Int?,
         audioMappings: [(index: Int, language: String?)],
         subtitleMappings: [(index: Int, language: String?)]
     ) -> [String] {
@@ -871,32 +922,65 @@ class VideoProcessor: ObservableObject {
             cmd = [
                 "-i", inputFile, "-y",
                 "-c:v", "libx265", "-x265-params", "log-level=0:threads=0", "-preset", preset.rawValue, "-crf", "\(crfValue)",
-                "-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-tag:v", "hvc1", "-movflags", "+faststart", "-loglevel", "quiet"
             ]
+            // Add audio codec parameters only if there are audio tracks
+            if !audioMappings.isEmpty {
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
+                }
+            } else {
+                // No audio tracks - add -an flag
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    cmd.insert("-an", at: insertIndex)
+                }
+            }
             // Add video filter for resolution scaling if needed
-            if let scaleFilter = resolution.scaleFilter {
+            if let width = videoWidth, let height = videoHeight,
+               let scaleFilter = resolution.scaleFilter(width: width, height: height) {
                 cmd.insert(contentsOf: ["-vf", scaleFilter], at: cmd.firstIndex(of: "-c:v") ?? 2)
             }
         } else if mode == .encodeH264 {
             cmd = [
                 "-i", inputFile, "-y",
                 "-c:v", "libx264", "-preset", preset.rawValue, "-crf", "\(crfValue)", "-threads", "0",
-                "-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-movflags", "+faststart", "-loglevel", "quiet"
             ]
+            // Add audio codec parameters only if there are audio tracks
+            if !audioMappings.isEmpty {
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
+                }
+            } else {
+                // No audio tracks - add -an flag
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    cmd.insert("-an", at: insertIndex)
+                }
+            }
             // Add video filter for resolution scaling if needed
-            if let scaleFilter = resolution.scaleFilter {
+            if let width = videoWidth, let height = videoHeight,
+               let scaleFilter = resolution.scaleFilter(width: width, height: height) {
                 cmd.insert(contentsOf: ["-vf", scaleFilter], at: cmd.firstIndex(of: "-c:v") ?? 2)
             }
         } else { // remux
             cmd = [
                 "-i", inputFile, "-y",
-                "-c:v", "copy", "-c:a", "copy", "-map", "0:v:0", "-map_metadata", "-1",
+                "-c:v", "copy", "-map", "0:v:0", "-map_metadata", "-1",
                 "-movflags", "+faststart", "-loglevel", "quiet"
             ]
+            // Add audio copy only if there are audio tracks
+            if !audioMappings.isEmpty {
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
+                }
+            } else {
+                // No audio tracks - add -an flag
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    cmd.insert("-an", at: insertIndex)
+                }
+            }
             if videoCodec == "hevc" {
                 cmd.append(contentsOf: ["-tag:v", "hvc1"])
             }
