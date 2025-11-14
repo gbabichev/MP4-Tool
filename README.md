@@ -78,6 +78,11 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.2.2
+- Enhanced resolution logic. Videos will no longer be upscaled if they are a smaller resolution than requested. 
+- Vertical videos are properly processed. 
+- Video status will reset if the same batch is re-processed.
+
 ### 1.2.1
 - Added toggle to switch between bundled FFMpeg & system FFmpeg, if the app is compiled with FFmpeg.
 
