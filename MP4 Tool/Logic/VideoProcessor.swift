@@ -59,8 +59,8 @@ enum ResolutionOption: String, CaseIterable {
     var scaleFilter: String? {
         switch self {
         case .default: return nil
-        case .p1080: return "scale=1920:1080:force_original_aspect_ratio=decrease"
-        case .p720: return "scale=1280:720:force_original_aspect_ratio=decrease"
+        case .p1080: return "scale=w=1920:h=1080:force_original_aspect_ratio=decrease:out_range=tv,format=yuv420p"
+        case .p720: return "scale=w=1280:h=720:force_original_aspect_ratio=decrease:out_range=tv,format=yuv420p"
         }
     }
 }
