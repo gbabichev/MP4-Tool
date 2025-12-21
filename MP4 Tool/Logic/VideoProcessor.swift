@@ -1561,6 +1561,33 @@ class VideoProcessor: ObservableObject {
                 break
             }
 
+            defer {
+                // Update progress
+                let scannedCount = index + 1
+                DispatchQueue.main.async {
+                    self.scanProgress = "Validating \(scannedCount)/\(totalMP4Files) files..."
+                }
+            }
+
+            if let videoStreams = await probeStreams(inputFile: fileURL.path, selectStreams: nil) {
+                let videoCodec = getVideoCodec(videoStreams: videoStreams)
+                if videoCodec == "av1" {
+                    invalidFiles.append((path: fileURL.path, reason: "AV1 video found - must be re-encoded"))
+                    continue
+                }
+            } else {
+                addLog("􀇾 Warning: Could not analyze video streams for \(fileURL.lastPathComponent)")
+            }
+
+            if let audioStreams = await probeStreams(inputFile: fileURL.path, selectStreams: "a") {
+                if hasDtsAudio(audioStreams: audioStreams, keepEnglishOnly: false) {
+                    invalidFiles.append((path: fileURL.path, reason: "DTS audio found - must be re-encoded"))
+                    continue
+                }
+            } else {
+                addLog("􀇾 Warning: Could not analyze audio streams for \(fileURL.lastPathComponent)")
+            }
+
             // Validate the MP4 file using AVFoundation
             let asset = AVURLAsset(url: fileURL)
 
@@ -1575,11 +1602,6 @@ class VideoProcessor: ObservableObject {
                 invalidFiles.append((path: fileURL.path, reason: "Could not load asset: \(error.localizedDescription)"))
             }
 
-            // Update progress
-            let scannedCount = index + 1
-            DispatchQueue.main.async {
-                self.scanProgress = "Validating \(scannedCount)/\(totalMP4Files) files..."
-            }
         }
 
         let wasCancelled = shouldCancelScan
