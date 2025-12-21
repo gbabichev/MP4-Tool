@@ -741,6 +741,12 @@ class VideoProcessor: ObservableObject {
             }
         }
 
+        // Check for DTS audio in remux mode
+        if mode == .remux && hasDtsAudio(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly) {
+            addLog("􀁡 DTS audio detected. Remux requires re-encoding.")
+            return (false, "DTS audio not supported in remux mode - must be re-encoded")
+        }
+
         // Get video codec
         let videoCodec = getVideoCodec(videoStreams: videoStreams)
 
@@ -868,6 +874,27 @@ class VideoProcessor: ObservableObject {
                 let language = stream.tags?["language"]?.lowercased()
                 return (index: stream.index, language: language)
             }
+        }
+    }
+
+    private func hasDtsAudio(audioStreams: FFProbeOutput, keepEnglishOnly: Bool) -> Bool {
+        let dtsCodecs: Set<String> = ["dts", "dts_hd_ma", "dts_hd_hra", "dts_es", "dca"]
+        let streams = audioStreams.streams
+
+        let filteredStreams: [VideoStream]
+        if keepEnglishOnly {
+            let englishStreams = streams.filter { stream in
+                let language = (stream.tags?["language"] ?? "und").lowercased()
+                return language == "eng" || language == "und"
+            }
+            filteredStreams = englishStreams.isEmpty ? streams : englishStreams
+        } else {
+            filteredStreams = streams
+        }
+
+        return filteredStreams.contains { stream in
+            guard let codec = stream.codecName?.lowercased() else { return false }
+            return dtsCodecs.contains(codec)
         }
     }
 
