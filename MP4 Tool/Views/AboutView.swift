@@ -1,26 +1,21 @@
 //
 //  AboutView.swift
-//  MP4 Tool
-//
-//  Created by George Babichev on 10/11/25.
+//  Screen Snip
 //
 
-/*
- AboutView.swift provides the About screen for the MP4 Tool app.
- It displays app branding, version info, copyright, and a link to the author's website.
- This view is intended to inform users about the app and its creator.
-*/
 
 import SwiftUI
 
 struct LiveAppIconView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var refreshID = UUID()
-
+    
     var body: some View {
         Image(nsImage: NSApp.applicationIconImage)
+            .resizable()
+            .scaledToFit()
             .id(refreshID) // force SwiftUI to re-evaluate the image
-            .frame(width: 124, height: 124)
+            .frame(width: 72, height: 72)
             .onChange(of: colorScheme) { _,_ in
                 // Let AppKit update its icon, then refresh the view
                 DispatchQueue.main.async {
@@ -30,71 +25,133 @@ struct LiveAppIconView: View {
     }
 }
 
-// MARK: - AboutView
-
-/// A view presenting information about the app, including branding, version, copyright, and author link.
 struct AboutView: View {
-    @Binding var isPresented: Bool
+    var body: some View {
+        VStack(spacing: 18) {
+            
+            LiveAppIconView()
+            
+            VStack(spacing: 4) {
+                Text("MP4 Tool")
+                    .font(.title.weight(.semibold))
+                Text("Video Conversion & Remux Utility")
+                    .foregroundColor(.secondary)
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                AboutRow(label: "Version", value: appVersion)
+                AboutRow(label: "Build", value: appBuild)
+                AboutRow(label: "Developer", value: "George Babichev")
+                AboutRow(label: "Copyright", value: "© \(Calendar.current.component(.year, from: Date())) George Babichev")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            if let devPhoto = NSImage(named: "gbabichev") {
+                HStack(spacing: 12) {
+                    Image(nsImage: devPhoto)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .offset(y: 6)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("George Babichev")
+                            .font(.headline)
+                        Link("georgebabichev.com", destination: URL(string: "https://georgebabichev.com")!)
+                            .font(.subheadline)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            Divider()
+            
+            Text("MP4 Tool is simple app that helps convert files to MP4 that are natively compatible on Apple Platforms.")
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(width: 380)
+    }
+    
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–"
+    }
+    
+    private var appBuild: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "–"
+    }
+}
 
+private struct AboutRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+        }
+    }
+}
+
+struct AboutOverlayView: View {
+    @Binding var isPresented: Bool
+    
     var body: some View {
         ZStack {
-            // Semi-transparent background overlay
-            Color.black.opacity(0.5)
+            // Match the subtle dimming used by system sheets instead of a full blurred wall.
+            Color.black.opacity(0.25)
                 .ignoresSafeArea()
-                .onTapGesture {
-                    isPresented = false
+                .onTapGesture { dismiss() }
+            
+            VStack {
+                ZStack(alignment: .topTrailing) {
+                    AboutView()
+                        .frame(maxWidth: 380)
+                        .background(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .fill(Color(NSColor.windowBackgroundColor))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.2), radius: 24, x: 0, y: 12)
+                    
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(12)
+                    .accessibilityLabel(Text("Close About"))
                 }
-
-            // Main vertical stack arranging all elements with spacing
-            VStack(spacing: 20) {
-                HStack(spacing: 10) {
-                    Image("gbabichev")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 120, height: 120)
-                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                        .shadow(radius: 10)
-
-                    LiveAppIconView()
-                }
-
-                // App name displayed prominently
-                Text("MP4 Tool")
-                    .font(.title)
-                    .bold()
-
-                Text("Video Conversion & Remux Utility")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-
-                Divider()
-                    .padding(.horizontal, 40)
-
-                // App version fetched dynamically from Info.plist; fallback to "1.0"
-                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
-                    .foregroundColor(.secondary)
-                    .font(.caption)
-
-                // Current year dynamically retrieved for copyright notice
-                Link("© \(String(Calendar.current.component(.year, from: Date()))) George Babichev", destination: URL(string: "https://georgebabichev.com")!)
-                    .font(.footnote)
-                    .foregroundColor(.accentColor)
-
-                Button {
-                    isPresented = false
-                } label: {
-                    Text("Close")
-                        .frame(width: 120)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
             }
             .padding(40)
-            .frame(width: 400)
-            .background(Color(nsColor: .windowBackgroundColor))
-            .cornerRadius(16)
-            .shadow(radius: 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .transition(.opacity)
+        .onExitCommand {
+            dismiss()
+        }
+    }
+    
+    private func dismiss() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isPresented = false
         }
     }
 }

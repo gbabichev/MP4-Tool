@@ -181,7 +181,7 @@ struct ContentView: View {
         }
         .overlay {
             if viewModel.showingAbout {
-                AboutView(isPresented: $viewModel.showingAbout)
+                AboutOverlayView(isPresented: $viewModel.showingAbout)
             }
         }
         .onAppear {
