@@ -79,7 +79,9 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 ## 📝 Changelog
 
 ### 1.2.3
-- App now throws errors in remux mode if DTS Audio is detected. DTS is not compatible on Apple Platforms.
+- Added DTS Review support. Apple platforms cannot natively play DTS, therefore we now check for it and throw an error. 
+ - App now throws errors in remux mode if DTS Audio is detected. DTS is not compatible on Apple Platforms.
+ - Validate MP4 Files tool now throws an error if DTS audio is deteceted. 
 
 ### 1.2.2
 - Enhanced resolution logic. Videos will no longer be upscaled if they are a smaller resolution than requested. 
