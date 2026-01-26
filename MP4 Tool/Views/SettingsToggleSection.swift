@@ -23,10 +23,11 @@ struct SettingsRow<Control: View>: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center) {
                 Text(title)
+                    .font(.subheadline)
                 Spacer(minLength: 16)
                 control
                     .labelsHidden()
-                    .controlSize(.large)
+                    .controlSize(.small)
             }
             .frame(minHeight: 35)
 

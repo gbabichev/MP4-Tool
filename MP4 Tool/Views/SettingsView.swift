@@ -20,10 +20,10 @@ struct SettingsView: View {
     @Binding var isExpanded: Bool
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             HStack {
                 Text("Settings")
-                    .font(.title2)
+                    .font(.title3)
                     .fontWeight(.semibold)
 
                 Spacer()
@@ -43,76 +43,82 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity)
 
-            SettingsRow("Mode", subtitle: "Choose encoding codec or remux without re-encoding") {
-                Picker("", selection: $selectedMode) {
-                    ForEach(ProcessingMode.allCases, id: \.self) { mode in
-                        Text(mode.description).tag(mode)
+            GroupBox {
+                VStack(spacing: 12) {
+                    SettingsRow("Mode", subtitle: "Choose encoding codec or remux without re-encoding") {
+                        Picker("", selection: $selectedMode) {
+                            ForEach(ProcessingMode.allCases, id: \.self) { mode in
+                                Text(mode.description).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(isProcessing)
                     }
-                }
-                .pickerStyle(.menu)
-                .disabled(isProcessing)
-            }
 
-            if selectedMode == .encodeH265 || selectedMode == .encodeH264 {
-                SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
-                    HStack {
-                        Slider(value: $crfValue, in: 0...50, step: 1)
-                            .frame(width: 200)
+                    if selectedMode == .encodeH265 || selectedMode == .encodeH264 {
+                        SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
+                            HStack {
+                                Slider(value: $crfValue, in: 0...50, step: 1)
+                                    .frame(width: 200)
+                                    .disabled(isProcessing)
+                                Text("\(Int(crfValue))")
+                                    .frame(width: 30)
+                                    .monospacedDigit()
+                            }
+                        }
+
+                        SettingsRow("Resolution", subtitle: "Scale video to specified resolution") {
+                            Picker("", selection: $selectedResolution) {
+                                ForEach(ResolutionOption.allCases, id: \.self) { resolution in
+                                    Text(resolution.description).tag(resolution)
+                                }
+                            }
+                            .pickerStyle(.menu)
                             .disabled(isProcessing)
-                        Text("\(Int(crfValue))")
-                            .frame(width: 30)
-                            .monospacedDigit()
-                    }
-                }
+                        }
 
-                SettingsRow("Resolution", subtitle: "Scale video to specified resolution") {
-                    Picker("", selection: $selectedResolution) {
-                        ForEach(ResolutionOption.allCases, id: \.self) { resolution in
-                            Text(resolution.description).tag(resolution)
+                        SettingsRow("Preset", subtitle: "Slower = better compression. Default: fast") {
+                            Picker("", selection: $selectedPreset) {
+                                ForEach(PresetOption.allCases, id: \.self) { preset in
+                                    Text(preset.description).tag(preset)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .disabled(isProcessing)
                         }
                     }
-                    .pickerStyle(.menu)
-                    .disabled(isProcessing)
-                }
 
-                SettingsRow("Preset", subtitle: "Slower = better compression. Default: fast") {
-                    Picker("", selection: $selectedPreset) {
-                        ForEach(PresetOption.allCases, id: \.self) { preset in
-                            Text(preset.description).tag(preset)
-                        }
+                    SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
+                        Toggle("", isOn: $createSubfolders)
+                            .toggleStyle(.switch)
+                            .disabled(isProcessing)
                     }
-                    .pickerStyle(.menu)
-                    .disabled(isProcessing)
+
+                    SettingsRow("Delete Original", subtitle: "Remove source files after successful conversion") {
+                        Toggle("", isOn: $deleteOriginal)
+                            .toggleStyle(.switch)
+                            .disabled(isProcessing)
+                    }
+
+                    SettingsRow("Keep English Audio Only", subtitle: "Ignore non-English audio tracks during processing") {
+                        Toggle("", isOn: $keepEnglishAudioOnly)
+                            .toggleStyle(.switch)
+                            .disabled(isProcessing)
+                    }
+
+                    SettingsRow("Keep English Subtitles Only", subtitle: "Ignore non-English subtitle tracks during processing") {
+                        Toggle("", isOn: $keepEnglishSubtitlesOnly)
+                            .toggleStyle(.switch)
+                            .disabled(isProcessing)
+                    }
+
+                    Spacer(minLength: 0)
                 }
+                .padding(.vertical, 4)
             }
-
-            SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
-                Toggle("", isOn: $createSubfolders)
-                    .toggleStyle(.switch)
-                    .disabled(isProcessing)
-            }
-
-            SettingsRow("Delete Original", subtitle: "Remove source files after successful conversion") {
-                Toggle("", isOn: $deleteOriginal)
-                    .toggleStyle(.switch)
-                    .disabled(isProcessing)
-            }
-
-            SettingsRow("Keep English Audio Only", subtitle: "Ignore non-English audio tracks during processing") {
-                Toggle("", isOn: $keepEnglishAudioOnly)
-                    .toggleStyle(.switch)
-                    .disabled(isProcessing)
-            }
-
-            SettingsRow("Keep English Subtitles Only", subtitle: "Ignore non-English subtitle tracks during processing") {
-                Toggle("", isOn: $keepEnglishSubtitlesOnly)
-                    .toggleStyle(.switch)
-                    .disabled(isProcessing)
-            }
-
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding()
+        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

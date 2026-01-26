@@ -9,6 +9,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
 import UserNotifications
+import Combine
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
@@ -25,6 +26,24 @@ struct ContentView: View {
     @AppStorage("isLogExpanded") private var isLogExpanded = true
     @AppStorage("isSettingsExpanded") private var isSettingsExpanded = true
     @State private var showFFmpegAlert = false
+
+    private var notificationPublisher: AnyPublisher<Notification, Never> {
+        let center = NotificationCenter.default
+        let publishers: [NotificationCenter.Publisher] = [
+            center.publisher(for: .openInputFolder),
+            center.publisher(for: .selectOutputFolder),
+            center.publisher(for: .startProcessing),
+            center.publisher(for: .scanForNonMP4),
+            center.publisher(for: .validateMP4Files),
+            center.publisher(for: .exportLog),
+            center.publisher(for: .clearFolders),
+            center.publisher(for: .showTutorial),
+            center.publisher(for: .showAbout),
+            center.publisher(for: .toggleFFmpegSource),
+            center.publisher(for: NSApplication.didBecomeActiveNotification)
+        ]
+        return Publishers.MergeMany(publishers).eraseToAnyPublisher()
+    }
     
     var mainContent: some View {
         HStack(spacing: 0) {
@@ -50,7 +69,7 @@ struct ContentView: View {
                 isExpanded: $isSettingsExpanded
             )
         }
-        .frame(minWidth: 800, minHeight: 450)
+        .frame(minWidth: 800, minHeight: 650)
         .safeAreaInset(edge: .bottom) {
             logPanel
         }
@@ -136,48 +155,46 @@ struct ContentView: View {
                     }
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .openInputFolder)) { _ in
-                viewModel.selectFolder(isInput: true)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .selectOutputFolder)) { _ in
-                viewModel.selectFolder(isInput: false)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .startProcessing)) { _ in
-                if viewModel.canStartProcessing && !viewModel.processor.isProcessing {
-                    viewModel.startProcessing(
-                        mode: selectedMode,
-                        crfValue: Int(crfValue),
-                        resolution: selectedResolution,
-                        preset: selectedPreset,
-                        createSubfolders: createSubfolders,
-                        deleteOriginal: deleteOriginal,
-                        keepEnglishAudioOnly: keepEnglishAudioOnly,
-                        keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
-                    )
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .scanForNonMP4)) { _ in
-                viewModel.scanForNonMP4Files()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .validateMP4Files)) { _ in
-                viewModel.validateMP4Files()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .exportLog)) { _ in
-                viewModel.exportLogToFile()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .clearFolders)) { _ in
-                viewModel.clearFolders()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .showTutorial)) { _ in
-                viewModel.showTutorial()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .showAbout)) { _ in
-                viewModel.showAbout()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                // Clear notifications only when app gets focus and processing is not active
-                if !viewModel.processor.isProcessing {
-                    viewModel.processor.clearProcessingNotifications()
+            .toolbarBackground(.hidden, for: .windowToolbar)
+            .onReceive(notificationPublisher) { notification in
+                switch notification.name {
+                case .openInputFolder:
+                    viewModel.selectFolder(isInput: true)
+                case .selectOutputFolder:
+                    viewModel.selectFolder(isInput: false)
+                case .startProcessing:
+                    if viewModel.canStartProcessing && !viewModel.processor.isProcessing {
+                        viewModel.startProcessing(
+                            mode: selectedMode,
+                            crfValue: Int(crfValue),
+                            resolution: selectedResolution,
+                            preset: selectedPreset,
+                            createSubfolders: createSubfolders,
+                            deleteOriginal: deleteOriginal,
+                            keepEnglishAudioOnly: keepEnglishAudioOnly,
+                            keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
+                        )
+                    }
+                case .scanForNonMP4:
+                    viewModel.scanForNonMP4Files()
+                case .validateMP4Files:
+                    viewModel.validateMP4Files()
+                case .exportLog:
+                    viewModel.exportLogToFile()
+                case .clearFolders:
+                    viewModel.clearFolders()
+                case .showTutorial:
+                    viewModel.showTutorial()
+                case .showAbout:
+                    viewModel.showAbout()
+                case .toggleFFmpegSource:
+                    viewModel.toggleFFmpegSource()
+                case NSApplication.didBecomeActiveNotification:
+                    if !viewModel.processor.isProcessing {
+                        viewModel.processor.clearProcessingNotifications()
+                    }
+                default:
+                    break
                 }
             }
             .overlay {
@@ -203,17 +220,6 @@ struct ContentView: View {
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error = error {
                         print("Error requesting notification permission: \(error)")
-                    }
-                }
-                
-                // Subscribe to FFmpeg toggle notification
-                NotificationCenter.default.addObserver(
-                    forName: .toggleFFmpegSource,
-                    object: nil,
-                    queue: .main
-                ) { [viewModel] _ in
-                    MainActor.assumeIsolated {
-                        viewModel.toggleFFmpegSource()
                     }
                 }
             }
@@ -330,7 +336,6 @@ struct CollapsedLogPanel: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 

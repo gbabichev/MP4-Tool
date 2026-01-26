@@ -28,7 +28,6 @@ struct MP4_ToolApp: App {
             ContentView()
                 .environmentObject(appState)
         }
-        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(action: {
@@ -90,8 +89,15 @@ struct MP4_ToolApp: App {
 
                     Divider()
                 }
+                
+                Button(action: {
+                    openWindow(id: "videoSplitter")
+                }) {
+                    Label("Video Splitter", systemImage: "scissors")
+                }
 
-
+                Divider()
+                
                 Button(action: {
                     NotificationCenter.default.post(name: .scanForNonMP4, object: nil)
                 }) {
@@ -124,6 +130,11 @@ struct MP4_ToolApp: App {
                 }
                 .keyboardShortcut("/", modifiers: .command)
             }
+        }
+        
+        Window("Video Splitter", id: "videoSplitter") {
+            VideoSplitterView()
+                .environmentObject(appState)
         }
     }
 }

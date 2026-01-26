@@ -78,6 +78,10 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.3.0
+- Added Video Splitter tool. 
+ - Video Splitter takes a single MP4 file which contains multiple episodes, finds black space in the middle and splits the file into two episdoes while automatically renaming.
+
 ### 1.2.3
 - Added DTS Review support. Apple platforms cannot natively play DTS, therefore we now check for it and throw an error. 
  - App now throws errors in remux mode if DTS Audio is detected. DTS is not compatible on Apple Platforms.
