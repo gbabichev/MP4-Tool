@@ -33,6 +33,7 @@ final class VideoSplitterViewModel: ObservableObject {
     @Published var scanAlertText = ""
     @Published var results: [VideoSplitCandidate] = []
     @Published var selectedResultIDs: Set<UUID> = []
+    @Published var manualSplitOverrides: [UUID: String] = [:]
     @Published var isSplitting = false
     @Published var splitProgress = ""
     @Published var ffmpegAvailable = false
@@ -92,6 +93,7 @@ final class VideoSplitterViewModel: ObservableObject {
         clampSettings()
         results = []
         selectedResultIDs = []
+        manualSplitOverrides = [:]
         scanProgress = "Preparing scan..."
         scanAlertText = ""
         isScanning = true
@@ -243,7 +245,8 @@ final class VideoSplitterViewModel: ObservableObject {
             let output1 = (outputFolderPath as NSString).appendingPathComponent(outputNames.first)
             let output2 = (outputFolderPath as NSString).appendingPathComponent(outputNames.second)
 
-            let splitTime = result.splitTimeLabel
+            let splitSeconds = manualSplitSeconds(for: result) ?? result.splitTimeSeconds
+            let splitTime = formatTime(splitSeconds)
 
             let cmd1 = [
                 "-ss", "00:00:00",
@@ -284,9 +287,48 @@ final class VideoSplitterViewModel: ObservableObject {
         return "\(names.first)  •  \(names.second)"
     }
 
+    func effectiveSplitTimeLabel(for result: VideoSplitCandidate) -> String {
+        if let manualSeconds = manualSplitSeconds(for: result) {
+            return formatTime(manualSeconds)
+        }
+        return result.splitTimeLabel
+    }
+
+    func manualSplitTimeIsValid(for result: VideoSplitCandidate) -> Bool {
+        manualSplitSeconds(for: result) != nil
+    }
+
+    func manualSplitTimeText(for id: UUID) -> String {
+        manualSplitOverrides[id] ?? ""
+    }
+
+    func setManualSplitTimeText(_ text: String, for id: UUID) {
+        manualSplitOverrides[id] = text
+    }
+
     private func orderedResultsForNaming() -> [VideoSplitCandidate] {
         let selectedResults = results.filter { selectedResultIDs.contains($0.id) }
         return selectedResults.isEmpty ? results : selectedResults
+    }
+
+    private func manualSplitSeconds(for result: VideoSplitCandidate) -> TimeInterval? {
+        parseManualSplitTime(manualSplitOverrides[result.id] ?? "")
+    }
+
+    private func parseManualSplitTime(_ text: String) -> TimeInterval? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return nil
+        }
+        let parts = trimmed.split(separator: ":")
+        guard parts.count == 2,
+              let minutes = Int(parts[0]),
+              let seconds = Int(parts[1]),
+              minutes >= 0,
+              (0...59).contains(seconds) else {
+            return nil
+        }
+        return TimeInterval(minutes * 60 + seconds)
     }
 
     private func buildSequentialNameMap(for orderedResults: [VideoSplitCandidate]) -> [UUID: (first: String, second: String)]? {

@@ -128,37 +128,54 @@ struct VideoSplitterView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .padding(.vertical, 12)
                 } else {
-                    List(viewModel.results) { result in
-                        HStack(spacing: 12) {
-                            Toggle(isOn: Binding(
-                                get: { viewModel.selectedResultIDs.contains(result.id) },
-                                set: { isSelected in
-                                    if isSelected {
-                                        viewModel.selectedResultIDs.insert(result.id)
-                                    } else {
-                                        viewModel.selectedResultIDs.remove(result.id)
+                    List {
+                        ForEach(viewModel.results) { result in
+                            HStack(spacing: 12) {
+                                Toggle(isOn: Binding(
+                                    get: { viewModel.selectedResultIDs.contains(result.id) },
+                                    set: { isSelected in
+                                        if isSelected {
+                                            viewModel.selectedResultIDs.insert(result.id)
+                                        } else {
+                                            viewModel.selectedResultIDs.remove(result.id)
+                                        }
+                                    }
+                                )) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(result.fileName)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                        Text(viewModel.outputPreview(for: result))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
                                     }
                                 }
-                            )) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(result.fileName)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                    Text(viewModel.outputPreview(for: result))
-                                        .font(.caption)
+                                .toggleStyle(.checkbox)
+
+                                Spacer()
+
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    TextField("mm:ss", text: Binding(
+                                        get: { viewModel.manualSplitTimeText(for: result.id) },
+                                        set: { viewModel.setManualSplitTimeText($0, for: result.id) }
+                                    ))
+                                        .font(.system(.caption, design: .monospaced))
+                                        .frame(width: 70)
+                                        .textFieldStyle(.roundedBorder)
+                                        .controlSize(.small)
+                                    Text("Auto: \(result.splitTimeLabel)")
+                                        .font(.caption2)
                                         .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
+                                    if !viewModel.manualSplitTimeText(for: result.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                       !viewModel.manualSplitTimeIsValid(for: result) {
+                                        Text("Invalid")
+                                            .font(.caption2)
+                                            .foregroundStyle(.red)
+                                    }
                                 }
                             }
-                            .toggleStyle(.checkbox)
-
-                            Spacer()
-
-                            Text(result.splitTimeLabel)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 90, alignment: .trailing)
                         }
                     }
                 }
