@@ -95,7 +95,7 @@ struct VideoSplitterView: View {
 
                         SettingWithCaption(
                             title: "Halfway Window (min)",
-                            caption: "Total window size to scan around 50% of the video.",
+                            caption: "Total window centered on 50% (e.g., 6 min = 3 before + 3 after).",
                             value: $viewModel.halfwayWindowMinutes,
                             format: .number.precision(.fractionLength(0)),
                             range: 1...60
