@@ -9,40 +9,117 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
 import UserNotifications
-import Combine
+
+struct WindowCommandHandler {
+    let openInputFolder: () -> Void
+    let selectOutputFolder: () -> Void
+    let clearFolders: () -> Void
+    let startProcessing: () -> Void
+    let scanForNonMP4Files: () -> Void
+    let validateMP4Files: () -> Void
+    let exportLog: () -> Void
+    let showTutorial: () -> Void
+    let showAbout: () -> Void
+    let toggleFFmpegSource: () -> Void
+    let canStartProcessing: Bool
+    let isProcessing: Bool
+    let canClearFolders: Bool
+    let canExportLog: Bool
+    let canToggleFFmpeg: Bool
+}
+
+private struct WindowCommandHandlerKey: FocusedValueKey {
+    typealias Value = WindowCommandHandler
+}
+
+extension FocusedValues {
+    var windowCommandHandler: WindowCommandHandler? {
+        get { self[WindowCommandHandlerKey.self] }
+        set { self[WindowCommandHandlerKey.self] = newValue }
+    }
+}
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
-    @EnvironmentObject var appState: AppState
-    @AppStorage("selectedMode") private var selectedMode: ProcessingMode = .encodeH265
-    @AppStorage("crfValue") private var crfValue: Double = 23
-    @AppStorage("selectedResolution") private var selectedResolution: ResolutionOption = .default
-    @AppStorage("selectedPreset") private var selectedPreset: PresetOption = .fast
-    @AppStorage("createSubfolders") private var createSubfolders: Bool = false
-    @AppStorage("deleteOriginal") private var deleteOriginal: Bool = true
-    @AppStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
-    @AppStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
+    @Environment(\.scenePhase) private var scenePhase
+    @SceneStorage("selectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
+    @SceneStorage("crfValue") private var crfValue: Double = 23
+    @SceneStorage("selectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
+    @SceneStorage("selectedPreset") private var selectedPresetRaw: String = PresetOption.fast.rawValue
+    @SceneStorage("createSubfolders") private var createSubfolders: Bool = false
+    @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = true
+    @SceneStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
+    @SceneStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
-    @AppStorage("isLogExpanded") private var isLogExpanded = true
-    @AppStorage("isSettingsExpanded") private var isSettingsExpanded = true
-    @State private var showFFmpegAlert = false
+    @SceneStorage("isLogExpanded") private var isLogExpanded = true
+    @SceneStorage("isSettingsExpanded") private var isSettingsExpanded = true
 
-    private var notificationPublisher: AnyPublisher<Notification, Never> {
-        let center = NotificationCenter.default
-        let publishers: [NotificationCenter.Publisher] = [
-            center.publisher(for: .openInputFolder),
-            center.publisher(for: .selectOutputFolder),
-            center.publisher(for: .startProcessing),
-            center.publisher(for: .scanForNonMP4),
-            center.publisher(for: .validateMP4Files),
-            center.publisher(for: .exportLog),
-            center.publisher(for: .clearFolders),
-            center.publisher(for: .showTutorial),
-            center.publisher(for: .showAbout),
-            center.publisher(for: .toggleFFmpegSource),
-            center.publisher(for: NSApplication.didBecomeActiveNotification)
-        ]
-        return Publishers.MergeMany(publishers).eraseToAnyPublisher()
+    private var selectedMode: ProcessingMode {
+        get { ProcessingMode(rawValue: selectedModeRaw) ?? .encodeH265 }
+        set { selectedModeRaw = newValue.rawValue }
+    }
+
+    private var selectedResolution: ResolutionOption {
+        get { ResolutionOption(rawValue: selectedResolutionRaw) ?? .default }
+        set { selectedResolutionRaw = newValue.rawValue }
+    }
+
+    private var selectedPreset: PresetOption {
+        get { PresetOption(rawValue: selectedPresetRaw) ?? .fast }
+        set { selectedPresetRaw = newValue.rawValue }
+    }
+
+    private var selectedModeBinding: Binding<ProcessingMode> {
+        Binding(
+            get: { ProcessingMode(rawValue: selectedModeRaw) ?? .encodeH265 },
+            set: { selectedModeRaw = $0.rawValue }
+        )
+    }
+
+    private var selectedResolutionBinding: Binding<ResolutionOption> {
+        Binding(
+            get: { ResolutionOption(rawValue: selectedResolutionRaw) ?? .default },
+            set: { selectedResolutionRaw = $0.rawValue }
+        )
+    }
+
+    private var selectedPresetBinding: Binding<PresetOption> {
+        Binding(
+            get: { PresetOption(rawValue: selectedPresetRaw) ?? .fast },
+            set: { selectedPresetRaw = $0.rawValue }
+        )
+    }
+
+    private var commandHandler: WindowCommandHandler {
+        WindowCommandHandler(
+            openInputFolder: { viewModel.selectFolder(isInput: true) },
+            selectOutputFolder: { viewModel.selectFolder(isInput: false) },
+            clearFolders: { viewModel.clearFolders() },
+            startProcessing: {
+                guard viewModel.canStartProcessing, !viewModel.processor.isProcessing else { return }
+                viewModel.startProcessing(
+                    mode: selectedMode,
+                    crfValue: Int(crfValue),
+                    resolution: selectedResolution,
+                    preset: selectedPreset,
+                    createSubfolders: createSubfolders,
+                    deleteOriginal: deleteOriginal,
+                    keepEnglishAudioOnly: keepEnglishAudioOnly,
+                    keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
+                )
+            },
+            scanForNonMP4Files: { viewModel.scanForNonMP4Files() },
+            validateMP4Files: { viewModel.validateMP4Files() },
+            exportLog: { viewModel.exportLogToFile() },
+            showTutorial: { viewModel.showTutorial() },
+            showAbout: { viewModel.showAbout() },
+            toggleFFmpegSource: { viewModel.toggleFFmpegSource() },
+            canStartProcessing: viewModel.canStartProcessing,
+            isProcessing: viewModel.processor.isProcessing,
+            canClearFolders: !(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty),
+            canExportLog: !viewModel.processor.logText.isEmpty,
+            canToggleFFmpeg: viewModel.processor.hasBundledFFmpeg && viewModel.processor.hasSystemFFmpeg
+        )
     }
     
     var mainContent: some View {
@@ -57,10 +134,10 @@ struct ContentView: View {
             
             // Settings - Right Side
             SettingsPanelContainer(
-                selectedMode: $selectedMode,
+                selectedMode: selectedModeBinding,
                 crfValue: $crfValue,
-                selectedResolution: $selectedResolution,
-                selectedPreset: $selectedPreset,
+                selectedResolution: selectedResolutionBinding,
+                selectedPreset: selectedPresetBinding,
                 createSubfolders: $createSubfolders,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
@@ -156,47 +233,7 @@ struct ContentView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .windowToolbar)
-            .onReceive(notificationPublisher) { notification in
-                switch notification.name {
-                case .openInputFolder:
-                    viewModel.selectFolder(isInput: true)
-                case .selectOutputFolder:
-                    viewModel.selectFolder(isInput: false)
-                case .startProcessing:
-                    if viewModel.canStartProcessing && !viewModel.processor.isProcessing {
-                        viewModel.startProcessing(
-                            mode: selectedMode,
-                            crfValue: Int(crfValue),
-                            resolution: selectedResolution,
-                            preset: selectedPreset,
-                            createSubfolders: createSubfolders,
-                            deleteOriginal: deleteOriginal,
-                            keepEnglishAudioOnly: keepEnglishAudioOnly,
-                            keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
-                        )
-                    }
-                case .scanForNonMP4:
-                    viewModel.scanForNonMP4Files()
-                case .validateMP4Files:
-                    viewModel.validateMP4Files()
-                case .exportLog:
-                    viewModel.exportLogToFile()
-                case .clearFolders:
-                    viewModel.clearFolders()
-                case .showTutorial:
-                    viewModel.showTutorial()
-                case .showAbout:
-                    viewModel.showAbout()
-                case .toggleFFmpegSource:
-                    viewModel.toggleFFmpegSource()
-                case NSApplication.didBecomeActiveNotification:
-                    if !viewModel.processor.isProcessing {
-                        viewModel.processor.clearProcessingNotifications()
-                    }
-                default:
-                    break
-                }
-            }
+            .focusedSceneValue(\.windowCommandHandler, commandHandler)
             .overlay {
                 if viewModel.showingTutorial {
                     TutorialView(isPresented: $viewModel.showingTutorial)
@@ -211,17 +248,17 @@ struct ContentView: View {
                 if !hasSeenTutorial {
                     viewModel.showingTutorial = true
                 }
-                
-                // Set FFmpeg availability state in app state
-                appState.hasBundledFFmpeg = viewModel.processor.hasBundledFFmpeg
-                appState.hasSystemFFmpeg = viewModel.processor.hasSystemFFmpeg
-                
+
                 // Request notification permissions
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error = error {
                         print("Error requesting notification permission: \(error)")
                     }
                 }
+            }
+            .onChange(of: scenePhase, initial: false) { _, newPhase in
+                guard newPhase == .active, !viewModel.processor.isProcessing else { return }
+                viewModel.processor.clearProcessingNotifications()
             }
             .fileExporter(
                 isPresented: $viewModel.showingLogExporter,

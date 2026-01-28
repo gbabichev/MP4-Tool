@@ -6,35 +6,24 @@
 //
 
 import SwiftUI
-import Combine
-
-class AppState: ObservableObject {
-    @Published var hasBundledFFmpeg: Bool = false
-    @Published var hasSystemFFmpeg: Bool = false
-
-    var canToggleFFmpeg: Bool {
-        // Only enable toggle if both bundled AND system FFmpeg are available
-        return hasBundledFFmpeg && hasSystemFFmpeg
-    }
-}
 
 @main
 struct MP4_ToolApp: App {
     @Environment(\.openWindow) private var openWindow
-    @StateObject private var appState = AppState()
+    @FocusedValue(\.windowCommandHandler) private var windowCommandHandler
 
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
-                .environmentObject(appState)
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(action: {
-                    NotificationCenter.default.post(name: .showAbout, object: nil)
+                    windowCommandHandler?.showAbout()
                 }) {
                     Text("About MP4 Tool")
                 }
+                .disabled(windowCommandHandler == nil)
             }
 
             CommandGroup(replacing: .newItem) {
@@ -46,42 +35,46 @@ struct MP4_ToolApp: App {
                 .keyboardShortcut("n", modifiers: .command)
 
                 Button(action: {
-                    NotificationCenter.default.post(name: .openInputFolder, object: nil)
+                    windowCommandHandler?.openInputFolder()
                 }) {
                     Label("Open Input Folder...", systemImage: "folder")
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                .disabled(windowCommandHandler?.isProcessing ?? true)
 
                 Button(action: {
-                    NotificationCenter.default.post(name: .selectOutputFolder, object: nil)
+                    windowCommandHandler?.selectOutputFolder()
                 }) {
                     Label("Select Output Folder...", systemImage: "folder.badge.gearshape")
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+                .disabled(windowCommandHandler?.isProcessing ?? true)
 
                 Divider()
 
                 Button(action: {
-                    NotificationCenter.default.post(name: .clearFolders, object: nil)
+                    windowCommandHandler?.clearFolders()
                 }) {
                     Label("Clear List", systemImage: "arrow.counterclockwise")
                 }
                 .keyboardShortcut("l", modifiers: .command)
+                .disabled(!(windowCommandHandler?.canClearFolders ?? false) || (windowCommandHandler?.isProcessing ?? false))
             }
 
             CommandMenu("Tools") {
                 Button(action: {
-                    NotificationCenter.default.post(name: .startProcessing, object: nil)
+                    windowCommandHandler?.startProcessing()
                 }) {
                     Label("Process", systemImage: "play.fill")
                 }
                 .keyboardShortcut("p", modifiers: .command)
+                .disabled(!(windowCommandHandler?.canStartProcessing ?? false) || (windowCommandHandler?.isProcessing ?? false))
 
                 Divider()
 
-                if appState.canToggleFFmpeg {
+                if windowCommandHandler?.canToggleFFmpeg == true {
                     Button(action: {
-                        NotificationCenter.default.post(name: .toggleFFmpegSource, object: nil)
+                        windowCommandHandler?.toggleFFmpegSource()
                     }) {
                         Label("Toggle FFmpeg Source", systemImage: "arrow.triangle.swap")
                     }
@@ -99,55 +92,45 @@ struct MP4_ToolApp: App {
                 Divider()
                 
                 Button(action: {
-                    NotificationCenter.default.post(name: .scanForNonMP4, object: nil)
+                    windowCommandHandler?.scanForNonMP4Files()
                 }) {
                     Label("Scan for Non-MP4 Files...", systemImage: "magnifyingglass")
                 }
                 .keyboardShortcut("S", modifiers: [.command, .shift])
+                .disabled(windowCommandHandler?.isProcessing ?? true)
 
                 Button(action: {
-                    NotificationCenter.default.post(name: .validateMP4Files, object: nil)
+                    windowCommandHandler?.validateMP4Files()
                 }) {
                     Label("Validate MP4 Files...", systemImage: "checkmark.circle")
                 }
                 .keyboardShortcut("V", modifiers: [.command, .shift])
+                .disabled(windowCommandHandler?.isProcessing ?? true)
 
                 Divider()
 
                 Button(action: {
-                    NotificationCenter.default.post(name: .exportLog, object: nil)
+                    windowCommandHandler?.exportLog()
                 }) {
                     Label("Export Log to TXT...", systemImage: "square.and.arrow.up")
                 }
                 .keyboardShortcut("E", modifiers: [.command, .shift])
+                .disabled(!(windowCommandHandler?.canExportLog ?? false))
             }
 
             CommandGroup(after: .help) {
                 Button(action: {
-                    NotificationCenter.default.post(name: .showTutorial, object: nil)
+                    windowCommandHandler?.showTutorial()
                 }) {
                     Label("Tutorial", systemImage: "lightbulb.fill")
                 }
                 .keyboardShortcut("/", modifiers: .command)
+                .disabled(windowCommandHandler == nil)
             }
         }
         
         Window("Video Splitter", id: "videoSplitter") {
             VideoSplitterView()
-                .environmentObject(appState)
         }
     }
-}
-
-extension Notification.Name {
-    static let openInputFolder = Notification.Name("openInputFolder")
-    static let selectOutputFolder = Notification.Name("selectOutputFolder")
-    static let clearFolders = Notification.Name("clearFolders")
-    static let startProcessing = Notification.Name("startProcessing")
-    static let scanForNonMP4 = Notification.Name("scanForNonMP4")
-    static let validateMP4Files = Notification.Name("validateMP4Files")
-    static let exportLog = Notification.Name("exportLog")
-    static let showTutorial = Notification.Name("showTutorial")
-    static let showAbout = Notification.Name("showAbout")
-    static let toggleFFmpegSource = Notification.Name("toggleFFmpegSource")
 }
