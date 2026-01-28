@@ -28,6 +28,19 @@ struct WindowCommandHandler {
     let canToggleFFmpeg: Bool
 }
 
+private struct DefaultsSnapshot: Equatable {
+    let selectedModeRaw: String
+    let crfValue: Double
+    let selectedResolutionRaw: String
+    let selectedPresetRaw: String
+    let createSubfolders: Bool
+    let deleteOriginal: Bool
+    let keepEnglishAudioOnly: Bool
+    let keepEnglishSubtitlesOnly: Bool
+    let isLogExpanded: Bool
+    let isSettingsExpanded: Bool
+}
+
 private struct WindowCommandHandlerKey: FocusedValueKey {
     typealias Value = WindowCommandHandler
 }
@@ -50,9 +63,20 @@ struct ContentView: View {
     @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @SceneStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @SceneStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
-    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @SceneStorage("isLogExpanded") private var isLogExpanded = true
     @SceneStorage("isSettingsExpanded") private var isSettingsExpanded = true
+    @SceneStorage("didInitializeWindowDefaults") private var didInitializeWindowDefaults = false
+    @AppStorage("defaultSelectedMode") private var defaultSelectedModeRaw: String = ProcessingMode.encodeH265.rawValue
+    @AppStorage("defaultCrfValue") private var defaultCrfValue: Double = 23
+    @AppStorage("defaultSelectedResolution") private var defaultSelectedResolutionRaw: String = ResolutionOption.default.rawValue
+    @AppStorage("defaultSelectedPreset") private var defaultSelectedPresetRaw: String = PresetOption.fast.rawValue
+    @AppStorage("defaultCreateSubfolders") private var defaultCreateSubfolders: Bool = false
+    @AppStorage("defaultDeleteOriginal") private var defaultDeleteOriginal: Bool = true
+    @AppStorage("defaultKeepEnglishAudioOnly") private var defaultKeepEnglishAudioOnly: Bool = true
+    @AppStorage("defaultKeepEnglishSubtitlesOnly") private var defaultKeepEnglishSubtitlesOnly: Bool = true
+    @AppStorage("defaultIsLogExpanded") private var defaultIsLogExpanded = true
+    @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = true
+    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
     private var selectedMode: ProcessingMode {
         get { ProcessingMode(rawValue: selectedModeRaw) ?? .encodeH265 }
@@ -119,6 +143,21 @@ struct ContentView: View {
             canClearFolders: !(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty),
             canExportLog: !viewModel.processor.logText.isEmpty,
             canToggleFFmpeg: viewModel.processor.hasBundledFFmpeg && viewModel.processor.hasSystemFFmpeg
+        )
+    }
+
+    private var defaultsSnapshot: DefaultsSnapshot {
+        DefaultsSnapshot(
+            selectedModeRaw: selectedModeRaw,
+            crfValue: crfValue,
+            selectedResolutionRaw: selectedResolutionRaw,
+            selectedPresetRaw: selectedPresetRaw,
+            createSubfolders: createSubfolders,
+            deleteOriginal: deleteOriginal,
+            keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            isLogExpanded: isLogExpanded,
+            isSettingsExpanded: isSettingsExpanded
         )
     }
     
@@ -249,12 +288,38 @@ struct ContentView: View {
                     viewModel.showingTutorial = true
                 }
 
+                if !didInitializeWindowDefaults {
+                    selectedModeRaw = defaultSelectedModeRaw
+                    crfValue = defaultCrfValue
+                    selectedResolutionRaw = defaultSelectedResolutionRaw
+                    selectedPresetRaw = defaultSelectedPresetRaw
+                    createSubfolders = defaultCreateSubfolders
+                    deleteOriginal = defaultDeleteOriginal
+                    keepEnglishAudioOnly = defaultKeepEnglishAudioOnly
+                    keepEnglishSubtitlesOnly = defaultKeepEnglishSubtitlesOnly
+                    isLogExpanded = defaultIsLogExpanded
+                    isSettingsExpanded = defaultIsSettingsExpanded
+                    didInitializeWindowDefaults = true
+                }
+                
                 // Request notification permissions
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error = error {
                         print("Error requesting notification permission: \(error)")
                     }
                 }
+            }
+            .onChange(of: defaultsSnapshot) { _, newValue in
+                defaultSelectedModeRaw = newValue.selectedModeRaw
+                defaultCrfValue = newValue.crfValue
+                defaultSelectedResolutionRaw = newValue.selectedResolutionRaw
+                defaultSelectedPresetRaw = newValue.selectedPresetRaw
+                defaultCreateSubfolders = newValue.createSubfolders
+                defaultDeleteOriginal = newValue.deleteOriginal
+                defaultKeepEnglishAudioOnly = newValue.keepEnglishAudioOnly
+                defaultKeepEnglishSubtitlesOnly = newValue.keepEnglishSubtitlesOnly
+                defaultIsLogExpanded = newValue.isLogExpanded
+                defaultIsSettingsExpanded = newValue.isSettingsExpanded
             }
             .onChange(of: scenePhase, initial: false) { _, newPhase in
                 guard newPhase == .active, !viewModel.processor.isProcessing else { return }
