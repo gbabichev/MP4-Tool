@@ -16,6 +16,7 @@
     <a href="Documentation/App1.png"><img src="Documentation/App1.png" width="35%"></a>
     <a href="Documentation/App2.png"><img src="Documentation/App2.png" width="35%"></a>
     <a href="Documentation/App3.png"><img src="Documentation/App3.png" width="35%"></a>
+    <a href="Documentation/App4.png"><img src="Documentation/App4.png" width="35%"></a>
 
 </p>
 
@@ -81,6 +82,7 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 ### 1.3.0
 - Added Video Splitter tool. 
  - Video Splitter takes a single MP4 file which contains multiple episodes, finds black space in the middle and splits the file into two episdoes while automatically renaming.
+- Added support for multiple MP4 Tool Windows, so you can do a video action & use tools at the same time.
 
 ### 1.2.3
 - Added DTS Review support. Apple platforms cannot natively play DTS, therefore we now check for it and throw an error. 
