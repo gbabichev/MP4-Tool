@@ -91,8 +91,8 @@ echo "==================================="
 
 FFMPEG_REMOTE="https://git.ffmpeg.org/ffmpeg.git"
 FFMPEG_DIR="ffmpeg"
-FFMPEG_TAG="${FFMPEG_TAG:-n8.0}"                  # expected FFmpeg tag name
-FFMPEG_BRANCH="${FFMPEG_BRANCH:-release/8.0}"     # fallback branch name
+FFMPEG_TAG="${FFMPEG_TAG:-n8.0.1}"                  # expected FFmpeg tag name
+FFMPEG_BRANCH="${FFMPEG_BRANCH:-release/8.0.1}"     # fallback branch name
 FFMPEG_OID="${FFMPEG_OID:-a4044e04486d1136022498891088a90baf5b2775}" # your link's object id
 
 if [ ! -d "$FFMPEG_DIR/.git" ]; then
