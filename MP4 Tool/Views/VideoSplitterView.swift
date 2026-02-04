@@ -167,7 +167,7 @@ struct VideoSplitterView: View {
                                         .controlSize(.small)
                                     Text("Auto: \(result.splitTimeLabel)")
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(result.hasAutoSplit ? Color.secondary : Color.red)
                                     if !viewModel.manualSplitTimeText(for: result.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                                        !viewModel.manualSplitTimeIsValid(for: result) {
                                         Text("Invalid")

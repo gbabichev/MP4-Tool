@@ -16,6 +16,7 @@ struct VideoSplitCandidate: Identifiable {
     let filePath: String
     let splitTimeSeconds: TimeInterval
     let splitTimeLabel: String
+    let hasAutoSplit: Bool
 }
 
 @MainActor
@@ -57,7 +58,16 @@ final class VideoSplitterViewModel: ObservableObject {
     }
 
     var canSplit: Bool {
-        !outputFolderPath.isEmpty && !selectedResultIDs.isEmpty && ffmpegAvailable && !isScanning && !isSplitting
+        guard !outputFolderPath.isEmpty, ffmpegAvailable, !isScanning, !isSplitting else {
+            return false
+        }
+
+        let selectedResults = results.filter { selectedResultIDs.contains($0.id) }
+        guard !selectedResults.isEmpty else {
+            return false
+        }
+
+        return selectedResults.allSatisfy { hasValidSplitTime(for: $0) }
     }
     
     var canCancelScan: Bool {
@@ -191,7 +201,17 @@ final class VideoSplitterViewModel: ObservableObject {
                     fileName: fileName,
                     filePath: filePath,
                     splitTimeSeconds: splitTime,
-                    splitTimeLabel: timeLabel
+                    splitTimeLabel: timeLabel,
+                    hasAutoSplit: true
+                )
+                results.append(candidate)
+            } else {
+                let candidate = VideoSplitCandidate(
+                    fileName: fileName,
+                    filePath: filePath,
+                    splitTimeSeconds: 0,
+                    splitTimeLabel: "Not found",
+                    hasAutoSplit: false
                 )
                 results.append(candidate)
             }
@@ -203,15 +223,17 @@ final class VideoSplitterViewModel: ObservableObject {
             return
         }
 
-        if results.isEmpty {
+        let autoSplitCount = results.filter { $0.hasAutoSplit }.count
+
+        if autoSplitCount == 0 {
             scanProgress = "No split points found."
         } else {
-            scanProgress = "Found \(results.count) split point(s)."
-            selectedResultIDs = Set(results.map { $0.id })
+            scanProgress = "Found \(autoSplitCount) split point(s)."
+            selectedResultIDs = Set(results.filter { $0.hasAutoSplit }.map { $0.id })
         }
 
-        if results.count != videoFiles.count {
-            scanAlertText = "Split points found for \(results.count) of \(videoFiles.count) files."
+        if autoSplitCount != videoFiles.count {
+            scanAlertText = "Split points found for \(autoSplitCount) of \(videoFiles.count) files."
         } else {
             scanAlertText = ""
         }
@@ -229,6 +251,14 @@ final class VideoSplitterViewModel: ObservableObject {
 
         let selectedResults = results.filter { selectedResultIDs.contains($0.id) }
         if selectedResults.isEmpty {
+            splitProgress = ""
+            isSplitting = false
+            return
+        }
+
+        let missingManual = selectedResults.filter { !hasValidSplitTime(for: $0) }
+        if !missingManual.isEmpty {
+            showAlert(title: "Manual Split Required", message: "Enter a split time (mm:ss) for files without an auto-detected split before splitting.")
             splitProgress = ""
             isSplitting = false
             return
@@ -313,6 +343,10 @@ final class VideoSplitterViewModel: ObservableObject {
 
     private func manualSplitSeconds(for result: VideoSplitCandidate) -> TimeInterval? {
         parseManualSplitTime(manualSplitOverrides[result.id] ?? "")
+    }
+
+    private func hasValidSplitTime(for result: VideoSplitCandidate) -> Bool {
+        result.hasAutoSplit || manualSplitSeconds(for: result) != nil
     }
 
     private func parseManualSplitTime(_ text: String) -> TimeInterval? {
