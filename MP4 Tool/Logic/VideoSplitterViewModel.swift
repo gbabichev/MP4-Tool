@@ -456,10 +456,8 @@ final class VideoSplitterViewModel: ObservableObject {
 
     private func parseEpisodeRange(from name: String) -> (prefix: String, first: Int, second: Int, padLength: Int, suffix: String)? {
         let patterns = [
-            "^(.*[Ee])(\\d+)(?:[Ee])(\\d+)(\\D*)$",
-            "^(.*)(\\d+)(?:[Ee])(\\d+)(\\D*)$",
-            "^(.*[Ee])(\\d+)[-_]\\s*(?:[Ee])?(\\d+)(\\D*)$",
-            "^(.*)(\\d+)[-_]\\s*(?:[Ee])?(\\d+)(\\D*)$"
+            "^(.*[Ee])(\\d+)[-_]\\s*(?:[Ee])?(\\d+)(.*)$",
+            "^(.*)(\\d+)[-_]\\s*(?:[Ee])?(\\d+)(.*)$"
         ]
 
         for pattern in patterns {
@@ -496,8 +494,8 @@ final class VideoSplitterViewModel: ObservableObject {
 
     private func parseSingleEpisode(from name: String) -> (prefix: String, number: Int, padLength: Int, suffix: String)? {
         let patterns = [
-            "^(.*[Ee])(\\d+)(\\D*)$",
-            "^(.*)(\\d+)(\\D*)$"
+            "^(.*[Ee])(\\d+)(.*)$",
+            "^(.*)(\\d+)(.*)$"
         ]
 
         for pattern in patterns {
