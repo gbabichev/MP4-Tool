@@ -165,12 +165,15 @@ struct VideoSplitterView: View {
                                             .frame(width: 70)
                                             .textFieldStyle(.roundedBorder)
                                             .controlSize(.small)
-                                        Text("Auto: \(result.splitTimeLabel)")
-                                            .font(.caption2)
-                                            .foregroundStyle(result.hasAutoSplit ? Color.secondary : Color.red)
-                                        if !viewModel.manualSplitTimeText(for: result.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                           !viewModel.manualSplitTimeIsValid(for: result) {
-                                            Text("Invalid")
+                                    Text("Auto: \(result.splitTimeLabel)")
+                                        .font(.caption2)
+                                        .foregroundStyle(result.hasAutoSplit ? Color.secondary : Color.red)
+                                    Text("Halfway: \(result.halfwayTimeLabel)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    if !viewModel.manualSplitTimeText(for: result.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                       !viewModel.manualSplitTimeIsValid(for: result) {
+                                        Text("Invalid")
                                                 .font(.caption2)
                                                 .foregroundStyle(.red)
                                         }

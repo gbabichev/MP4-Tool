@@ -17,6 +17,7 @@ struct VideoSplitCandidate: Identifiable {
     let splitTimeSeconds: TimeInterval
     let splitTimeLabel: String
     let hasAutoSplit: Bool
+    let halfwayTimeLabel: String
 }
 
 @MainActor
@@ -190,7 +191,15 @@ final class VideoSplitterViewModel: ObservableObject {
             scanProgress = "Analyzing \(index + 1)/\(videoFiles.count): \(fileName)"
 
             let filePath = (inputFolderPath as NSString).appendingPathComponent(fileName)
-            if let splitTime = await detectSplitTime(filePath: filePath) {
+            let duration = await getDuration(filePath: filePath)
+            let halfwayLabel: String
+            if let duration, duration > 0 {
+                halfwayLabel = formatTime(duration / 2)
+            } else {
+                halfwayLabel = "Unavailable"
+            }
+
+            if let splitTime = await detectSplitTime(filePath: filePath, duration: duration) {
                 if Task.isCancelled || token != scanToken {
                     scanProgress = "Scan canceled."
                     isScanning = false
@@ -202,7 +211,8 @@ final class VideoSplitterViewModel: ObservableObject {
                     filePath: filePath,
                     splitTimeSeconds: splitTime,
                     splitTimeLabel: timeLabel,
-                    hasAutoSplit: true
+                    hasAutoSplit: true,
+                    halfwayTimeLabel: halfwayLabel
                 )
                 results.append(candidate)
             } else {
@@ -211,7 +221,8 @@ final class VideoSplitterViewModel: ObservableObject {
                     filePath: filePath,
                     splitTimeSeconds: 0,
                     splitTimeLabel: "Not found",
-                    hasAutoSplit: false
+                    hasAutoSplit: false,
+                    halfwayTimeLabel: halfwayLabel
                 )
                 results.append(candidate)
             }
@@ -527,7 +538,7 @@ final class VideoSplitterViewModel: ObservableObject {
     }
 
 
-    private func detectSplitTime(filePath: String) async -> TimeInterval? {
+    private func detectSplitTime(filePath: String, duration: TimeInterval?) async -> TimeInterval? {
         let minDuration = String(format: "%.2f", blackMinDuration)
         let picThresholdValue = String(format: "%.2f", picThreshold)
 
@@ -542,7 +553,7 @@ final class VideoSplitterViewModel: ObservableObject {
         ]
 
         if halfwayScanEnabled {
-            if let duration = await getDuration(filePath: filePath), duration > 0 {
+            if let duration, duration > 0 {
                 let half = duration / 2
                 let windowSeconds = max(60, halfwayWindowMinutes * 60)
                 let start = max(0, half - (windowSeconds / 2))
