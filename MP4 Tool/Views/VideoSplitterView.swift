@@ -115,70 +115,87 @@ struct VideoSplitterView: View {
                 }
                 .frame(minWidth: 420, maxWidth: 520)
 
-                GroupBox("Split Candidates") {
-                if viewModel.results.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "rectangle.split.2x1")
-                            .font(.system(size: 44, weight: .light))
-                            .foregroundStyle(.tertiary)
-                        Text("Scan a folder to find split points.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .padding(.vertical, 12)
-                } else {
-                    List {
-                        ForEach(viewModel.results) { result in
-                            HStack(spacing: 12) {
-                                Toggle(isOn: Binding(
-                                    get: { viewModel.selectedResultIDs.contains(result.id) },
-                                    set: { isSelected in
-                                        if isSelected {
-                                            viewModel.selectedResultIDs.insert(result.id)
-                                        } else {
-                                            viewModel.selectedResultIDs.remove(result.id)
+                GroupBox {
+                    if viewModel.results.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "rectangle.split.2x1")
+                                .font(.system(size: 44, weight: .light))
+                                .foregroundStyle(.tertiary)
+                            Text("Scan a folder to find split points.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .padding(.vertical, 12)
+                    } else {
+                        List {
+                            ForEach(viewModel.results) { result in
+                                HStack(spacing: 12) {
+                                    Toggle(isOn: Binding(
+                                        get: { viewModel.selectedResultIDs.contains(result.id) },
+                                        set: { isSelected in
+                                            if isSelected {
+                                                viewModel.selectedResultIDs.insert(result.id)
+                                            } else {
+                                                viewModel.selectedResultIDs.remove(result.id)
+                                            }
+                                        }
+                                    )) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(result.fileName)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+                                            Text(viewModel.outputPreview(for: result))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
                                         }
                                     }
-                                )) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(result.fileName)
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                        Text(viewModel.outputPreview(for: result))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                    }
-                                }
-                                .toggleStyle(.checkbox)
+                                    .toggleStyle(.checkbox)
 
-                                Spacer()
+                                    Spacer()
 
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    TextField("mm:ss", text: Binding(
-                                        get: { viewModel.manualSplitTimeText(for: result.id) },
-                                        set: { viewModel.setManualSplitTimeText($0, for: result.id) }
-                                    ))
-                                        .font(.system(.caption, design: .monospaced))
-                                        .frame(width: 70)
-                                        .textFieldStyle(.roundedBorder)
-                                        .controlSize(.small)
-                                    Text("Auto: \(result.splitTimeLabel)")
-                                        .font(.caption2)
-                                        .foregroundStyle(result.hasAutoSplit ? Color.secondary : Color.red)
-                                    if !viewModel.manualSplitTimeText(for: result.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                       !viewModel.manualSplitTimeIsValid(for: result) {
-                                        Text("Invalid")
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        TextField("mm:ss", text: Binding(
+                                            get: { viewModel.manualSplitTimeText(for: result.id) },
+                                            set: { viewModel.setManualSplitTimeText($0, for: result.id) }
+                                        ))
+                                            .font(.system(.caption, design: .monospaced))
+                                            .frame(width: 70)
+                                            .textFieldStyle(.roundedBorder)
+                                            .controlSize(.small)
+                                        Text("Auto: \(result.splitTimeLabel)")
                                             .font(.caption2)
-                                            .foregroundStyle(.red)
+                                            .foregroundStyle(result.hasAutoSplit ? Color.secondary : Color.red)
+                                        if !viewModel.manualSplitTimeText(for: result.id).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                           !viewModel.manualSplitTimeIsValid(for: result) {
+                                            Text("Invalid")
+                                                .font(.caption2)
+                                                .foregroundStyle(.red)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
+                } label: {
+                    HStack {
+                        Text("Split Candidates")
+                        Spacer()
+                        if !viewModel.results.isEmpty {
+                            let allSelected = viewModel.selectedResultIDs.count == viewModel.results.count
+                            Button(allSelected ? "Deselect All" : "Select All") {
+                                if allSelected {
+                                    viewModel.selectedResultIDs.removeAll()
+                                } else {
+                                    viewModel.selectedResultIDs = Set(viewModel.results.map { $0.id })
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
