@@ -7,6 +7,8 @@ Overview
 - Settings panel: `MP4 Tool/Views/SettingsView.swift` + `MP4 Tool/Views/SettingsToggleSection.swift`
 - Video Splitter window: `MP4 Tool/Views/VideoSplitterView.swift`
 - Video Splitter logic: `MP4 Tool/Logic/VideoSplitterViewModel.swift`
+- Offset Checker window: `MP4 Tool/Views/OffsetStartCheckerView.swift`
+- Offset Checker logic: `MP4 Tool/Logic/OffsetStartCheckerViewModel.swift`
 - App scenes/menus: `MP4 Tool/MP4_ToolApp.swift`
 
 UI conventions
@@ -32,6 +34,21 @@ Video Splitter behavior
 - Cancel scan:
   - Cancels task and terminates in-flight ffmpeg process.
   - Uses a scan token to ignore stale updates.
+
+Offset Checker behavior
+- Tools menu opens a separate window scene:
+  - Scene is `Window("Check Offset Starts", id: "offsetStartChecker")`
+- Scan behavior:
+  - Input picker selects a root folder.
+  - Scan is recursive (includes subfolders).
+  - File ordering is stable natural sort by relative path (`localizedStandardCompare`).
+  - Uses ffprobe first video packet `pts_time` (`-select_streams v:0`, `-show_entries packet=pts_time`, `-read_intervals %+#1`).
+  - Small offsets are ignored via a significance threshold (`0.50s`).
+- Fix behavior:
+  - `Fix Offsets` targets only files flagged with significant offsets.
+  - Uses ffmpeg remux flags: `-map 0 -c copy -avoid_negative_ts make_zero`.
+  - Replacement is in-place via temp file + atomic replace (ffmpeg does not write directly to the same input path).
+  - Includes progress + Stop; cancel terminates in-flight process.
 
 Splitting
 - Split uses `-c copy` with `-ss` / `-to` for part 1, then `-ss` for part 2.

@@ -79,6 +79,13 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.4.0
+- Added Offset Tool
+  - Scan a directory, and output if videos have significant offsets (meaning they don't start at true 0)
+  - Repair in place. 
+  - Offsets can happen when splitting a video not on a keyframe and not re-encoding.
+- Enhanced Video Splitter to also repair offsets after a split.
+
 ### 1.3.1
 - Video Splitter Enhancements:
   - If a split is not found, the video is now added to the list requiring manual input. 
