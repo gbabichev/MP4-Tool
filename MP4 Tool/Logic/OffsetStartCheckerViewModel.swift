@@ -4,6 +4,8 @@ import SwiftUI
 import Combine
 
 struct OffsetStartCheckResult: Identifiable {
+    static let significantOffsetThresholdSeconds: Double = 0.50
+
     let id = UUID()
     let fileName: String
     let filePath: String
@@ -11,7 +13,7 @@ struct OffsetStartCheckResult: Identifiable {
 
     var hasOffsetStart: Bool {
         guard let firstPTS else { return false }
-        return abs(firstPTS) > 0.0001
+        return abs(firstPTS) >= Self.significantOffsetThresholdSeconds
     }
 }
 
@@ -19,32 +21,51 @@ struct OffsetStartCheckResult: Identifiable {
 final class OffsetStartCheckerViewModel: ObservableObject {
     @Published var inputFolderPath: String = ""
     @Published var isScanning = false
+    @Published var isFixing = false
     @Published var scanProgress = ""
+    @Published var fixProgress = ""
     @Published var scanAlertText = ""
     @Published var results: [OffsetStartCheckResult] = []
     @Published var ffprobeAvailable = false
+    @Published var ffmpegAvailable = false
 
     private var ffprobePath: String = ""
     private var ffprobeMissingMessage = ""
+    private var ffmpegPath: String = ""
+    private var ffmpegMissingMessage = ""
     private var scanTask: Task<Void, Never>?
+    private var fixTask: Task<Void, Never>?
     private let processLock = NSLock()
-    private nonisolated(unsafe) var currentScanProcess: Process?
+    private nonisolated(unsafe) var currentProcess: Process?
     private var scanToken = UUID()
+    private var fixToken = UUID()
 
     init() {
-        locateFFprobe()
+        locateTools()
     }
 
     var canScan: Bool {
-        !inputFolderPath.isEmpty && ffprobeAvailable && !isScanning
+        !inputFolderPath.isEmpty && ffprobeAvailable && !isScanning && !isFixing
     }
 
     var canCancelScan: Bool {
         isScanning
     }
 
+    var canFix: Bool {
+        !isScanning && !isFixing && ffmpegAvailable && results.contains(where: { $0.hasOffsetStart })
+    }
+
+    var canCancelFix: Bool {
+        isFixing
+    }
+
     var ffprobeStatusLabel: String {
         ffprobeAvailable ? "FFprobe: Available" : "FFprobe: Not Available"
+    }
+
+    var ffmpegStatusLabel: String {
+        ffmpegAvailable ? "FFmpeg: Available" : "FFmpeg: Not Available"
     }
 
     func selectInputFolder() {
@@ -64,6 +85,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         guard canScan else { return }
         results = []
         scanProgress = "Preparing scan..."
+        fixProgress = ""
         scanAlertText = ""
         isScanning = true
 
@@ -79,9 +101,32 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         guard isScanning else { return }
         scanTask?.cancel()
         scanToken = UUID()
-        terminateCurrentScanProcess()
+        terminateCurrentProcess()
         scanProgress = "Scan canceled."
         isScanning = false
+    }
+
+    func fixOffsetStartsInPlace() {
+        guard canFix else { return }
+        fixProgress = "Preparing fixes..."
+        scanAlertText = ""
+        isFixing = true
+
+        fixTask?.cancel()
+        fixToken = UUID()
+        let token = fixToken
+        fixTask = Task {
+            await runFix(token: token)
+        }
+    }
+
+    func cancelFix() {
+        guard isFixing else { return }
+        fixTask?.cancel()
+        fixToken = UUID()
+        terminateCurrentProcess()
+        fixProgress = "Fix canceled."
+        isFixing = false
     }
 
     private func runScan(token: UUID) async {
@@ -96,6 +141,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
         if videoFiles.isEmpty {
             scanProgress = "No MP4 files found in folder or subfolders."
+            scanAlertText = ""
             isScanning = false
             return
         }
@@ -125,14 +171,108 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
         scanProgress = "Checked \(results.count) file(s)."
         if unreadableCount > 0 {
-            scanAlertText = "\(offsetCount) offset start(s), \(unreadableCount) unreadable file(s)."
+            scanAlertText = "\(offsetCount) significant offset start(s) (>= \(OffsetStartCheckResult.significantOffsetThresholdSeconds)s), \(unreadableCount) unreadable file(s)."
         } else if offsetCount > 0 {
-            scanAlertText = "\(offsetCount) file(s) start with non-zero pts_time."
+            scanAlertText = "\(offsetCount) file(s) start with significant non-zero pts_time (>= \(OffsetStartCheckResult.significantOffsetThresholdSeconds)s)."
         } else {
-            scanAlertText = "All checked files start at pts_time 0."
+            scanAlertText = "No significant offsets found (threshold: \(OffsetStartCheckResult.significantOffsetThresholdSeconds)s)."
         }
 
         isScanning = false
+    }
+
+    private func runFix(token: UUID) async {
+        guard ffmpegAvailable else {
+            scanAlertText = ffmpegMissingMessage
+            fixProgress = ""
+            isFixing = false
+            return
+        }
+
+        let targets = results.filter { $0.hasOffsetStart }
+        if targets.isEmpty {
+            fixProgress = ""
+            scanAlertText = "No offset starts to fix."
+            isFixing = false
+            return
+        }
+
+        var replacedCount = 0
+        var failedFiles: [String] = []
+
+        for (index, result) in targets.enumerated() {
+            if Task.isCancelled || token != fixToken {
+                fixProgress = "Fix canceled."
+                isFixing = false
+                return
+            }
+
+            fixProgress = "Fixing \(index + 1)/\(targets.count): \(result.fileName)"
+
+            if await fixOffsetForFileInPlace(filePath: result.filePath) {
+                replacedCount += 1
+            } else {
+                failedFiles.append(result.fileName)
+            }
+        }
+
+        if token != fixToken {
+            fixProgress = "Fix canceled."
+            isFixing = false
+            return
+        }
+
+        // Refresh pts values after replacements so the list reflects current state.
+        for index in results.indices {
+            let filePath = results[index].filePath
+            let refreshedPTS = await firstVideoPacketPTS(filePath: filePath)
+            let existing = results[index]
+            results[index] = OffsetStartCheckResult(
+                fileName: existing.fileName,
+                filePath: existing.filePath,
+                firstPTS: refreshedPTS
+            )
+        }
+
+        let remainingOffsets = results.filter { $0.hasOffsetStart }.count
+        fixProgress = "Fix complete."
+        if failedFiles.isEmpty {
+            scanAlertText = "Replaced \(replacedCount) file(s) in place. Remaining offset starts: \(remainingOffsets)."
+        } else {
+            scanAlertText = "Replaced \(replacedCount) file(s). Failed: \(failedFiles.count). Remaining offset starts: \(remainingOffsets)."
+        }
+        isFixing = false
+    }
+
+    private func fixOffsetForFileInPlace(filePath: String) async -> Bool {
+        let originalURL = URL(fileURLWithPath: filePath)
+        let folderURL = originalURL.deletingLastPathComponent()
+        let tmpName = originalURL.deletingPathExtension().lastPathComponent + ".offsetfix.\(UUID().uuidString).mp4"
+        let tmpURL = folderURL.appendingPathComponent(tmpName)
+
+        let arguments = [
+            "-i", filePath,
+            "-map", "0",
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            "-y",
+            "-loglevel", "quiet",
+            tmpURL.path
+        ]
+
+        let exitCode = await runProcess(path: ffmpegPath, arguments: arguments)
+        guard exitCode == 0 else {
+            try? FileManager.default.removeItem(at: tmpURL)
+            return false
+        }
+
+        do {
+            _ = try FileManager.default.replaceItemAt(originalURL, withItemAt: tmpURL)
+            return true
+        } catch {
+            try? FileManager.default.removeItem(at: tmpURL)
+            return false
+        }
     }
 
     private func collectVideoFilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {
@@ -209,15 +349,15 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
                 do {
                     self.processLock.lock()
-                    self.currentScanProcess = process
+                    self.currentProcess = process
                     self.processLock.unlock()
 
                     try process.run()
                     process.waitUntilExit()
 
                     self.processLock.lock()
-                    if self.currentScanProcess === process {
-                        self.currentScanProcess = nil
+                    if self.currentProcess === process {
+                        self.currentProcess = nil
                     }
                     self.processLock.unlock()
 
@@ -231,8 +371,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                     continuation.resume(returning: output)
                 } catch {
                     self.processLock.lock()
-                    if self.currentScanProcess === process {
-                        self.currentScanProcess = nil
+                    if self.currentProcess === process {
+                        self.currentProcess = nil
                     }
                     self.processLock.unlock()
                     continuation.resume(returning: nil)
@@ -241,29 +381,72 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         }
     }
 
-    private func terminateCurrentScanProcess() {
+    private func runProcess(path: String, arguments: [String]) async -> Int32? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = arguments
+                process.standardOutput = Pipe()
+                process.standardError = Pipe()
+
+                do {
+                    self.processLock.lock()
+                    self.currentProcess = process
+                    self.processLock.unlock()
+
+                    try process.run()
+                    process.waitUntilExit()
+
+                    self.processLock.lock()
+                    if self.currentProcess === process {
+                        self.currentProcess = nil
+                    }
+                    self.processLock.unlock()
+
+                    continuation.resume(returning: process.terminationStatus)
+                } catch {
+                    self.processLock.lock()
+                    if self.currentProcess === process {
+                        self.currentProcess = nil
+                    }
+                    self.processLock.unlock()
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    private func terminateCurrentProcess() {
         processLock.lock()
-        let process = currentScanProcess
+        let process = currentProcess
         processLock.unlock()
 
         process?.terminate()
     }
 
-    private func locateFFprobe() {
+    private func locateTools() {
         if let bundledPath = Self.findBundledBinary(named: "ffprobe") {
             ffprobePath = bundledPath
             ffprobeAvailable = true
-            return
-        }
-
-        if let systemPath = Self.findInPath(command: "ffprobe") {
+        } else if let systemPath = Self.findInPath(command: "ffprobe") {
             ffprobePath = systemPath
             ffprobeAvailable = true
-            return
+        } else {
+            ffprobeAvailable = false
+            ffprobeMissingMessage = "Missing required tool: ffprobe. Please install ffprobe or bundle it with the app."
         }
 
-        ffprobeAvailable = false
-        ffprobeMissingMessage = "Missing required tool: ffprobe. Please install ffprobe or bundle it with the app."
+        if let bundledPath = Self.findBundledBinary(named: "ffmpeg") {
+            ffmpegPath = bundledPath
+            ffmpegAvailable = true
+        } else if let systemPath = Self.findInPath(command: "ffmpeg") {
+            ffmpegPath = systemPath
+            ffmpegAvailable = true
+        } else {
+            ffmpegAvailable = false
+            ffmpegMissingMessage = "Missing required tool: ffmpeg. Please install ffmpeg or bundle it with the app."
+        }
     }
 
     private static func findBundledBinary(named name: String) -> String? {

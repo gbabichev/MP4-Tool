@@ -74,9 +74,13 @@ struct OffsetStartCheckerView: View {
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                if viewModel.isScanning {
+                if viewModel.isScanning || viewModel.isFixing {
                     Button {
-                        viewModel.cancelScan()
+                        if viewModel.isScanning {
+                            viewModel.cancelScan()
+                        } else {
+                            viewModel.cancelFix()
+                        }
                     } label: {
                         Label("Stop", systemImage: "stop.fill")
                     }
@@ -91,6 +95,13 @@ struct OffsetStartCheckerView: View {
                     }
                     .disabled(!viewModel.canScan)
                     .keyboardShortcut("r", modifiers: .command)
+
+                    Button {
+                        viewModel.fixOffsetStartsInPlace()
+                    } label: {
+                        Label("Fix Offsets", systemImage: "wrench.and.screwdriver")
+                    }
+                    .disabled(!viewModel.canFix)
                 }
             }
         }
@@ -132,6 +143,28 @@ struct OffsetStartCheckerView: View {
                         .truncationMode(.middle)
                 }
             }
+        } else if viewModel.isFixing {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(0.9)
+                Text(viewModel.fixProgress)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button("Stop") {
+                    viewModel.cancelFix()
+                }
+                .controlSize(.small)
+                .disabled(!viewModel.canCancelFix)
+                if !viewModel.scanAlertText.isEmpty {
+                    Text(viewModel.scanAlertText)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
         } else if !viewModel.scanProgress.isEmpty {
             HStack(spacing: 8) {
                 Text(viewModel.scanProgress)
@@ -150,6 +183,9 @@ struct OffsetStartCheckerView: View {
                 Text(viewModel.ffprobeStatusLabel)
                     .font(.caption)
                     .foregroundStyle(viewModel.ffprobeAvailable ? Color.secondary : Color.orange)
+                Text(viewModel.ffmpegStatusLabel)
+                    .font(.caption)
+                    .foregroundStyle(viewModel.ffmpegAvailable ? Color.secondary : Color.orange)
                 if !viewModel.scanAlertText.isEmpty {
                     Text(viewModel.scanAlertText)
                         .font(.caption)
