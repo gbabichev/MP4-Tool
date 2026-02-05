@@ -9,6 +9,7 @@ import SwiftUI
 
 struct VideoSplitterView: View {
     @StateObject private var viewModel = VideoSplitterViewModel()
+    @State private var showSettings = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -21,99 +22,101 @@ struct VideoSplitterView: View {
             Divider()
 
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 16) {
-                    GroupBox("Folders") {
-                    VStack(spacing: 12) {
-                        FolderPickerRow(
-                            title: "Input Folder",
-                            subtitle: viewModel.inputFolderPath.isEmpty ? "Select folder containing MP4 files" : viewModel.inputFolderPath,
-                            isPlaceholder: viewModel.inputFolderPath.isEmpty,
-                            buttonLabel: "Choose...",
-                            systemImage: "folder"
-                        ) {
-                            viewModel.selectFolder(isInput: true)
-                        }
-
-                        FolderPickerRow(
-                            title: "Output Folder",
-                            subtitle: viewModel.outputFolderPath.isEmpty ? "Select folder for split files" : viewModel.outputFolderPath,
-                            isPlaceholder: viewModel.outputFolderPath.isEmpty,
-                            buttonLabel: "Choose...",
-                            systemImage: "folder.badge.gearshape"
-                        ) {
-                            viewModel.selectFolder(isInput: false)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                GroupBox("Detection Settings") {
-                    VStack(spacing: 12) {
-                        SettingWithCaption(
-                            title: "Black Min Duration (sec)",
-                            caption: "Minimum length of a black segment to consider for splitting.",
-                            value: $viewModel.blackMinDuration,
-                            format: .number.precision(.fractionLength(2)),
-                            range: 0...10
-                        )
-
-                        SettingWithCaption(
-                            title: "Black Threshold (sec)",
-                            caption: "Ignore black frames before this timestamp (skip intros).",
-                            value: $viewModel.blackThresholdSeconds,
-                            format: .number.precision(.fractionLength(0)),
-                            range: 0...7200
-                        )
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Pixel Threshold")
-                                        .font(.subheadline)
-                                    Spacer()
-                                    TextField("", value: $viewModel.picThreshold, format: .number.precision(.fractionLength(2)))
-                                        .frame(width: 80)
-                                        .textFieldStyle(.roundedBorder)
-                                        .onChange(of: viewModel.picThreshold) { _, _ in
-                                            viewModel.clampSettings()
-                                        }
+                if showSettings {
+                    VStack(alignment: .leading, spacing: 16) {
+                        GroupBox("Folders") {
+                            VStack(spacing: 12) {
+                                FolderPickerRow(
+                                    title: "Input Folder",
+                                    subtitle: viewModel.inputFolderPath.isEmpty ? "Select folder containing MP4 files" : viewModel.inputFolderPath,
+                                    isPlaceholder: viewModel.inputFolderPath.isEmpty,
+                                    buttonLabel: "Choose...",
+                                    systemImage: "folder"
+                                ) {
+                                    viewModel.selectFolder(isInput: true)
                                 }
 
-                                Slider(value: $viewModel.picThreshold, in: 0...1, step: 0.01)
+                                FolderPickerRow(
+                                    title: "Output Folder",
+                                    subtitle: viewModel.outputFolderPath.isEmpty ? "Select folder for split files" : viewModel.outputFolderPath,
+                                    isPlaceholder: viewModel.outputFolderPath.isEmpty,
+                                    buttonLabel: "Choose...",
+                                    systemImage: "folder.badge.gearshape"
+                                ) {
+                                    viewModel.selectFolder(isInput: false)
+                                }
                             }
-
-                            Text("How dark a pixel must be to count as black (0.0–1.0).")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
                         }
-                        
-                        ToggleSettingWithCaption(
-                            title: "Scan Around Halfway",
-                            caption: "Only scan a window centered on the midpoint of the video.",
-                            isOn: $viewModel.halfwayScanEnabled
-                        )
 
-                        SettingWithCaption(
-                            title: "Halfway Window (min)",
-                            caption: "Total window centered on 50% (e.g., 6 min = 3 before + 3 after).",
-                            value: $viewModel.halfwayWindowMinutes,
-                            format: .number.precision(.fractionLength(0)),
-                            range: 1...60
-                        )
-                        .disabled(!viewModel.halfwayScanEnabled)
+                        GroupBox("Detection Settings") {
+                            VStack(spacing: 12) {
+                                SettingWithCaption(
+                                    title: "Black Min Duration (sec)",
+                                    caption: "Minimum length of a black segment to consider for splitting.",
+                                    value: $viewModel.blackMinDuration,
+                                    format: .number.precision(.fractionLength(2)),
+                                    range: 0...10
+                                )
 
-                        ToggleSettingWithCaption(
-                            title: "Rename Files",
-                            caption: "Rename outputs like E01-E02 → E01/E02.",
-                            isOn: $viewModel.renameFiles
-                        )
+                                SettingWithCaption(
+                                    title: "Black Threshold (sec)",
+                                    caption: "Ignore black frames before this timestamp (skip intros).",
+                                    value: $viewModel.blackThresholdSeconds,
+                                    format: .number.precision(.fractionLength(0)),
+                                    range: 0...7200
+                                )
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text("Pixel Threshold")
+                                                .font(.subheadline)
+                                            Spacer()
+                                            TextField("", value: $viewModel.picThreshold, format: .number.precision(.fractionLength(2)))
+                                                .frame(width: 80)
+                                                .textFieldStyle(.roundedBorder)
+                                                .onChange(of: viewModel.picThreshold) { _, _ in
+                                                    viewModel.clampSettings()
+                                                }
+                                        }
+
+                                        Slider(value: $viewModel.picThreshold, in: 0...1, step: 0.01)
+                                    }
+
+                                    Text("How dark a pixel must be to count as black (0.0–1.0).")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                
+                                ToggleSettingWithCaption(
+                                    title: "Scan Around Halfway",
+                                    caption: "Only scan a window centered on the midpoint of the video.",
+                                    isOn: $viewModel.halfwayScanEnabled
+                                )
+
+                                SettingWithCaption(
+                                    title: "Halfway Window (min)",
+                                    caption: "Total window centered on 50% (e.g., 6 min = 3 before + 3 after).",
+                                    value: $viewModel.halfwayWindowMinutes,
+                                    format: .number.precision(.fractionLength(0)),
+                                    range: 1...60
+                                )
+                                .disabled(!viewModel.halfwayScanEnabled)
+
+                                ToggleSettingWithCaption(
+                                    title: "Rename Files",
+                                    caption: "Rename outputs like E01-E02 → E01/E02.",
+                                    isOn: $viewModel.renameFiles
+                                )
+                            }
+                            .padding(.vertical, 4)
+                        }
+
+                        Spacer()
                     }
-                    .padding(.vertical, 4)
+                    .frame(minWidth: 420, maxWidth: 520)
                 }
-
-                Spacer()
-                }
-                .frame(minWidth: 420, maxWidth: 520)
 
                 GroupBox {
                     if viewModel.results.isEmpty {
@@ -208,6 +211,13 @@ struct VideoSplitterView: View {
         .frame(minWidth: 760, minHeight: 800)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button {
+                    showSettings.toggle()
+                } label: {
+                    Label(showSettings ? "Hide Settings" : "Show Settings", systemImage: "sidebar.left")
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 if viewModel.isScanning {
                     Button {
