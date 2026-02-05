@@ -79,6 +79,14 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.3.1
+- Video Splitter Enhancements:
+  - If a split is not found, the video is now added to the list requiring manual input. 
+  - Added select all / deselect all buttons. 
+  - Added halfway mark to display so you can at a glance validate that the split passes a gut check. 
+  - Adjusted regex for renaming. 
+  - Settings pane is now collapsible to increase the size of the results table.
+
 ### 1.3.0
 - Added Video Splitter tool. 
  - Video Splitter takes a single MP4 file which contains multiple episodes, finds black space in the middle and splits the file into two episdoes while automatically renaming.
