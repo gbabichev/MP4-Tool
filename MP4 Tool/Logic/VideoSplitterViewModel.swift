@@ -293,19 +293,23 @@ final class VideoSplitterViewModel: ObservableObject {
                 "-ss", "00:00:00",
                 "-i", inputFile,
                 "-to", splitTime,
+                "-map", "0",
                 "-c", "copy",
-                output1,
+                "-avoid_negative_ts", "make_zero",
                 "-y",
-                "-loglevel", "quiet"
+                "-loglevel", "quiet",
+                output1,
             ]
 
             let cmd2 = [
                 "-ss", splitTime,
                 "-i", inputFile,
+                "-map", "0",
                 "-c", "copy",
-                output2,
+                "-avoid_negative_ts", "make_zero",
                 "-y",
-                "-loglevel", "quiet"
+                "-loglevel", "quiet",
+                output2,
             ]
 
             _ = await runProcessCaptureStderr(path: ffmpegPath, arguments: cmd1)

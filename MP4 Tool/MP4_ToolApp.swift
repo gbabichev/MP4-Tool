@@ -89,6 +89,12 @@ struct MP4_ToolApp: App {
                     Label("Video Splitter", systemImage: "scissors")
                 }
 
+                Button(action: {
+                    openWindow(id: "offsetStartChecker")
+                }) {
+                    Label("Check Offset Starts", systemImage: "clock.arrow.2.circlepath")
+                }
+
                 Divider()
                 
                 Button(action: {
@@ -131,6 +137,10 @@ struct MP4_ToolApp: App {
         
         Window("Video Splitter", id: "videoSplitter") {
             VideoSplitterView()
+        }
+
+        Window("Check Offset Starts", id: "offsetStartChecker") {
+            OffsetStartCheckerView()
         }
     }
 }
