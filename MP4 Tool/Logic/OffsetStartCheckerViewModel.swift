@@ -3,6 +3,13 @@ import AppKit
 import SwiftUI
 import Combine
 
+enum OffsetFixOutcome: String {
+    case notAttempted
+    case fixedByRemux
+    case worseAfterRemux
+    case needsFullReencode
+}
+
 struct OffsetStartCheckResult: Identifiable {
     static let significantOffsetThresholdSeconds: Double = 0.50
 
@@ -10,6 +17,19 @@ struct OffsetStartCheckResult: Identifiable {
     let fileName: String
     let filePath: String
     let firstPTS: Double?
+    let fixOutcome: OffsetFixOutcome
+
+    init(
+        fileName: String,
+        filePath: String,
+        firstPTS: Double?,
+        fixOutcome: OffsetFixOutcome = .notAttempted
+    ) {
+        self.fileName = fileName
+        self.filePath = filePath
+        self.firstPTS = firstPTS
+        self.fixOutcome = fixOutcome
+    }
 
     var hasOffsetStart: Bool {
         guard let firstPTS else { return false }
@@ -53,7 +73,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     }
 
     var canFix: Bool {
-        !isScanning && !isFixing && ffmpegAvailable && results.contains(where: { $0.hasOffsetStart })
+        !isScanning && !isFixing && ffmpegAvailable && ffprobeAvailable && results.contains(where: { $0.hasOffsetStart })
     }
 
     var canCancelFix: Bool {
@@ -182,8 +202,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     }
 
     private func runFix(token: UUID) async {
-        guard ffmpegAvailable else {
-            scanAlertText = ffmpegMissingMessage
+        guard ffmpegAvailable && ffprobeAvailable else {
+            scanAlertText = ffmpegAvailable ? ffprobeMissingMessage : ffmpegMissingMessage
             fixProgress = ""
             isFixing = false
             return
@@ -197,8 +217,10 @@ final class OffsetStartCheckerViewModel: ObservableObject {
             return
         }
 
-        var replacedCount = 0
-        var failedFiles: [String] = []
+        var fixedByRemuxCount = 0
+        var worseAfterRemux: [String] = []
+        var needsFullReencode: [String] = []
+        var outcomeByPath: [String: OffsetFixOutcome] = [:]
 
         for (index, result) in targets.enumerated() {
             if Task.isCancelled || token != fixToken {
@@ -209,10 +231,21 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
             fixProgress = "Fixing \(index + 1)/\(targets.count): \(result.fileName)"
 
-            if await fixOffsetForFileInPlace(filePath: result.filePath) {
-                replacedCount += 1
-            } else {
-                failedFiles.append(result.fileName)
+            let outcome = await fixOffsetForFileInPlace(
+                filePath: result.filePath,
+                originalFirstPTS: result.firstPTS
+            )
+            outcomeByPath[result.filePath] = outcome
+
+            switch outcome {
+            case .fixedByRemux:
+                fixedByRemuxCount += 1
+            case .worseAfterRemux:
+                worseAfterRemux.append(result.fileName)
+            case .needsFullReencode:
+                needsFullReencode.append(result.fileName)
+            case .notAttempted:
+                needsFullReencode.append(result.fileName)
             }
         }
 
@@ -230,25 +263,36 @@ final class OffsetStartCheckerViewModel: ObservableObject {
             results[index] = OffsetStartCheckResult(
                 fileName: existing.fileName,
                 filePath: existing.filePath,
-                firstPTS: refreshedPTS
+                firstPTS: refreshedPTS,
+                fixOutcome: outcomeByPath[filePath] ?? existing.fixOutcome
             )
         }
 
         let remainingOffsets = results.filter { $0.hasOffsetStart }.count
         fixProgress = "Fix complete."
-        if failedFiles.isEmpty {
-            scanAlertText = "Replaced \(replacedCount) file(s) in place. Remaining offset starts: \(remainingOffsets)."
-        } else {
-            scanAlertText = "Replaced \(replacedCount) file(s). Failed: \(failedFiles.count). Remaining offset starts: \(remainingOffsets)."
+        var statusParts: [String] = []
+        statusParts.append("Fixed \(fixedByRemuxCount) file(s) via remux")
+
+        if !worseAfterRemux.isEmpty {
+            statusParts.append("FAIL: Please Re-Encode: \(worseAfterRemux.count) (\(formatFileList(worseAfterRemux)))")
         }
+
+        if !needsFullReencode.isEmpty {
+            statusParts.append("needs full re-encode: \(needsFullReencode.count) (\(formatFileList(needsFullReencode)))")
+        }
+
+        statusParts.append("remaining offsets: \(remainingOffsets)")
+        scanAlertText = statusParts.joined(separator: ". ") + "."
         isFixing = false
     }
 
-    private func fixOffsetForFileInPlace(filePath: String) async -> Bool {
+    private func fixOffsetForFileInPlace(filePath: String, originalFirstPTS: Double?) async -> OffsetFixOutcome {
+        await attemptRemuxFix(filePath: filePath, originalFirstPTS: originalFirstPTS)
+    }
+
+    private func attemptRemuxFix(filePath: String, originalFirstPTS: Double?) async -> OffsetFixOutcome {
         let originalURL = URL(fileURLWithPath: filePath)
-        let folderURL = originalURL.deletingLastPathComponent()
-        let tmpName = originalURL.deletingPathExtension().lastPathComponent + ".offsetfix.\(UUID().uuidString).mp4"
-        let tmpURL = folderURL.appendingPathComponent(tmpName)
+        let tmpURL = temporaryOutputURL(for: originalURL, suffix: "remux")
 
         let arguments = [
             "-i", filePath,
@@ -263,16 +307,47 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         let exitCode = await runProcess(path: ffmpegPath, arguments: arguments)
         guard exitCode == 0 else {
             try? FileManager.default.removeItem(at: tmpURL)
-            return false
+            return .needsFullReencode
+        }
+
+        guard let remuxedFirstPTS = await firstVideoPacketPTS(filePath: tmpURL.path) else {
+            try? FileManager.default.removeItem(at: tmpURL)
+            return .needsFullReencode
+        }
+
+        let remuxedMagnitude = abs(remuxedFirstPTS)
+        let originalMagnitude = abs(originalFirstPTS ?? remuxedFirstPTS)
+
+        guard remuxedMagnitude < OffsetStartCheckResult.significantOffsetThresholdSeconds else {
+            try? FileManager.default.removeItem(at: tmpURL)
+            if remuxedMagnitude > originalMagnitude {
+                return .worseAfterRemux
+            }
+            return .needsFullReencode
         }
 
         do {
             _ = try FileManager.default.replaceItemAt(originalURL, withItemAt: tmpURL)
-            return true
+            return .fixedByRemux
         } catch {
             try? FileManager.default.removeItem(at: tmpURL)
-            return false
+            return .needsFullReencode
         }
+    }
+
+    private func temporaryOutputURL(for originalURL: URL, suffix: String) -> URL {
+        let folderURL = originalURL.deletingLastPathComponent()
+        let baseName = originalURL.deletingPathExtension().lastPathComponent
+        let name = "\(baseName).offsetfix.\(suffix).\(UUID().uuidString).mp4"
+        return folderURL.appendingPathComponent(name)
+    }
+
+    private func formatFileList(_ files: [String], limit: Int = 3) -> String {
+        let shown = files.prefix(limit)
+        if files.count <= limit {
+            return shown.joined(separator: ", ")
+        }
+        return shown.joined(separator: ", ") + " +\(files.count - limit) more"
     }
 
     private func collectVideoFilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {
@@ -343,9 +418,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                 process.arguments = arguments
 
                 let outputPipe = Pipe()
-                let errorPipe = Pipe()
                 process.standardOutput = outputPipe
-                process.standardError = errorPipe
+                process.standardError = FileHandle.nullDevice
 
                 do {
                     self.processLock.lock()
@@ -353,6 +427,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                     self.processLock.unlock()
 
                     try process.run()
+                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
 
                     self.processLock.lock()
@@ -366,7 +441,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                         return
                     }
 
-                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     let output = String(data: outputData, encoding: .utf8)
                     continuation.resume(returning: output)
                 } catch {
@@ -387,8 +461,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: path)
                 process.arguments = arguments
-                process.standardOutput = Pipe()
-                process.standardError = Pipe()
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
 
                 do {
                     self.processLock.lock()
