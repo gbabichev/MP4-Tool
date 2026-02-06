@@ -3,6 +3,8 @@ import SwiftUI
 struct OffsetStartCheckerView: View {
     @StateObject private var viewModel = OffsetStartCheckerViewModel()
     @State private var showFailuresOnly = false
+    @State private var showNeedsActionOnly = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -12,7 +14,7 @@ struct OffsetStartCheckerView: View {
                 Text("Check Offset Starts scans MP4 files to make sure playback begins at 00:00 and can try to repair files in place.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Some files can still fail repair or be marked as FAIL: Please Re-Encode. Those files should be fully re-encoded in the main app.")
+                Text("If a file still needs full re-encoding, use the \(Image(systemName: "arrowshape.turn.up.right")) toolbar button to send it to the main app queue.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -45,8 +47,25 @@ struct OffsetStartCheckerView: View {
                     .padding(.vertical, 12)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Button(showNeedsActionOnly ? "Show All" : "Show Needs Action") {
+                                showNeedsActionOnly.toggle()
+                            }
+                            .controlSize(.small)
+                            .disabled(showFailuresOnly || viewModel.results.isEmpty)
+
+                            Button(showFailuresOnly ? "Show All" : "Show Failures") {
+                                showFailuresOnly.toggle()
+                                if showFailuresOnly {
+                                    showNeedsActionOnly = false
+                                }
+                            }
+                            .controlSize(.small)
+                            .disabled(viewModel.results.isEmpty || (!viewModel.hasCompletedFixPass && !showFailuresOnly))
+                        }
+
                         if displayedResults.isEmpty {
-                            Text(showFailuresOnly ? "No failures to display." : "No results to display.")
+                            Text(emptyResultsMessage)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -101,11 +120,12 @@ struct OffsetStartCheckerView: View {
             }
 
             ToolbarItem(placement: .navigation) {
-                Button(showFailuresOnly ? "Show All" : "Show Failures") {
-                    showFailuresOnly.toggle()
+                Button {
+                    sendFailuresToMainApp()
+                } label: {
+                    Label("Send Failed to Main", systemImage: "arrowshape.turn.up.right")
                 }
-                .controlSize(.small)
-                .disabled(viewModel.results.isEmpty)
+                .disabled(!viewModel.canSendFailuresToMainApp)
             }
 
             ToolbarItem(placement: .navigation) {
@@ -133,6 +153,8 @@ struct OffsetStartCheckerView: View {
                     .keyboardShortcut(".", modifiers: .command)
                 } else {
                     Button {
+                        showFailuresOnly = false
+                        showNeedsActionOnly = false
                         viewModel.scanOffsetStarts()
                     } label: {
                         Label("Scan", systemImage: "magnifyingglass")
@@ -152,8 +174,34 @@ struct OffsetStartCheckerView: View {
     }
 
     private var displayedResults: [OffsetStartCheckResult] {
-        guard showFailuresOnly else { return viewModel.results }
-        return viewModel.failureResults
+        if showFailuresOnly {
+            return viewModel.failureResults
+        }
+
+        if showNeedsActionOnly {
+            return viewModel.actionRequiredResults
+        }
+
+        return viewModel.results
+    }
+
+    private var emptyResultsMessage: String {
+        if showFailuresOnly {
+            return "No failures to display."
+        }
+
+        if showNeedsActionOnly {
+            return "No files need action."
+        }
+
+        return "No results to display."
+    }
+
+    private func sendFailuresToMainApp() {
+        openWindow(id: "main")
+        DispatchQueue.main.async {
+            viewModel.sendFailuresToMainApp()
+        }
     }
 
     private func ptsLabel(for result: OffsetStartCheckResult) -> String {
@@ -174,10 +222,8 @@ struct OffsetStartCheckerView: View {
             return nil
         case .fixedByRemux:
             return "Fixed: remux"
-        case .worseAfterRemux:
+        case .failedNeedsReencode:
             return "FAIL: Please Re-Encode"
-        case .needsFullReencode:
-            return "Needs full re-encode"
         }
     }
 
@@ -187,9 +233,7 @@ struct OffsetStartCheckerView: View {
             return .secondary
         case .fixedByRemux:
             return .secondary
-        case .worseAfterRemux:
-            return .red
-        case .needsFullReencode:
+        case .failedNeedsReencode:
             return .red
         }
     }
@@ -205,11 +249,6 @@ struct OffsetStartCheckerView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Button("Stop") {
-                    viewModel.cancelScan()
-                }
-                .controlSize(.small)
-                .disabled(!viewModel.canCancelScan)
                 if !viewModel.scanAlertText.isEmpty {
                     Text(viewModel.scanAlertText)
                         .font(.caption)
@@ -227,11 +266,6 @@ struct OffsetStartCheckerView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Button("Stop") {
-                    viewModel.cancelFix()
-                }
-                .controlSize(.small)
-                .disabled(!viewModel.canCancelFix)
                 if !viewModel.scanAlertText.isEmpty {
                     Text(viewModel.scanAlertText)
                         .font(.caption)
@@ -249,10 +283,9 @@ struct OffsetStartCheckerView: View {
                     Text(viewModel.scanAlertText)
                         .font(.caption)
                         .foregroundStyle(
-                            viewModel.scanAlertText.hasPrefix("Fixed ")
-                                || viewModel.scanAlertText.hasPrefix("Exported ")
-                                ? Color.secondary
-                                : Color.red
+                            viewModel.scanAlertText.contains("FAIL: Please Re-Encode")
+                                ? Color.red
+                                : Color.secondary
                         )
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -265,6 +298,7 @@ struct OffsetStartCheckerView: View {
                         .font(.caption)
                         .foregroundStyle(
                             viewModel.scanAlertText.hasPrefix("Exported ")
+                                || viewModel.scanAlertText.hasPrefix("Sent ")
                                 ? Color.secondary
                                 : Color.red
                         )

@@ -160,6 +160,17 @@ struct ContentView: View {
             isSettingsExpanded: isSettingsExpanded
         )
     }
+
+    private func enqueueQueuedOffsetFailures(_ notification: Notification) {
+        guard let paths = notification.userInfo?[queueOffsetCheckerFailuresPathsKey] as? [String],
+              !paths.isEmpty else {
+            return
+        }
+
+        for path in paths {
+            viewModel.addVideoFile(url: URL(fileURLWithPath: path))
+        }
+    }
     
     var mainContent: some View {
         HStack(spacing: 0) {
@@ -282,6 +293,9 @@ struct ContentView: View {
                 if viewModel.showingAbout {
                     AboutOverlayView(isPresented: $viewModel.showingAbout)
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: queueOffsetCheckerFailuresNotification)) { notification in
+                enqueueQueuedOffsetFailures(notification)
             }
             .onAppear {
                 if !hasSeenTutorial {
