@@ -37,7 +37,7 @@ struct OffsetStartCheckerView: View {
                         Image(systemName: "waveform.path.ecg.rectangle")
                             .font(.system(size: 40, weight: .light))
                             .foregroundStyle(.tertiary)
-                        Text("Run a scan to check first video packet pts_time.")
+                        Text("Run a scan to check whether files start at 00:00.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -104,7 +104,17 @@ struct OffsetStartCheckerView: View {
                 Button(showFailuresOnly ? "Show All" : "Show Failures") {
                     showFailuresOnly.toggle()
                 }
+                .controlSize(.small)
                 .disabled(viewModel.results.isEmpty)
+            }
+
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    viewModel.exportFailuresToFile()
+                } label: {
+                    Label("Export Failures...", systemImage: "square.and.arrow.up")
+                }
+                .disabled(!viewModel.canExportFailures)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
@@ -143,24 +153,7 @@ struct OffsetStartCheckerView: View {
 
     private var displayedResults: [OffsetStartCheckResult] {
         guard showFailuresOnly else { return viewModel.results }
-        return viewModel.results.filter(isFailure)
-    }
-
-    private func isFailure(_ result: OffsetStartCheckResult) -> Bool {
-        if result.firstPTS == nil {
-            return true
-        }
-
-        if result.hasOffsetStart {
-            return true
-        }
-
-        switch result.fixOutcome {
-        case .worseAfterRemux, .needsFullReencode:
-            return true
-        case .notAttempted, .fixedByRemux:
-            return false
-        }
+        return viewModel.failureResults
     }
 
     private func ptsLabel(for result: OffsetStartCheckResult) -> String {
@@ -255,7 +248,12 @@ struct OffsetStartCheckerView: View {
                 if !viewModel.scanAlertText.isEmpty {
                     Text(viewModel.scanAlertText)
                         .font(.caption)
-                        .foregroundStyle(viewModel.scanAlertText.hasPrefix("Fixed ") ? Color.secondary : Color.red)
+                        .foregroundStyle(
+                            viewModel.scanAlertText.hasPrefix("Fixed ")
+                                || viewModel.scanAlertText.hasPrefix("Exported ")
+                                ? Color.secondary
+                                : Color.red
+                        )
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -265,7 +263,11 @@ struct OffsetStartCheckerView: View {
                 HStack(spacing: 8) {
                     Text(viewModel.scanAlertText)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(
+                            viewModel.scanAlertText.hasPrefix("Exported ")
+                                ? Color.secondary
+                                : Color.red
+                        )
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }

@@ -47,8 +47,15 @@ Offset Checker behavior
 - Fix behavior:
   - `Fix Offsets` targets only files flagged with significant offsets.
   - Uses ffmpeg remux flags: `-map 0 -c copy -avoid_negative_ts make_zero`.
-  - Replacement is in-place via temp file + atomic replace (ffmpeg does not write directly to the same input path).
+  - Validates remux output with ffprobe before replacing original.
+  - If remux makes offset worse, file is flagged `FAIL: Please Re-Encode` and original is kept.
+  - If remux fails or still has significant offset, file is flagged `Needs full re-encode`.
+  - Replacement is in-place via temp file + atomic replace only when validation succeeds.
   - Includes progress + Stop; cancel terminates in-flight process.
+- Toolbar actions:
+  - `Choose Folder...`
+  - `Show Failures` / `Show All` filter for results list
+  - `Export Failures...` writes a `.txt` list of failed file paths via save dialog
 
 Splitting
 - Split uses `-c copy` with `-ss` / `-to` for part 1, then `-ss` for part 2.

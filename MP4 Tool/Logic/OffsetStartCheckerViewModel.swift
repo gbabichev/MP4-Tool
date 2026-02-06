@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import SwiftUI
 import Combine
+import UniformTypeIdentifiers
 
 enum OffsetFixOutcome: String {
     case notAttempted
@@ -59,6 +60,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     private nonisolated(unsafe) var currentProcess: Process?
     private var scanToken = UUID()
     private var fixToken = UUID()
+    private var exportDialogHostWindow: NSWindow?
 
     init() {
         locateTools()
@@ -78,6 +80,14 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
     var canCancelFix: Bool {
         isFixing
+    }
+
+    var failureResults: [OffsetStartCheckResult] {
+        results.filter(isFailureResult)
+    }
+
+    var canExportFailures: Bool {
+        !isScanning && !isFixing && !failureResults.isEmpty
     }
 
     var ffprobeStatusLabel: String {
@@ -147,6 +157,46 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         terminateCurrentProcess()
         fixProgress = "Fix canceled."
         isFixing = false
+    }
+
+    func exportFailuresToFile() {
+        let failedPaths = failureResults.map(\.filePath)
+        guard !failedPaths.isEmpty else {
+            scanAlertText = "No failures to export."
+            return
+        }
+
+        let hostWindow = makeHiddenChromeHostWindow()
+        exportDialogHostWindow = hostWindow
+        hostWindow.makeKeyAndOrderFront(nil)
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "offset-failures.txt"
+
+        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+            Task { @MainActor in
+                guard let self else { return }
+
+                defer {
+                    self.exportDialogHostWindow?.orderOut(nil)
+                    self.exportDialogHostWindow = nil
+                }
+
+                guard response == .OK, let url = panel.url else {
+                    return
+                }
+
+                let body = failedPaths.joined(separator: "\n")
+                do {
+                    try body.write(to: url, atomically: true, encoding: .utf8)
+                    self.scanAlertText = "Exported \(failedPaths.count) failure path(s) to \(url.path)."
+                } catch {
+                    self.scanAlertText = "Failed to export failures: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     private func runScan(token: UUID) async {
@@ -348,6 +398,49 @@ final class OffsetStartCheckerViewModel: ObservableObject {
             return shown.joined(separator: ", ")
         }
         return shown.joined(separator: ", ") + " +\(files.count - limit) more"
+    }
+
+    private func isFailureResult(_ result: OffsetStartCheckResult) -> Bool {
+        if result.firstPTS == nil {
+            return true
+        }
+
+        if result.hasOffsetStart {
+            return true
+        }
+
+        switch result.fixOutcome {
+        case .worseAfterRemux, .needsFullReencode:
+            return true
+        case .notAttempted, .fixedByRemux:
+            return false
+        }
+    }
+
+    private func makeHiddenChromeHostWindow() -> NSWindow {
+        let size = NSSize(width: 640, height: 480)
+        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        let origin = NSPoint(
+            x: visibleFrame.midX - (size.width / 2),
+            y: visibleFrame.midY - (size.height / 2)
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: origin, size: size),
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.isMovable = false
+        window.hasShadow = false
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        return window
     }
 
     private func collectVideoFilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {
