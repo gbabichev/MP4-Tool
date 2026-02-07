@@ -79,6 +79,11 @@ class ContentViewModel: ObservableObject {
         }
     }
 
+    func openOutputFolderInFinder() {
+        guard !outputFolderPath.isEmpty else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: outputFolderPath, isDirectory: true))
+    }
+
     private func checkForSameFolderWarning() {
         guard !inputFolderPath.isEmpty && !outputFolderPath.isEmpty else { return }
 

@@ -31,7 +31,11 @@ struct VideoSplitterView: View {
                                     subtitle: viewModel.inputFolderPath.isEmpty ? "Select folder containing MP4 files" : viewModel.inputFolderPath,
                                     isPlaceholder: viewModel.inputFolderPath.isEmpty,
                                     buttonLabel: "Choose...",
-                                    systemImage: "folder"
+                                    systemImage: "folder",
+                                    openDisabled: viewModel.inputFolderPath.isEmpty,
+                                    openAction: {
+                                        viewModel.openInputFolderInFinder()
+                                    }
                                 ) {
                                     viewModel.selectFolder(isInput: true)
                                 }
@@ -41,7 +45,11 @@ struct VideoSplitterView: View {
                                     subtitle: viewModel.outputFolderPath.isEmpty ? "Select folder for split files" : viewModel.outputFolderPath,
                                     isPlaceholder: viewModel.outputFolderPath.isEmpty,
                                     buttonLabel: "Choose...",
-                                    systemImage: "folder.badge.gearshape"
+                                    systemImage: "folder.badge.gearshape",
+                                    openDisabled: viewModel.outputFolderPath.isEmpty,
+                                    openAction: {
+                                        viewModel.openOutputFolderInFinder()
+                                    }
                                 ) {
                                     viewModel.selectFolder(isInput: false)
                                 }
@@ -329,6 +337,8 @@ private struct FolderPickerRow: View {
     let isPlaceholder: Bool
     let buttonLabel: String
     let systemImage: String
+    let openDisabled: Bool
+    let openAction: (() -> Void)?
     let action: () -> Void
 
     var body: some View {
@@ -345,8 +355,19 @@ private struct FolderPickerRow: View {
 
             Spacer()
 
-            Button(action: action) {
-                Label(buttonLabel, systemImage: systemImage)
+            HStack(spacing: 8) {
+                if let openAction {
+                    Button("Open") {
+                        openAction()
+                    }
+                    .controlSize(.small)
+                    .disabled(openDisabled)
+                }
+
+                Button(action: action) {
+                    Label(buttonLabel, systemImage: systemImage)
+                }
+                .controlSize(.small)
             }
         }
     }

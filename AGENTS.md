@@ -20,7 +20,7 @@ UI conventions
 - Settings row labels use `.subheadline`; controls are compact (`.controlSize(.small)`).
 - Content should be top-aligned within windows (`.frame(..., alignment: .topLeading)`).
 - Video Splitter uses:
-  - Folder pickers for input/output
+  - Folder pickers for input/output with `Open` buttons to reveal selected folders in Finder
   - Detection settings with captions
   - Progress + Stop for scanning
   - Split candidates list with checkbox + preview line
@@ -59,6 +59,8 @@ Offset Checker behavior
   - `Choose Folder...`
   - `Send Failed to Main` (pushes failed file paths into the main app "Files to Process" list)
   - `Export Failures...` writes a `.txt` list of failed file paths via save dialog
+- Folder section:
+  - Inline `Open` button appears to the left of `Input Folder` and opens the selected folder in Finder.
 - Scan Results controls (above the results table):
   - `Show Needs Action` / `Show All` (filters to files still needing action)
   - `Show Failures` / `Show All` (enabled after a completed `Fix Offsets` pass)
@@ -73,6 +75,7 @@ Non-MP4 Scanner behavior
   - Results include common video extensions; non-`mp4` entries are flagged.
 - UI behavior:
   - Toolbar actions: `Choose Folder...`, `Send Flagged to Main`, `Export Flagged...`, `Scan`, `Stop` (while scanning).
+  - Folder section has an inline `Open` button to the left of `Input Folder` to reveal the selected folder in Finder.
   - Scan Results control: `Show Flagged` / `Show All`.
 
 MP4 Validation behavior
@@ -85,6 +88,7 @@ MP4 Validation behavior
   - Validation flags files with compatibility issues (AV1/DTS when ffprobe is available, or non-playable assets).
 - UI behavior:
   - Toolbar actions: `Choose Folder...`, `Send Flagged to Main`, `Export Flagged...`, `Validate`, `Stop` (while validating).
+  - Folder section has an inline `Open` button to the left of `Input Folder` to reveal the selected folder in Finder.
   - Scan Results control: `Show Flagged` / `Show All`.
 
 Splitting

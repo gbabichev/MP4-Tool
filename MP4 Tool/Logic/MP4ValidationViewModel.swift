@@ -71,6 +71,11 @@ final class MP4ValidationViewModel: ObservableObject {
         }
     }
 
+    func openInputFolderInFinder() {
+        guard !inputFolderPath.isEmpty else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+    }
+
     func scan() {
         guard canScan else { return }
         results = []

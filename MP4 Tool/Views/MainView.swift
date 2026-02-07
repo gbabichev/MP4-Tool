@@ -28,18 +28,33 @@ struct MainContentView: View {
             HStack(alignment: .top) {
                 if !viewModel.outputFolderPath.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Output Folder")
-                            .font(.title2)
-                            .fontWeight(.semibold)
+                        HStack(spacing: 8) {
+                            Text("Output Folder")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+
+                            Button("Open") {
+                                viewModel.openOutputFolderInFinder()
+                            }
+                            .controlSize(.small)
+                        }
                         Text(viewModel.outputFolderPath)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Output Folder")
-                            .font(.title2)
-                            .fontWeight(.semibold)
+                        HStack(spacing: 8) {
+                            Text("Output Folder")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+
+                            Button("Open") {
+                                viewModel.openOutputFolderInFinder()
+                            }
+                            .controlSize(.small)
+                            .disabled(true)
+                        }
                         HStack(spacing: 4) {
                             Image(systemName: "folder.badge.gearshape")
                                 .font(.caption2)

@@ -21,8 +21,16 @@ struct OffsetStartCheckerView: View {
 
             GroupBox("Folder") {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Input Folder")
-                        .font(.subheadline)
+                    HStack(spacing: 8) {
+                        Button("Open") {
+                            viewModel.openInputFolderInFinder()
+                        }
+                        .controlSize(.small)
+                        .disabled(viewModel.inputFolderPath.isEmpty)
+
+                        Text("Input Folder")
+                            .font(.subheadline)
+                    }
                     Text(viewModel.inputFolderPath.isEmpty ? "Select folder containing MP4 files" : viewModel.inputFolderPath)
                         .font(.caption)
                         .foregroundStyle(viewModel.inputFolderPath.isEmpty ? .tertiary : .secondary)

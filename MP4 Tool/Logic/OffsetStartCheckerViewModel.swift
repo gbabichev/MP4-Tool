@@ -127,6 +127,11 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         }
     }
 
+    func openInputFolderInFinder() {
+        guard !inputFolderPath.isEmpty else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+    }
+
     func scanOffsetStarts() {
         guard canScan else { return }
         hasCompletedFixPass = false

@@ -99,6 +99,16 @@ final class VideoSplitterViewModel: ObservableObject {
         }
     }
 
+    func openInputFolderInFinder() {
+        guard !inputFolderPath.isEmpty else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+    }
+
+    func openOutputFolderInFinder() {
+        guard !outputFolderPath.isEmpty else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: outputFolderPath, isDirectory: true))
+    }
+
     func scanForSplits() {
         guard canScan else { return }
         clampSettings()
