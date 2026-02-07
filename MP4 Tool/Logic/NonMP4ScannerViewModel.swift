@@ -37,10 +37,6 @@ final class NonMP4ScannerViewModel: ObservableObject {
         !inputFolderPath.isEmpty && !isScanning
     }
 
-    var canCancelScan: Bool {
-        isScanning
-    }
-
     var flaggedResults: [NonMP4ScanResult] {
         results.filter(\.isFlagged)
     }

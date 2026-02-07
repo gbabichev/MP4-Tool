@@ -38,10 +38,6 @@ final class MP4ValidationViewModel: ObservableObject {
         !inputFolderPath.isEmpty && !isScanning
     }
 
-    var canCancelScan: Bool {
-        isScanning
-    }
-
     var flaggedResults: [MP4ValidationResult] {
         results.filter(\.isFlagged)
     }

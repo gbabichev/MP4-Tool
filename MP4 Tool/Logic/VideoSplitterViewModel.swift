@@ -342,13 +342,6 @@ final class VideoSplitterViewModel: ObservableObject {
         return "\(names.first)  •  \(names.second)"
     }
 
-    func effectiveSplitTimeLabel(for result: VideoSplitCandidate) -> String {
-        if let manualSeconds = manualSplitSeconds(for: result) {
-            return formatTime(manualSeconds)
-        }
-        return result.splitTimeLabel
-    }
-
     func manualSplitTimeIsValid(for result: VideoSplitCandidate) -> Bool {
         manualSplitSeconds(for: result) != nil
     }

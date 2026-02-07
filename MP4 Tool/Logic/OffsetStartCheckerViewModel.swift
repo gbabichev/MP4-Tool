@@ -78,16 +78,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         !inputFolderPath.isEmpty && ffprobeAvailable && !isScanning && !isFixing
     }
 
-    var canCancelScan: Bool {
-        isScanning
-    }
-
     var canFix: Bool {
         !isScanning && !isFixing && ffmpegAvailable && ffprobeAvailable && results.contains(where: { $0.hasOffsetStart })
-    }
-
-    var canCancelFix: Bool {
-        isFixing
     }
 
     var failureResults: [OffsetStartCheckResult] {
@@ -104,14 +96,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
     var canSendFailuresToMainApp: Bool {
         !isScanning && !isFixing && hasCompletedFixPass && !failureResults.isEmpty
-    }
-
-    var ffprobeStatusLabel: String {
-        ffprobeAvailable ? "FFprobe: Available" : "FFprobe: Not Available"
-    }
-
-    var ffmpegStatusLabel: String {
-        ffmpegAvailable ? "FFmpeg: Available" : "FFmpeg: Not Available"
     }
 
     func selectInputFolder() {
