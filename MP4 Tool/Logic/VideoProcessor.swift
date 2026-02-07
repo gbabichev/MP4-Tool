@@ -133,6 +133,8 @@ struct VideoFileInfo: Identifiable {
     let fileExtension: String
     let fileSizeMB: Int
     var status: ProcessingStatus = .pending
+    var processingStartTime: Date? = nil
+    var processingEndTime: Date? = nil
     var processingTimeSeconds: Int = 0
     var newSizeMB: Int = 0
     var hasConflict: Bool = false
@@ -420,6 +422,8 @@ class VideoProcessor: ObservableObject {
             // Reset all video file statuses to pending when starting a new batch
             for index in 0..<self.videoFiles.count {
                 self.videoFiles[index].status = .pending
+                self.videoFiles[index].processingStartTime = nil
+                self.videoFiles[index].processingEndTime = nil
                 self.videoFiles[index].processingTimeSeconds = 0
                 self.videoFiles[index].newSizeMB = 0
             }
@@ -518,12 +522,15 @@ class VideoProcessor: ObservableObject {
             // Mark file as processing
             let filePathForProcessing = fileInfo.path
             let currentIndex = index
+            let fileStartTime = Date()
             DispatchQueue.main.async {
                 self.currentFileIndex = currentIndex + 1
                 self.currentFile = fileInfo.name
                 if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == filePathForProcessing }) {
                     var updatedFile = self.videoFiles[fileIndex]
                     updatedFile.status = .processing
+                    updatedFile.processingStartTime = fileStartTime
+                    updatedFile.processingEndTime = nil
                     self.videoFiles[fileIndex] = updatedFile
                 }
             }
@@ -549,7 +556,6 @@ class VideoProcessor: ObservableObject {
             let tempOutputFile = NSTemporaryDirectory() + UUID().uuidString + ".mp4"
 
             // Process the video
-            let fileStartTime = Date()
             let (conversionSuccess, errorReason) = await convertToMP4(
                 inputFile: inputFilePath,
                 tempFile: tempOutputFile,
@@ -589,6 +595,7 @@ class VideoProcessor: ObservableObject {
                         if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == failedFilePath }) {
                             var updatedFile = self.videoFiles[fileIndex]
                             updatedFile.status = .failed
+                            updatedFile.processingEndTime = fileEndTime
                             self.videoFiles[fileIndex] = updatedFile
                         }
                         self.processingHadError = true
@@ -624,6 +631,7 @@ class VideoProcessor: ObservableObject {
                         // Replace the entire struct to ensure @Published detects the change
                         var updatedFile = self.videoFiles[fileIndex]
                         updatedFile.status = .completed
+                        updatedFile.processingEndTime = fileEndTime
                         updatedFile.processingTimeSeconds = Int(duration)
                         updatedFile.newSizeMB = Int(outputSizeMB)
                         self.videoFiles[fileIndex] = updatedFile
@@ -648,6 +656,7 @@ class VideoProcessor: ObservableObject {
                     if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == conversionFailedFilePath }) {
                         var updatedFile = self.videoFiles[fileIndex]
                         updatedFile.status = .failed
+                        updatedFile.processingEndTime = fileEndTime
                         self.videoFiles[fileIndex] = updatedFile
                     }
                     self.processingHadError = true

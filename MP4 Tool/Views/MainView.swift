@@ -11,6 +11,12 @@ import UniformTypeIdentifiers
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
     @State private var selectedFileIDs: Set<UUID> = []
+    private static let localTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .medium
+        formatter.dateStyle = .none
+        return formatter
+    }()
 
     var ffmpegSourceLabel: String {
         if viewModel.processor.isUsingSystemFFmpeg {
@@ -325,6 +331,30 @@ struct MainContentView: View {
                                 }
                             }
                             .width(ideal: 50)
+
+                            TableColumn("Start Time") { file in
+                                if let start = file.processingStartTime {
+                                    Text(Self.localTimeFormatter.string(from: start))
+                                        .font(.body)
+                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                        .monospacedDigit()
+                                } else {
+                                    Text("")
+                                }
+                            }
+                            .width(ideal: 90)
+
+                            TableColumn("End Time") { file in
+                                if let end = file.processingEndTime {
+                                    Text(Self.localTimeFormatter.string(from: end))
+                                        .font(.body)
+                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                        .monospacedDigit()
+                                } else {
+                                    Text("")
+                                }
+                            }
+                            .width(ideal: 90)
 
                             TableColumn("Time") { file in
                                 if file.status == .completed && file.processingTimeSeconds > 0 {
