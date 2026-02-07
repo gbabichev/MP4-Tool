@@ -27,19 +27,6 @@ struct SettingsView: View {
                     .fontWeight(.semibold)
 
                 Spacer()
-
-                Button(action: {
-                    withAnimation {
-                        isExpanded = false
-                    }
-                }) {
-                    Image(systemName: "chevron.right")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .help("Collapse Settings")
             }
             .frame(maxWidth: .infinity)
 

@@ -192,27 +192,27 @@ struct ContentView: View {
     
     var mainContent: some View {
         HStack(spacing: 0) {
-            // Main Content - Left Side
-            MainContentView(viewModel: viewModel)
-            
-            // Divider between panes
             if isSettingsExpanded {
+                // Settings - Left Side
+                ExpandedSettingsPanel(
+                    selectedMode: selectedModeBinding,
+                    crfValue: $crfValue,
+                    selectedResolution: selectedResolutionBinding,
+                    selectedPreset: selectedPresetBinding,
+                    createSubfolders: $createSubfolders,
+                    deleteOriginal: $deleteOriginal,
+                    keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                    keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                    isProcessing: viewModel.processor.isProcessing,
+                    isExpanded: $isSettingsExpanded
+                )
+
+                // Divider between panes
                 Divider()
             }
-            
-            // Settings - Right Side
-            SettingsPanelContainer(
-                selectedMode: selectedModeBinding,
-                crfValue: $crfValue,
-                selectedResolution: selectedResolutionBinding,
-                selectedPreset: selectedPresetBinding,
-                createSubfolders: $createSubfolders,
-                deleteOriginal: $deleteOriginal,
-                keepEnglishAudioOnly: $keepEnglishAudioOnly,
-                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
-                isProcessing: viewModel.processor.isProcessing,
-                isExpanded: $isSettingsExpanded
-            )
+
+            // Main Content - Right Side
+            MainContentView(viewModel: viewModel)
         }
         .frame(minWidth: 800, minHeight: 650)
         .safeAreaInset(edge: .bottom) {
@@ -238,6 +238,17 @@ struct ContentView: View {
             }
 #endif
             .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        withAnimation {
+                            isSettingsExpanded.toggle()
+                        }
+                    } label: {
+                        Label(isSettingsExpanded ? "Hide Settings" : "Show Settings", systemImage: "sidebar.left")
+                    }
+                    .help(isSettingsExpanded ? "Hide settings panel" : "Show settings panel")
+                }
+
                 ToolbarItem(placement: .navigation) {
                     Button(action: {
                         viewModel.selectFolder(isInput: true)
@@ -281,6 +292,9 @@ struct ContentView: View {
                         }) {
                             Label("Stop", systemImage: "stop.fill")
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .keyboardShortcut(".", modifiers: .command)
                     } else {
                         Button(action: {
                             viewModel.startProcessing(

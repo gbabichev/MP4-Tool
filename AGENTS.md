@@ -19,6 +19,8 @@ UI conventions
 - Settings panels use GroupBox with slightly smaller type, compact spacing.
 - Settings row labels use `.subheadline`; controls are compact (`.controlSize(.small)`).
 - Content should be top-aligned within windows (`.frame(..., alignment: .topLeading)`).
+- Main window places Settings on the left and main processing content on the right.
+- Main window toolbar includes a settings visibility toggle (`Hide Settings` / `Show Settings`) to fully hide/show the settings pane.
 - Video Splitter uses:
   - Folder pickers for input/output with `Open` buttons to reveal selected folders in Finder
   - Detection settings with captions
