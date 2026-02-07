@@ -253,7 +253,7 @@ struct ContentView: View {
                     Button(action: {
                         viewModel.selectFolder(isInput: false)
                     }) {
-                        Label("Output Folder", systemImage: "folder.badge.gearshape")
+                        Label("Output Folder", systemImage: "folder.badge.plus")
                     }
                     .disabled(viewModel.processor.isProcessing)
                     .help(viewModel.outputFolderPath.isEmpty ? "Select output folder" : viewModel.outputFolderPath)

@@ -45,7 +45,7 @@ struct MP4_ToolApp: App {
                 Button(action: {
                     windowCommandHandler?.selectOutputFolder()
                 }) {
-                    Label("Select Output Folder...", systemImage: "folder.badge.gearshape")
+                    Label("Select Output Folder...", systemImage: "folder.badge.plus")
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(windowCommandHandler?.isProcessing ?? true)

@@ -56,7 +56,7 @@ struct MainContentView: View {
                             .disabled(true)
                         }
                         HStack(spacing: 4) {
-                            Image(systemName: "folder.badge.gearshape")
+                            Image(systemName: "folder.badge.plus")
                                 .font(.caption2)
                             Text("Select output or drop folder here")
                         }
