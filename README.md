@@ -85,6 +85,8 @@ git clone https://github.com/gbabichev/MP4-Tool.git
   - Repair in place. 
   - Offsets can happen when splitting a video not on a keyframe and not re-encoding.
 - Enhanced Video Splitter to also repair offsets after a split.
+- Added UI for "Validate MP4" & "Scan for Non-MP4" Tools. 
+- Added "Open in Finder" buttons to all folder selections. 
 
 ### 1.3.1
 - Video Splitter Enhancements:
