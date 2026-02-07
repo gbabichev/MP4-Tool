@@ -9,6 +9,10 @@ Overview
 - Video Splitter logic: `MP4 Tool/Logic/VideoSplitterViewModel.swift`
 - Offset Checker window: `MP4 Tool/Views/OffsetStartCheckerView.swift`
 - Offset Checker logic: `MP4 Tool/Logic/OffsetStartCheckerViewModel.swift`
+- Non-MP4 Scanner window: `MP4 Tool/Views/NonMP4ScannerView.swift`
+- Non-MP4 Scanner logic: `MP4 Tool/Logic/NonMP4ScannerViewModel.swift`
+- MP4 Validation window: `MP4 Tool/Views/MP4ValidationView.swift`
+- MP4 Validation logic: `MP4 Tool/Logic/MP4ValidationViewModel.swift`
 - App scenes/menus: `MP4 Tool/MP4_ToolApp.swift`
 
 UI conventions
@@ -58,6 +62,30 @@ Offset Checker behavior
 - Scan Results controls (above the results table):
   - `Show Needs Action` / `Show All` (filters to files still needing action)
   - `Show Failures` / `Show All` (enabled after a completed `Fix Offsets` pass)
+
+Non-MP4 Scanner behavior
+- Tools menu opens a separate window scene:
+  - Scene is `Window("Scan for Non-MP4 Files", id: "nonMP4Scanner")`
+- Scan behavior:
+  - Input picker selects a root folder.
+  - Scan is recursive (includes subfolders).
+  - File ordering is stable natural sort by relative path (`localizedStandardCompare`).
+  - Results include common video extensions; non-`mp4` entries are flagged.
+- UI behavior:
+  - Toolbar actions: `Choose Folder...`, `Send Flagged to Main`, `Export Flagged...`, `Scan`, `Stop` (while scanning).
+  - Scan Results control: `Show Flagged` / `Show All`.
+
+MP4 Validation behavior
+- Tools menu opens a separate window scene:
+  - Scene is `Window("Validate MP4 Files", id: "mp4Validation")`
+- Scan behavior:
+  - Input picker selects a root folder.
+  - Scan is recursive (includes subfolders), MP4 files only.
+  - File ordering is stable natural sort by relative path (`localizedStandardCompare`).
+  - Validation flags files with compatibility issues (AV1/DTS when ffprobe is available, or non-playable assets).
+- UI behavior:
+  - Toolbar actions: `Choose Folder...`, `Send Flagged to Main`, `Export Flagged...`, `Validate`, `Stop` (while validating).
+  - Scan Results control: `Show Flagged` / `Show All`.
 
 Splitting
 - Split uses `-c copy` with `-ss` / `-to` for part 1, then `-ss` for part 2.

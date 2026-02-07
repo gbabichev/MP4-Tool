@@ -98,20 +98,18 @@ struct MP4_ToolApp: App {
                 Divider()
                 
                 Button(action: {
-                    windowCommandHandler?.scanForNonMP4Files()
+                    openWindow(id: "nonMP4Scanner")
                 }) {
                     Label("Scan for Non-MP4 Files...", systemImage: "magnifyingglass")
                 }
                 .keyboardShortcut("S", modifiers: [.command, .shift])
-                .disabled(windowCommandHandler?.isProcessing ?? true)
 
                 Button(action: {
-                    windowCommandHandler?.validateMP4Files()
+                    openWindow(id: "mp4Validation")
                 }) {
                     Label("Validate MP4 Files...", systemImage: "checkmark.circle")
                 }
                 .keyboardShortcut("V", modifiers: [.command, .shift])
-                .disabled(windowCommandHandler?.isProcessing ?? true)
 
                 Divider()
 
@@ -141,6 +139,14 @@ struct MP4_ToolApp: App {
 
         Window("Check Offset Starts", id: "offsetStartChecker") {
             OffsetStartCheckerView()
+        }
+
+        Window("Scan for Non-MP4 Files", id: "nonMP4Scanner") {
+            NonMP4ScannerView()
+        }
+
+        Window("Validate MP4 Files", id: "mp4Validation") {
+            MP4ValidationView()
         }
     }
 }

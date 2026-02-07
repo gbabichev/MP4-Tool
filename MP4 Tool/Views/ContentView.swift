@@ -15,8 +15,6 @@ struct WindowCommandHandler {
     let selectOutputFolder: () -> Void
     let clearFolders: () -> Void
     let startProcessing: () -> Void
-    let scanForNonMP4Files: () -> Void
-    let validateMP4Files: () -> Void
     let exportLog: () -> Void
     let showTutorial: () -> Void
     let showAbout: () -> Void
@@ -132,8 +130,6 @@ struct ContentView: View {
                     keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
                 )
             },
-            scanForNonMP4Files: { viewModel.scanForNonMP4Files() },
-            validateMP4Files: { viewModel.validateMP4Files() },
             exportLog: { viewModel.exportLogToFile() },
             showTutorial: { viewModel.showTutorial() },
             showAbout: { viewModel.showAbout() },
@@ -163,6 +159,28 @@ struct ContentView: View {
 
     private func enqueueQueuedOffsetFailures(_ notification: Notification) {
         guard let paths = notification.userInfo?[queueOffsetCheckerFailuresPathsKey] as? [String],
+              !paths.isEmpty else {
+            return
+        }
+
+        for path in paths {
+            viewModel.addVideoFile(url: URL(fileURLWithPath: path))
+        }
+    }
+
+    private func enqueueQueuedNonMP4FlaggedFiles(_ notification: Notification) {
+        guard let paths = notification.userInfo?[queueNonMP4FlaggedFilesPathsKey] as? [String],
+              !paths.isEmpty else {
+            return
+        }
+
+        for path in paths {
+            viewModel.addVideoFile(url: URL(fileURLWithPath: path))
+        }
+    }
+
+    private func enqueueQueuedMP4ValidationFlaggedFiles(_ notification: Notification) {
+        guard let paths = notification.userInfo?[queueMP4ValidationFlaggedFilesPathsKey] as? [String],
               !paths.isEmpty else {
             return
         }
@@ -296,6 +314,12 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: queueOffsetCheckerFailuresNotification)) { notification in
                 enqueueQueuedOffsetFailures(notification)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: queueNonMP4FlaggedFilesNotification)) { notification in
+                enqueueQueuedNonMP4FlaggedFiles(notification)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: queueMP4ValidationFlaggedFilesNotification)) { notification in
+                enqueueQueuedMP4ValidationFlaggedFiles(notification)
             }
             .onAppear {
                 if !hasSeenTutorial {
