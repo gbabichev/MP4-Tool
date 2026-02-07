@@ -87,6 +87,12 @@ struct TutorialView: View {
                             title: "4. Start Processing",
                             description: "Click Start Processing or press ⌘P to begin. Monitor progress in the log output below."
                         )
+
+                        TutorialStep(
+                            icon: "wrench.and.screwdriver",
+                            title: "5. Extra Built-In Tools",
+                            description: "Open Tools from the menu bar to use Video Splitter, Check Offset Starts, Scan for Non-MP4 Files, and Validate MP4 Files. These tools are included in MP4 Tool at no extra cost."
+                        )
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
