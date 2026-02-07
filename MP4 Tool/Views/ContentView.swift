@@ -189,6 +189,10 @@ struct ContentView: View {
             viewModel.addVideoFile(url: URL(fileURLWithPath: path))
         }
     }
+
+    private func clearCompletionNotificationsIfPossible() {
+        viewModel.processor.clearProcessingNotifications()
+    }
     
     var mainContent: some View {
         HStack(spacing: 0) {
@@ -335,6 +339,9 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: queueMP4ValidationFlaggedFilesNotification)) { notification in
                 enqueueQueuedMP4ValidationFlaggedFiles(notification)
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                clearCompletionNotificationsIfPossible()
+            }
             .onAppear {
                 if !hasSeenTutorial {
                     viewModel.showingTutorial = true
@@ -360,6 +367,8 @@ struct ContentView: View {
                         print("Error requesting notification permission: \(error)")
                     }
                 }
+
+                clearCompletionNotificationsIfPossible()
             }
             .onChange(of: defaultsSnapshot) { _, newValue in
                 defaultSelectedModeRaw = newValue.selectedModeRaw
@@ -374,8 +383,8 @@ struct ContentView: View {
                 defaultIsSettingsExpanded = newValue.isSettingsExpanded
             }
             .onChange(of: scenePhase, initial: false) { _, newPhase in
-                guard newPhase == .active, !viewModel.processor.isProcessing else { return }
-                viewModel.processor.clearProcessingNotifications()
+                guard newPhase == .active else { return }
+                clearCompletionNotificationsIfPossible()
             }
             .fileExporter(
                 isPresented: $viewModel.showingLogExporter,

@@ -124,6 +124,7 @@ struct VideoSplitterView: View {
                         Spacer()
                     }
                     .frame(minWidth: 420, maxWidth: 520)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
                 }
 
                 GroupBox {
@@ -221,7 +222,9 @@ struct VideoSplitterView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
-                    showSettings.toggle()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showSettings.toggle()
+                    }
                 } label: {
                     Label(showSettings ? "Hide Settings" : "Show Settings", systemImage: "sidebar.left")
                 }
@@ -254,6 +257,7 @@ struct VideoSplitterView: View {
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: showSettings)
     }
 }
 

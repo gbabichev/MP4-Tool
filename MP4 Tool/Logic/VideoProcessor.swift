@@ -1376,6 +1376,10 @@ class VideoProcessor: ObservableObject {
 
     func clearProcessingNotifications() {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["processingComplete"])
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["processingComplete"])
+        if #available(macOS 13.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
+        }
 
         // Clear app badge
         DispatchQueue.main.async {
