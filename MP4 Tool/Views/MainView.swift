@@ -265,107 +265,104 @@ struct MainContentView: View {
                     VStack(spacing: 8) {
                         Table(viewModel.processor.videoFiles, selection: $selectedFileIDs) {
                             TableColumn("Status") { file in
-                                statusIcon(for: file)
-                                    .frame(width: 24)
+                                cellWithContextMenu(for: file) {
+                                    statusIcon(for: file)
+                                        .frame(width: 24)
+                                }
                             }
                             .width(ideal: 15)
 
                             TableColumn("Name") { file in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(file.fileName)
-                                        .font(.body)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .foregroundStyle(file.status == .completed ? .green : .primary)
+                                cellWithContextMenu(for: file) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(file.fileName)
+                                            .font(.body)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .foregroundStyle(file.status == .completed ? .green : .primary)
 
-                                    if file.hasConflict && !file.conflictReason.isEmpty {
-                                        Text(file.conflictReason)
-                                            .font(.caption)
-                                            .foregroundStyle(.orange)
-                                    }
-                                }
-                                .contextMenu {
-                                    Button(action: {
-                                        openParentFolderInFinder(filePath: file.filePath)
-                                    }) {
-                                        Label("Open Parent Folder in Finder", systemImage: "folder")
-                                    }
-
-                                    Divider()
-
-                                    Button(role: .destructive, action: {
-                                        removeFile(filePath: file.filePath)
-                                    }) {
-                                        if selectedFileIDs.contains(file.id) && selectedFileIDs.count > 1 {
-                                            Label("Remove Selected (\(selectedFileIDs.count))", systemImage: "trash")
-                                        } else {
-                                            Label("Remove from List", systemImage: "trash")
+                                        if file.hasConflict && !file.conflictReason.isEmpty {
+                                            Text(file.conflictReason)
+                                                .font(.caption)
+                                                .foregroundStyle(.orange)
                                         }
                                     }
                                 }
                             }
 
                             TableColumn("Type") { file in
-                                Text("[\(file.fileExtension)]")
-                                    .font(.body)
-                                    .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                cellWithContextMenu(for: file) {
+                                    Text("[\(file.fileExtension)]")
+                                        .font(.body)
+                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                }
                             }
                             .width(ideal: 40)
 
                             TableColumn("Original Size") { file in
-                                Text("\(file.fileSizeMB) MB")
-                                    .font(.body)
-                                    .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                    .monospacedDigit()
+                                cellWithContextMenu(for: file) {
+                                    Text("\(file.fileSizeMB) MB")
+                                        .font(.body)
+                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                        .monospacedDigit()
+                                }
                             }
                             .width(ideal: 50)
 
                             TableColumn("New Size") { file in
-                                if file.status == .completed && file.newSizeMB > 0 {
-                                    Text("\(file.newSizeMB) MB")
-                                        .font(.body)
-                                        .foregroundStyle(.green)
-                                        .monospacedDigit()
-                                } else {
-                                    Text("")
+                                cellWithContextMenu(for: file) {
+                                    if file.status == .completed && file.newSizeMB > 0 {
+                                        Text("\(file.newSizeMB) MB")
+                                            .font(.body)
+                                            .foregroundStyle(.green)
+                                            .monospacedDigit()
+                                    } else {
+                                        Text("")
+                                    }
                                 }
                             }
                             .width(ideal: 50)
 
                             TableColumn("Start Time") { file in
-                                if let start = file.processingStartTime {
-                                    Text(Self.localTimeFormatter.string(from: start))
-                                        .font(.body)
-                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                        .monospacedDigit()
-                                } else {
-                                    Text("")
+                                cellWithContextMenu(for: file) {
+                                    if let start = file.processingStartTime {
+                                        Text(Self.localTimeFormatter.string(from: start))
+                                            .font(.body)
+                                            .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                            .monospacedDigit()
+                                    } else {
+                                        Text("")
+                                    }
                                 }
                             }
                             .width(ideal: 90)
 
                             TableColumn("End Time") { file in
-                                if let end = file.processingEndTime {
-                                    Text(Self.localTimeFormatter.string(from: end))
-                                        .font(.body)
-                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                        .monospacedDigit()
-                                } else {
-                                    Text("")
+                                cellWithContextMenu(for: file) {
+                                    if let end = file.processingEndTime {
+                                        Text(Self.localTimeFormatter.string(from: end))
+                                            .font(.body)
+                                            .foregroundStyle(file.status == .completed ? .green : .secondary)
+                                            .monospacedDigit()
+                                    } else {
+                                        Text("")
+                                    }
                                 }
                             }
                             .width(ideal: 90)
 
                             TableColumn("Time") { file in
-                                if file.status == .completed && file.processingTimeSeconds > 0 {
-                                    let minutes = file.processingTimeSeconds / 60
-                                    let seconds = file.processingTimeSeconds % 60
-                                    Text("\(minutes)m \(seconds)s")
-                                        .font(.body)
-                                        .foregroundStyle(.green)
-                                        .monospacedDigit()
-                                } else {
-                                    Text("")
+                                cellWithContextMenu(for: file) {
+                                    if file.status == .completed && file.processingTimeSeconds > 0 {
+                                        let minutes = file.processingTimeSeconds / 60
+                                        let seconds = file.processingTimeSeconds % 60
+                                        Text("\(minutes)m \(seconds)s")
+                                            .font(.body)
+                                            .foregroundStyle(.green)
+                                            .monospacedDigit()
+                                    } else {
+                                        Text("")
+                                    }
                                 }
                             }
                             .width(ideal: 50)
@@ -464,6 +461,39 @@ struct MainContentView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func contextMenuItems(for file: VideoFileInfo) -> some View {
+        Button(action: {
+            openParentFolderInFinder(filePath: file.filePath)
+        }) {
+            Label("Open Parent Folder in Finder", systemImage: "folder")
+        }
+
+        Divider()
+
+        Button(role: .destructive, action: {
+            removeFile(filePath: file.filePath)
+        }) {
+            if selectedFileIDs.contains(file.id) && selectedFileIDs.count > 1 {
+                Label("Remove Selected (\(selectedFileIDs.count))", systemImage: "trash")
+            } else {
+                Label("Remove from List", systemImage: "trash")
+            }
+        }
+    }
+
+    private func cellWithContextMenu<Content: View>(
+        for file: VideoFileInfo,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .contextMenu {
+                contextMenuItems(for: file)
+            }
     }
 
     private func removeSelectedFiles() {
