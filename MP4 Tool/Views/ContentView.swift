@@ -36,7 +36,6 @@ private struct DefaultsSnapshot: Equatable {
     let keepEnglishAudioOnly: Bool
     let keepEnglishSubtitlesOnly: Bool
     let isLogExpanded: Bool
-    let isSettingsExpanded: Bool
 }
 
 private struct WindowCommandHandlerKey: FocusedValueKey {
@@ -62,7 +61,7 @@ struct ContentView: View {
     @SceneStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @SceneStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @SceneStorage("isLogExpanded") private var isLogExpanded = true
-    @SceneStorage("isSettingsExpanded") private var isSettingsExpanded = true
+    @SceneStorage("isSettingsExpanded") private var sceneIsSettingsExpanded: Bool?
     @SceneStorage("didInitializeWindowDefaults") private var didInitializeWindowDefaults = false
     @AppStorage("defaultSelectedMode") private var defaultSelectedModeRaw: String = ProcessingMode.encodeH265.rawValue
     @AppStorage("defaultCrfValue") private var defaultCrfValue: Double = 23
@@ -112,6 +111,20 @@ struct ContentView: View {
         )
     }
 
+    private var isSettingsExpanded: Bool {
+        sceneIsSettingsExpanded ?? defaultIsSettingsExpanded
+    }
+
+    private var isSettingsExpandedBinding: Binding<Bool> {
+        Binding(
+            get: { isSettingsExpanded },
+            set: { newValue in
+                sceneIsSettingsExpanded = newValue
+                defaultIsSettingsExpanded = newValue
+            }
+        )
+    }
+
     private var commandHandler: WindowCommandHandler {
         WindowCommandHandler(
             openInputFolder: { viewModel.selectFolder(isInput: true) },
@@ -152,8 +165,7 @@ struct ContentView: View {
             deleteOriginal: deleteOriginal,
             keepEnglishAudioOnly: keepEnglishAudioOnly,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
-            isLogExpanded: isLogExpanded,
-            isSettingsExpanded: isSettingsExpanded
+            isLogExpanded: isLogExpanded
         )
     }
 
@@ -208,7 +220,7 @@ struct ContentView: View {
                     keepEnglishAudioOnly: $keepEnglishAudioOnly,
                     keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
                     isProcessing: viewModel.processor.isProcessing,
-                    isExpanded: $isSettingsExpanded
+                    isExpanded: isSettingsExpandedBinding
                 )
 
                 // Divider between panes
@@ -245,7 +257,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigation) {
                     Button {
                         withAnimation {
-                            isSettingsExpanded.toggle()
+                            isSettingsExpandedBinding.wrappedValue.toggle()
                         }
                     } label: {
                         Label(isSettingsExpanded ? "Hide Settings" : "Show Settings", systemImage: "sidebar.left")
@@ -347,6 +359,10 @@ struct ContentView: View {
                     viewModel.showingTutorial = true
                 }
 
+                if sceneIsSettingsExpanded == nil {
+                    sceneIsSettingsExpanded = defaultIsSettingsExpanded
+                }
+
                 if !didInitializeWindowDefaults {
                     selectedModeRaw = defaultSelectedModeRaw
                     crfValue = defaultCrfValue
@@ -357,7 +373,6 @@ struct ContentView: View {
                     keepEnglishAudioOnly = defaultKeepEnglishAudioOnly
                     keepEnglishSubtitlesOnly = defaultKeepEnglishSubtitlesOnly
                     isLogExpanded = defaultIsLogExpanded
-                    isSettingsExpanded = defaultIsSettingsExpanded
                     didInitializeWindowDefaults = true
                 }
                 
@@ -380,7 +395,6 @@ struct ContentView: View {
                 defaultKeepEnglishAudioOnly = newValue.keepEnglishAudioOnly
                 defaultKeepEnglishSubtitlesOnly = newValue.keepEnglishSubtitlesOnly
                 defaultIsLogExpanded = newValue.isLogExpanded
-                defaultIsSettingsExpanded = newValue.isSettingsExpanded
             }
             .onChange(of: scenePhase, initial: false) { _, newPhase in
                 guard newPhase == .active else { return }
@@ -499,68 +513,6 @@ struct CollapsedLogPanel: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
-    }
-}
-
-// Settings Panel Container - Handles expanded/collapsed states
-struct SettingsPanelContainer: View {
-    @Binding var selectedMode: ProcessingMode
-    @Binding var crfValue: Double
-    @Binding var selectedResolution: ResolutionOption
-    @Binding var selectedPreset: PresetOption
-    @Binding var createSubfolders: Bool
-    @Binding var deleteOriginal: Bool
-    @Binding var keepEnglishAudioOnly: Bool
-    @Binding var keepEnglishSubtitlesOnly: Bool
-    let isProcessing: Bool
-    @Binding var isExpanded: Bool
-    
-    var body: some View {
-        if isExpanded {
-            ExpandedSettingsPanel(
-                selectedMode: $selectedMode,
-                crfValue: $crfValue,
-                selectedResolution: $selectedResolution,
-                selectedPreset: $selectedPreset,
-                createSubfolders: $createSubfolders,
-                deleteOriginal: $deleteOriginal,
-                keepEnglishAudioOnly: $keepEnglishAudioOnly,
-                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
-                isProcessing: isProcessing,
-                isExpanded: $isExpanded
-            )
-            .transition(.move(edge: .trailing).combined(with: .opacity))
-        } else {
-            CollapsedSettingsPanel(isExpanded: $isExpanded)
-                .transition(.move(edge: .leading).combined(with: .opacity))
-        }
-    }
-}
-
-// Collapsed Settings Panel
-struct CollapsedSettingsPanel: View {
-    @Binding var isExpanded: Bool
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            Button(action: {
-                withAnimation {
-                    isExpanded = true
-                }
-            }) {
-                Image(systemName: "chevron.left")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .help("Expand Settings")
-            
-            Spacer()
-        }
-        .frame(width: 44)
-        .padding(.vertical)
     }
 }
 

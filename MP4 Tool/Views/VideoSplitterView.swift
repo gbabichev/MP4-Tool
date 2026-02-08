@@ -9,7 +9,9 @@ import SwiftUI
 
 struct VideoSplitterView: View {
     @StateObject private var viewModel = VideoSplitterViewModel()
-    @State private var showSettings = true
+    @SceneStorage("videoSplitterShowSettings") private var showSettings = true
+    @SceneStorage("videoSplitterDidInitializeSettingsState") private var didInitializeSettingsState = false
+    @AppStorage("videoSplitterDefaultShowSettings") private var defaultShowSettings = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -258,6 +260,15 @@ struct VideoSplitterView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showSettings)
+        .onAppear {
+            if !didInitializeSettingsState {
+                showSettings = defaultShowSettings
+                didInitializeSettingsState = true
+            }
+        }
+        .onChange(of: showSettings) { _, newValue in
+            defaultShowSettings = newValue
+        }
     }
 }
 
