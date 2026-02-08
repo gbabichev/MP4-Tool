@@ -141,6 +141,28 @@ struct VideoFileInfo: Identifiable {
     var conflictReason: String = ""
 }
 
+private final class ThreadSafeDataBuffer: @unchecked Sendable {
+    private nonisolated(unsafe) var data = Data()
+    private let lock = NSLock()
+    private let maxBytes = 131_072
+
+    nonisolated func append(_ chunk: Data) {
+        lock.lock()
+        data.append(chunk)
+        if data.count > maxBytes {
+            data.removeFirst(data.count - maxBytes)
+        }
+        lock.unlock()
+    }
+
+    nonisolated func snapshot() -> Data {
+        lock.lock()
+        let copy = data
+        lock.unlock()
+        return copy
+    }
+}
+
 class VideoProcessor: ObservableObject {
     @Published var isProcessing = false
     @Published var currentFile = ""
@@ -158,6 +180,9 @@ class VideoProcessor: ObservableObject {
     @Published var processingHadError = false
 
     private var startTime: Date?
+    private var currentInputDurationSeconds: TimeInterval?
+    private var currentEncodedTimeSeconds: TimeInterval = 0
+    private var ffmpegProgressTail: String = ""
     private var timer: Timer?
     private nonisolated(unsafe) var shouldCancelScan = false
     private nonisolated(unsafe) var shouldCancelProcessing = false
@@ -175,6 +200,11 @@ class VideoProcessor: ObservableObject {
     @Published var hasBundledFFmpeg: Bool = false
     @Published var hasSystemFFmpeg: Bool = false
     @Published var isUsingSystemFFmpeg: Bool = false
+
+    private static let ffmpegTimeRegex: NSRegularExpression = {
+        let pattern = #"(?:time|out_time)=\s*([0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?)"#
+        return try! NSRegularExpression(pattern: pattern)
+    }()
 
     init() {
         var foundBundledFfmpeg = false
@@ -367,6 +397,90 @@ class VideoProcessor: ObservableObject {
         }
     }
 
+    private static func latestFFmpegMediaTimeSeconds(in text: String) -> TimeInterval? {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = ffmpegTimeRegex.matches(in: text, range: range)
+        guard let match = matches.last,
+              let captureRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+
+        let value = String(text[captureRange])
+        let parts = value.split(separator: ":")
+        guard parts.count == 3,
+              let hours = Int(parts[0]),
+              let minutes = Int(parts[1]),
+              let seconds = Double(parts[2]) else {
+            return nil
+        }
+        return TimeInterval(hours * 3600) + TimeInterval(minutes * 60) + seconds
+    }
+
+    private func estimateCurrentFileETASeconds(elapsedWallSeconds: TimeInterval) -> TimeInterval? {
+        guard let duration = currentInputDurationSeconds,
+              duration > 0,
+              currentEncodedTimeSeconds > 0 else {
+            return nil
+        }
+
+        let progress = min(max(currentEncodedTimeSeconds / duration, 0), 0.999)
+        guard progress >= 0.01 else {
+            return nil
+        }
+
+        let estimatedTotal = elapsedWallSeconds / progress
+        return max(estimatedTotal - elapsedWallSeconds, 0)
+    }
+
+    private func estimateAllFilesETASeconds(currentFileETA: TimeInterval?) -> TimeInterval? {
+        guard let currentFileETA else {
+            return nil
+        }
+
+        let remainingAfterCurrent = max(totalFiles - currentFileIndex, 0)
+        let completedDurations = videoFiles.compactMap { file -> TimeInterval? in
+            guard let start = file.processingStartTime,
+                  let end = file.processingEndTime else {
+                return nil
+            }
+            return max(end.timeIntervalSince(start), 0)
+        }
+
+        let perFileEstimate: TimeInterval
+        if !completedDurations.isEmpty {
+            perFileEstimate = completedDurations.reduce(0, +) / Double(completedDurations.count)
+        } else {
+            perFileEstimate = currentFileETA
+        }
+
+        return currentFileETA + (Double(remainingAfterCurrent) * perFileEstimate)
+    }
+
+    private func updateEncodingProgressDisplay(elapsedWallSeconds: TimeInterval) {
+        let elapsedText = formatDuration(seconds: max(Int(elapsedWallSeconds), 0))
+        var parts: [String] = ["Encoding... Elapsed: \(elapsedText)"]
+
+        let currentETA = estimateCurrentFileETASeconds(elapsedWallSeconds: elapsedWallSeconds)
+        if let currentETA {
+            parts.append("ETA current: \(formatDuration(seconds: max(Int(currentETA), 0)))")
+        }
+
+        if let allETA = estimateAllFilesETASeconds(currentFileETA: currentETA) {
+            parts.append("ETA all: \(formatDuration(seconds: max(Int(allETA), 0)))")
+        }
+
+        encodingProgress = parts.joined(separator: " • ")
+    }
+
+    @MainActor
+    private func ingestFFmpegProgressChunk(_ chunk: String) {
+        let combined = ffmpegProgressTail + chunk
+        if let latestTime = Self.latestFFmpegMediaTimeSeconds(in: combined) {
+            currentEncodedTimeSeconds = latestTime
+        }
+        ffmpegProgressTail = String(combined.suffix(256))
+    }
+
     private func updateDockBadge(filesRemaining: Int) {
         DispatchQueue.main.async {
             NSApplication.shared.dockTile.badgeLabel = String(filesRemaining)
@@ -414,6 +528,10 @@ class VideoProcessor: ObservableObject {
             self.isProcessing = true
             self.logText = ""
             self.currentFileIndex = 0
+            self.encodingProgress = ""
+            self.currentInputDurationSeconds = nil
+            self.currentEncodedTimeSeconds = 0
+            self.ffmpegProgressTail = ""
             self.shouldCancelProcessing = false
             self.processingHadError = false
             self.initialBatchCount = self.videoFiles.count
@@ -541,6 +659,13 @@ class VideoProcessor: ObservableObject {
 
             let inputFilePath = fileInfo.path
             let outputFileName = ((fileInfo.name as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4")!
+
+            let sourceDuration = await probeDurationSeconds(inputFile: inputFilePath)
+            DispatchQueue.main.async {
+                self.currentInputDurationSeconds = sourceDuration
+                self.currentEncodedTimeSeconds = 0
+                self.ffmpegProgressTail = ""
+            }
 
             let outputFilePath: String
             if createSubfolders {
@@ -709,6 +834,9 @@ class VideoProcessor: ObservableObject {
         DispatchQueue.main.async {
             self.isProcessing = false
             self.shouldCancelProcessing = false
+            self.currentInputDurationSeconds = nil
+            self.currentEncodedTimeSeconds = 0
+            self.ffmpegProgressTail = ""
 
             // Send notification if app is not in focus
             if !NSApplication.shared.isActive {
@@ -867,6 +995,30 @@ class VideoProcessor: ObservableObject {
         return result
     }
 
+    private func probeDurationSeconds(inputFile: String) async -> TimeInterval? {
+        let arguments = [
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            inputFile
+        ]
+
+        guard let output = await runCommandWithOutput(path: ffprobePath, arguments: arguments) else {
+            return nil
+        }
+
+        let value = output
+            .split(whereSeparator: \.isNewline)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let value, let seconds = Double(value), seconds > 0 else {
+            return nil
+        }
+
+        return seconds
+    }
+
     private func getAudioMappings(audioStreams: FFProbeOutput, keepEnglishOnly: Bool) -> [(index: Int, language: String?)] {
         let streams = audioStreams.streams
 
@@ -966,7 +1118,8 @@ class VideoProcessor: ObservableObject {
                 "-i", inputFile, "-y",
                 "-c:v", "libx265", "-x265-params", "log-level=0:threads=0", "-preset", preset.rawValue, "-crf", "\(crfValue)",
                 "-map", "0:v:0", "-map_metadata", "-1",
-                "-tag:v", "hvc1", "-movflags", "+faststart", "-loglevel", "quiet"
+                "-tag:v", "hvc1", "-movflags", "+faststart",
+                "-loglevel", "error", "-nostats", "-progress", "pipe:2"
             ]
             // Add audio codec parameters only if there are audio tracks
             if !audioMappings.isEmpty {
@@ -989,7 +1142,8 @@ class VideoProcessor: ObservableObject {
                 "-i", inputFile, "-y",
                 "-c:v", "libx264", "-preset", preset.rawValue, "-crf", "\(crfValue)", "-threads", "0",
                 "-map", "0:v:0", "-map_metadata", "-1",
-                "-movflags", "+faststart", "-loglevel", "quiet"
+                "-movflags", "+faststart",
+                "-loglevel", "error", "-nostats", "-progress", "pipe:2"
             ]
             // Add audio codec parameters only if there are audio tracks
             if !audioMappings.isEmpty {
@@ -1011,7 +1165,8 @@ class VideoProcessor: ObservableObject {
             cmd = [
                 "-i", inputFile, "-y",
                 "-c:v", "copy", "-map", "0:v:0", "-map_metadata", "-1",
-                "-movflags", "+faststart", "-loglevel", "quiet"
+                "-movflags", "+faststart",
+                "-loglevel", "error", "-nostats", "-progress", "pipe:2"
             ]
             // Add audio copy only if there are audio tracks
             if !audioMappings.isEmpty {
@@ -1069,6 +1224,26 @@ class VideoProcessor: ObservableObject {
                 process.standardError = errorPipe
                 process.standardOutput = outputPipe
 
+                let capturedErrorData = ThreadSafeDataBuffer()
+
+                errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                    let chunkData = handle.availableData
+                    guard !chunkData.isEmpty else { return }
+
+                    capturedErrorData.append(chunkData)
+
+                    guard let self,
+                          let chunkText = String(data: chunkData, encoding: .utf8) else {
+                        return
+                    }
+
+                    DispatchQueue.main.async {
+                        Task { @MainActor in
+                            self.ingestFFmpegProgressChunk(chunkText)
+                        }
+                    }
+                }
+
                 // Store process reference so we can monitor it
                 DispatchQueue.main.async {
                     self.currentProcess = process
@@ -1085,6 +1260,11 @@ class VideoProcessor: ObservableObject {
                     // Wait for completion in background
                     process.waitUntilExit()
 
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+                    let remainingErrorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    capturedErrorData.append(remainingErrorData)
+                    let finalErrorData = capturedErrorData.snapshot()
+
                     // Stop monitoring
                     DispatchQueue.main.async {
                         self.stopEncodingProgress()
@@ -1095,13 +1275,12 @@ class VideoProcessor: ObservableObject {
                         continuation.resume(returning: (true, ""))
                     } else {
                         // Capture both stderr and stdout for error details
-                        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
 
                         var errorMessage = "Process exited with code \(process.terminationStatus)"
 
                         // Try stderr first, then stdout
-                        if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+                        if let errorOutput = String(data: finalErrorData, encoding: .utf8), !errorOutput.isEmpty {
                             let lines = errorOutput.split(separator: "\n", omittingEmptySubsequences: true)
 
                             // Log all stderr for debugging
@@ -1151,6 +1330,7 @@ class VideoProcessor: ObservableObject {
                     }
                 } catch {
                     let errorMsg = error.localizedDescription
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
                     DispatchQueue.main.async {
                         self.stopEncodingProgress()
                         self.currentProcess = nil
@@ -1169,11 +1349,8 @@ class VideoProcessor: ObservableObject {
             guard let self = self else { return }
 
             Task { @MainActor in
-                let elapsed = Int(Date().timeIntervalSince(startTime))
-                let minutes = elapsed / 60
-                let seconds = elapsed % 60
-
-                self.encodingProgress = "Encoding... Time: \(minutes)m \(seconds)s"
+                let elapsed = Date().timeIntervalSince(startTime)
+                self.updateEncodingProgressDisplay(elapsedWallSeconds: elapsed)
             }
         }
     }
@@ -1181,6 +1358,7 @@ class VideoProcessor: ObservableObject {
     private func stopEncodingProgress() {
         encodingTimer?.invalidate()
         encodingTimer = nil
+        ffmpegProgressTail = ""
         encodingProgress = ""
     }
 
