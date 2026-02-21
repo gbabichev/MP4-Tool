@@ -144,12 +144,16 @@ struct VideoFileInfo: Identifiable {
 private final class ThreadSafeDataBuffer: @unchecked Sendable {
     private nonisolated(unsafe) var data = Data()
     private let lock = NSLock()
-    private let maxBytes = 131_072
+    private let maxBytes: Int?
+
+    nonisolated init(maxBytes: Int? = 131_072) {
+        self.maxBytes = maxBytes
+    }
 
     nonisolated func append(_ chunk: Data) {
         lock.lock()
         data.append(chunk)
-        if data.count > maxBytes {
+        if let maxBytes, data.count > maxBytes {
             data.removeFirst(data.count - maxBytes)
         }
         lock.unlock()
@@ -337,13 +341,22 @@ class VideoProcessor: ObservableObject {
         return nil
     }
 
+    private func appendLogEntry(_ message: String) {
+        if !self.logText.isEmpty {
+            self.logText += "\n"
+        }
+        self.logText += message
+        print(message)
+    }
+
     func addLog(_ message: String) {
-        DispatchQueue.main.async {
-            if !self.logText.isEmpty {
-                self.logText += "\n"
-            }
-            self.logText += message
-            print(message)
+        if Thread.isMainThread {
+            appendLogEntry(message)
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.appendLogEntry(message)
         }
     }
 
@@ -1363,35 +1376,63 @@ class VideoProcessor: ObservableObject {
     }
 
     private func runCommandWithOutput(path: String, arguments: [String]) async -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = arguments
 
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
+                let outputPipe = Pipe()
+                let errorPipe = Pipe()
+                process.standardOutput = outputPipe
+                process.standardError = errorPipe
 
-        do {
-            try process.run()
-            process.waitUntilExit()
+                let outputBuffer = ThreadSafeDataBuffer(maxBytes: nil)
+                let errorBuffer = ThreadSafeDataBuffer(maxBytes: nil)
 
-            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let chunk = handle.availableData
+                    guard !chunk.isEmpty else { return }
+                    outputBuffer.append(chunk)
+                }
 
-            if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
-                addLog("􀇾 Process stderr: \(errorOutput)")
+                errorPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let chunk = handle.availableData
+                    guard !chunk.isEmpty else { return }
+                    errorBuffer.append(chunk)
+                }
+
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+
+                    let remainingOutput = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    if !remainingOutput.isEmpty {
+                        outputBuffer.append(remainingOutput)
+                    }
+
+                    let remainingError = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    if !remainingError.isEmpty {
+                        errorBuffer.append(remainingError)
+                    }
+
+                    let outputData = outputBuffer.snapshot()
+
+                    guard process.terminationStatus == 0 else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+
+                    continuation.resume(returning: String(data: outputData, encoding: .utf8))
+                } catch {
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+                    continuation.resume(returning: nil)
+                }
             }
-
-            if process.terminationStatus != 0 {
-                addLog("􀁡 Process exited with status: \(process.terminationStatus)")
-                return nil
-            }
-
-            return String(data: outputData, encoding: .utf8)
-        } catch {
-            addLog("􀁡 Process error: \(error.localizedDescription)")
-            return nil
         }
     }
 
