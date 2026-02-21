@@ -95,6 +95,12 @@ struct MP4_ToolApp: App {
                     Label("Check Offset Starts", systemImage: "clock.arrow.2.circlepath")
                 }
 
+                Button(action: {
+                    openWindow(id: "subtitleMuxer")
+                }) {
+                    Label("Subtitle Merger", systemImage: "captions.bubble.fill")
+                }
+
                 Divider()
                 
                 Button(action: {
@@ -139,6 +145,10 @@ struct MP4_ToolApp: App {
 
         Window("Check Offset Starts", id: "offsetStartChecker") {
             OffsetStartCheckerView()
+        }
+
+        Window("Subtitle Merger", id: "subtitleMuxer") {
+            SubtitleMuxerView()
         }
 
         Window("Scan for Non-MP4 Files", id: "nonMP4Scanner") {

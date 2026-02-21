@@ -35,6 +35,30 @@ MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files 
 - Tool for recursively scanning a directory for non-MP4 files. 
 - Tool for validating that MP4 files are valid & playable. 
 
+## Built in additional tools
+
+### Video Splitter
+Some video files have multiple episodes in one file. This tool scans the video for black space, and attempts to automatically determine the split. 
+- Advanced Features:
+  - Scan around half-time. 
+  - Change how black the frame must be. 
+  - Manually input the split time. 
+  - Automatic episode naming. 
+
+### Check Offset Starts
+Some videos have their first frame not at 00:00, which makes certain video players not start the video exactly at 00:00. 
+If you use the Video Splitter and you don't encode, you may run into this issue. This tool punts the start as close as possible, and notifies if you have to re-encode a video.
+
+### Subtitle Merger
+Select MP4. Select SRT. Create a single file.
+Multiple languages supported. 
+
+### Scan for Non-MP4 Files
+Scans your given directory for files that are not MP4. 
+
+### Validate MP4 Files
+Scans your given directory to ensure that MP4 files are in a format natively readable by Apple platforms for full compatibility. 
+
 ## Tutorial Summary
 
 ### 1. Install FFmpeg
@@ -78,6 +102,9 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 ```
 
 ## 📝 Changelog
+
+### 1.5.0
+- Added 'Subtitle Merger' tool. Lets you select an MP4 & SRT, and merge them to a single file. Supports multiple languages. 
 
 ### 1.4.1
 - Fixed:
