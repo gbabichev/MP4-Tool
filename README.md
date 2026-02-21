@@ -79,6 +79,14 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.4.1
+- Fixed:
+  - App Hang in certain conditions.
+  - Notifications clearing incorrectly.
+  - Total ETA being off.
+- Added:
+  - Output folder is now remembered across app restarts.
+
 ### 1.4.0
 - Added Offset Tool
   - Scan a directory, and output if videos have significant offsets (meaning they don't start at true 0)
