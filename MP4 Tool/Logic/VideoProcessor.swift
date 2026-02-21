@@ -446,13 +446,19 @@ class VideoProcessor: ObservableObject {
         return max(estimatedTotal - elapsedWallSeconds, 0)
     }
 
-    private func estimateAllFilesETASeconds(currentFileETA: TimeInterval?) -> TimeInterval? {
+    private func estimateAllFilesETASeconds(
+        currentFileETA: TimeInterval?,
+        currentFileEstimatedTotalWallSeconds: TimeInterval?
+    ) -> TimeInterval? {
         guard let currentFileETA else {
             return nil
         }
 
         let remainingAfterCurrent = max(totalFiles - currentFileIndex, 0)
         let completedDurations = videoFiles.compactMap { file -> TimeInterval? in
+            guard file.status == .completed else {
+                return nil
+            }
             guard let start = file.processingStartTime,
                   let end = file.processingEndTime else {
                 return nil
@@ -463,6 +469,8 @@ class VideoProcessor: ObservableObject {
         let perFileEstimate: TimeInterval
         if !completedDurations.isEmpty {
             perFileEstimate = completedDurations.reduce(0, +) / Double(completedDurations.count)
+        } else if let currentFileEstimatedTotalWallSeconds, currentFileEstimatedTotalWallSeconds > 0 {
+            perFileEstimate = currentFileEstimatedTotalWallSeconds
         } else {
             perFileEstimate = currentFileETA
         }
@@ -485,7 +493,11 @@ class VideoProcessor: ObservableObject {
             parts.append("ETA current: \(formatDuration(seconds: max(Int(currentETA), 0)))")
         }
 
-        if let allETA = estimateAllFilesETASeconds(currentFileETA: currentETA) {
+        let currentFileEstimatedTotal = currentETA.map { elapsedWallSeconds + $0 }
+        if let allETA = estimateAllFilesETASeconds(
+            currentFileETA: currentETA,
+            currentFileEstimatedTotalWallSeconds: currentFileEstimatedTotal
+        ) {
             parts.append("ETA all: \(formatDuration(seconds: max(Int(allETA), 0)))")
         }
 
