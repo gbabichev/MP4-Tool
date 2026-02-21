@@ -12,6 +12,16 @@ struct MP4_ToolApp: App {
     @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.windowCommandHandler) private var windowCommandHandler
 
+    init() {
+        Task.detached(priority: .utility) {
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run {
+                AppUpdateCenter.debugLog("Firing init-scheduled automatic launch update check")
+                AppUpdateCenter.shared.checkForUpdates(trigger: .automaticLaunch)
+            }
+        }
+    }
+
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
@@ -21,9 +31,15 @@ struct MP4_ToolApp: App {
                 Button(action: {
                     windowCommandHandler?.showAbout()
                 }) {
-                    Text("About MP4 Tool")
+                    Label("About MP4 Tool", systemImage: "info.circle")
                 }
                 .disabled(windowCommandHandler == nil)
+
+                Button(action: {
+                    AppUpdateCenter.shared.checkForUpdates(trigger: .manual)
+                }) {
+                    Label("Check for Updates...", systemImage: "arrow.triangle.2.circlepath.circle")
+                }
             }
 
             CommandGroup(replacing: .newItem) {

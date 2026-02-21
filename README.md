@@ -105,6 +105,7 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ### 1.5.0
 - Added 'Subtitle Merger' tool. Lets you select an MP4 & SRT, and merge them to a single file. Supports multiple languages. 
+- Added online update checker. Checks github for the latest release. 
 
 ### 1.4.1
 - Fixed:

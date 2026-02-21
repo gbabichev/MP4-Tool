@@ -51,6 +51,7 @@ extension FocusedValues {
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
+    @ObservedObject private var updateCenter = AppUpdateCenter.shared
     @Environment(\.scenePhase) private var scenePhase
     @SceneStorage("selectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
     @SceneStorage("crfValue") private var crfValue: Double = 23
@@ -354,6 +355,19 @@ struct ContentView: View {
             .overlay {
                 if viewModel.showingAbout {
                     AboutOverlayView(isPresented: $viewModel.showingAbout)
+                }
+            }
+            .overlay {
+                if let update = updateCenter.availableUpdate {
+                    UpdateAvailableOverlayView(
+                        update: update,
+                        onLater: {
+                            updateCenter.dismissAvailableUpdate()
+                        },
+                        onDownload: {
+                            updateCenter.openAvailableUpdateDownloadPage()
+                        }
+                    )
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: queueOffsetCheckerFailuresNotification)) { notification in

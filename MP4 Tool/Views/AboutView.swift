@@ -26,6 +26,8 @@ struct LiveAppIconView: View {
 }
 
 struct AboutView: View {
+    @ObservedObject private var updateCenter = AppUpdateCenter.shared
+
     var body: some View {
         VStack(spacing: 18) {
             
@@ -63,6 +65,20 @@ struct AboutView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button {
+                updateCenter.checkForUpdates(trigger: .manual)
+            } label: {
+                Label("Check for Updates...", systemImage: "arrow.triangle.2.circlepath.circle")
+            }
+            .disabled(updateCenter.isChecking)
+
+            if let lastStatusMessage = updateCenter.lastStatusMessage {
+                Text(lastStatusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
             
             Divider()
