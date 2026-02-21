@@ -203,6 +203,7 @@ struct ContentView: View {
     }
 
     private func clearCompletionNotificationsIfPossible() {
+        guard !viewModel.processor.isProcessing else { return }
         viewModel.processor.clearProcessingNotifications()
     }
     
