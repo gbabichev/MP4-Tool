@@ -175,6 +175,7 @@ class VideoProcessor: ObservableObject {
     @Published var elapsedTime: TimeInterval = 0
     @Published var originalSize: Int64 = 0
     @Published var newSize: Int64 = 0
+    @Published var currentFileProgressFraction: Double = 0
     @Published var logText: String = ""
     @Published var scanProgress: String = ""
     @Published var encodingProgress: String = ""
@@ -470,6 +471,12 @@ class VideoProcessor: ObservableObject {
     }
 
     private func updateEncodingProgressDisplay(elapsedWallSeconds: TimeInterval) {
+        if let duration = currentInputDurationSeconds, duration > 0 {
+            currentFileProgressFraction = min(max(currentEncodedTimeSeconds / duration, 0), 1)
+        } else {
+            currentFileProgressFraction = 0
+        }
+
         let elapsedText = formatDuration(seconds: max(Int(elapsedWallSeconds), 0))
         var parts: [String] = ["Encoding... Elapsed: \(elapsedText)"]
 
@@ -545,6 +552,7 @@ class VideoProcessor: ObservableObject {
             self.currentInputDurationSeconds = nil
             self.currentEncodedTimeSeconds = 0
             self.ffmpegProgressTail = ""
+            self.currentFileProgressFraction = 0
             self.shouldCancelProcessing = false
             self.processingHadError = false
             self.initialBatchCount = self.videoFiles.count
@@ -678,6 +686,7 @@ class VideoProcessor: ObservableObject {
                 self.currentInputDurationSeconds = sourceDuration
                 self.currentEncodedTimeSeconds = 0
                 self.ffmpegProgressTail = ""
+                self.currentFileProgressFraction = 0
             }
 
             let outputFilePath: String
@@ -850,6 +859,7 @@ class VideoProcessor: ObservableObject {
             self.currentInputDurationSeconds = nil
             self.currentEncodedTimeSeconds = 0
             self.ffmpegProgressTail = ""
+            self.currentFileProgressFraction = 0
 
             // Send notification if app is not in focus
             if !NSApplication.shared.isActive {
@@ -1372,6 +1382,7 @@ class VideoProcessor: ObservableObject {
         encodingTimer?.invalidate()
         encodingTimer = nil
         ffmpegProgressTail = ""
+        currentFileProgressFraction = 0
         encodingProgress = ""
     }
 

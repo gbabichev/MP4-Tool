@@ -171,6 +171,17 @@ struct MainContentView: View {
                             }
                         }
 
+                        HStack(spacing: 10) {
+                            ProgressView(value: viewModel.processor.currentFileProgressFraction, total: 1)
+                                .progressViewStyle(.linear)
+
+                            Text("\(Int((viewModel.processor.currentFileProgressFraction * 100).rounded()))%")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                                .frame(width: 40, alignment: .trailing)
+                        }
+
                         // Encoding progress message
                         Text(viewModel.processor.encodingProgress.isEmpty ? "Getting ready..." : viewModel.processor.encodingProgress)
                             .font(.caption)
