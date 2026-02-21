@@ -73,6 +73,7 @@ struct ContentView: View {
     @AppStorage("defaultKeepEnglishSubtitlesOnly") private var defaultKeepEnglishSubtitlesOnly: Bool = true
     @AppStorage("defaultIsLogExpanded") private var defaultIsLogExpanded = true
     @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = true
+    @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
     private var selectedMode: ProcessingMode {
@@ -205,6 +206,18 @@ struct ContentView: View {
     private func clearCompletionNotificationsIfPossible() {
         guard !viewModel.processor.isProcessing else { return }
         viewModel.processor.clearProcessingNotifications()
+    }
+
+    private func restoreLastOutputFolderIfAvailable() {
+        guard viewModel.outputFolderPath.isEmpty, !lastOutputFolderPath.isEmpty else { return }
+
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: lastOutputFolderPath, isDirectory: &isDirectory)
+        if exists && isDirectory.boolValue {
+            viewModel.setOutputFolder(path: lastOutputFolderPath)
+        } else {
+            lastOutputFolderPath = ""
+        }
     }
     
     var mainContent: some View {
@@ -376,6 +389,8 @@ struct ContentView: View {
                     isLogExpanded = defaultIsLogExpanded
                     didInitializeWindowDefaults = true
                 }
+
+                restoreLastOutputFolderIfAvailable()
                 
                 // Request notification permissions
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
@@ -400,6 +415,10 @@ struct ContentView: View {
             .onChange(of: scenePhase, initial: false) { _, newPhase in
                 guard newPhase == .active else { return }
                 clearCompletionNotificationsIfPossible()
+            }
+            .onChange(of: viewModel.outputFolderPath) { _, newValue in
+                guard !newValue.isEmpty else { return }
+                lastOutputFolderPath = newValue
             }
             .fileExporter(
                 isPresented: $viewModel.showingLogExporter,
