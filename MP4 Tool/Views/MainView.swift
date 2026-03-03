@@ -249,6 +249,18 @@ struct MainContentView: View {
                     Text("Files to Process (\(viewModel.processor.videoFiles.count))")
                         .font(.title2)
                         .fontWeight(.semibold)
+
+                    Button {
+                        viewModel.clearFilesToProcess()
+                        selectedFileIDs.removeAll()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderless)
+                    .disabled(viewModel.processor.isProcessing || viewModel.processor.videoFiles.isEmpty)
+                    .help("Clear files to process")
+
                     Spacer()
                 }
                 .padding(.horizontal)

@@ -168,6 +168,12 @@ class ContentViewModel: ObservableObject {
         }
     }
 
+    func clearFilesToProcess() {
+        processor.videoFiles = []
+        processor.totalFiles = 0
+        processor.processingHadError = false
+    }
+
     func removeFile(at index: Int) {
         guard index < processor.videoFiles.count else { return }
         processor.videoFiles.remove(at: index)
