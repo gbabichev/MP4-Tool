@@ -105,6 +105,7 @@ Subtitle Merger behavior
   - If a TV show title includes a year token, keep it in parentheses: `Show Name (2024) - S01E02.mp4`.
   - Movie patterns use `Title (Year).mp4`.
   - If custom naming cannot be derived, fallback is `<original_file_name>_remux.mp4`.
+  - If resolved output path matches the selected input MP4 path, rename the original input to `<name>_original(.N).mp4` before muxing so output can be written using the intended final filename.
 - UI behavior:
   - Rename is inline with the Output section (no separate rename card, no preview/apply sub-flow).
   - `Output File` remains user-editable after auto-fill.

@@ -103,6 +103,10 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.6.0
+- Added automatic file naming for Movies & TV Shows, stripping out junk. 
+- Added a "clear" button to the results table. 
+
 ### 1.5.0
 - Added 'Subtitle Merger' tool. Lets you select an MP4 & SRT, and merge them to a single file. Supports multiple languages. 
 - Added online update checker. Checks github for the latest release. 
