@@ -103,6 +103,7 @@ class ContentViewModel: ObservableObject {
         resolution: ResolutionOption,
         preset: PresetOption,
         createSubfolders: Bool,
+        automaticRename: Bool,
         deleteOriginal: Bool,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool
@@ -110,7 +111,8 @@ class ContentViewModel: ObservableObject {
         // Re-check for file conflicts in case settings changed (like createSubfolders)
         _ = processor.checkForFileConflicts(
             outputPath: outputFolderPath,
-            createSubfolders: createSubfolders
+            createSubfolders: createSubfolders,
+            automaticRename: automaticRename
         )
 
         // Check if any files have conflicts
@@ -138,6 +140,7 @@ class ContentViewModel: ObservableObject {
                 resolution: resolution,
                 preset: preset,
                 createSubfolders: createSubfolders,
+                automaticRename: automaticRename,
                 deleteOriginal: deleteOriginal,
                 keepEnglishAudioOnly: keepEnglishAudioOnly,
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly

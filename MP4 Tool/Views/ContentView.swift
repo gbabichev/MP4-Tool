@@ -32,6 +32,7 @@ private struct DefaultsSnapshot: Equatable {
     let selectedResolutionRaw: String
     let selectedPresetRaw: String
     let createSubfolders: Bool
+    let automaticRename: Bool
     let deleteOriginal: Bool
     let keepEnglishAudioOnly: Bool
     let keepEnglishSubtitlesOnly: Bool
@@ -58,6 +59,7 @@ struct ContentView: View {
     @SceneStorage("selectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
     @SceneStorage("selectedPreset") private var selectedPresetRaw: String = PresetOption.fast.rawValue
     @SceneStorage("createSubfolders") private var createSubfolders: Bool = false
+    @SceneStorage("automaticRename") private var automaticRename: Bool = false
     @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @SceneStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @SceneStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
@@ -69,6 +71,7 @@ struct ContentView: View {
     @AppStorage("defaultSelectedResolution") private var defaultSelectedResolutionRaw: String = ResolutionOption.default.rawValue
     @AppStorage("defaultSelectedPreset") private var defaultSelectedPresetRaw: String = PresetOption.fast.rawValue
     @AppStorage("defaultCreateSubfolders") private var defaultCreateSubfolders: Bool = false
+    @AppStorage("defaultAutomaticRename") private var defaultAutomaticRename: Bool = false
     @AppStorage("defaultDeleteOriginal") private var defaultDeleteOriginal: Bool = true
     @AppStorage("defaultKeepEnglishAudioOnly") private var defaultKeepEnglishAudioOnly: Bool = true
     @AppStorage("defaultKeepEnglishSubtitlesOnly") private var defaultKeepEnglishSubtitlesOnly: Bool = true
@@ -140,6 +143,7 @@ struct ContentView: View {
                     resolution: selectedResolution,
                     preset: selectedPreset,
                     createSubfolders: createSubfolders,
+                    automaticRename: automaticRename,
                     deleteOriginal: deleteOriginal,
                     keepEnglishAudioOnly: keepEnglishAudioOnly,
                     keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
@@ -164,6 +168,7 @@ struct ContentView: View {
             selectedResolutionRaw: selectedResolutionRaw,
             selectedPresetRaw: selectedPresetRaw,
             createSubfolders: createSubfolders,
+            automaticRename: automaticRename,
             deleteOriginal: deleteOriginal,
             keepEnglishAudioOnly: keepEnglishAudioOnly,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
@@ -231,6 +236,7 @@ struct ContentView: View {
                     selectedResolution: selectedResolutionBinding,
                     selectedPreset: selectedPresetBinding,
                     createSubfolders: $createSubfolders,
+                    automaticRename: $automaticRename,
                     deleteOriginal: $deleteOriginal,
                     keepEnglishAudioOnly: $keepEnglishAudioOnly,
                     keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
@@ -334,6 +340,7 @@ struct ContentView: View {
                                 resolution: selectedResolution,
                                 preset: selectedPreset,
                                 createSubfolders: createSubfolders,
+                                automaticRename: automaticRename,
                                 deleteOriginal: deleteOriginal,
                                 keepEnglishAudioOnly: keepEnglishAudioOnly,
                                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
@@ -397,6 +404,7 @@ struct ContentView: View {
                     selectedResolutionRaw = defaultSelectedResolutionRaw
                     selectedPresetRaw = defaultSelectedPresetRaw
                     createSubfolders = defaultCreateSubfolders
+                    automaticRename = defaultAutomaticRename
                     deleteOriginal = defaultDeleteOriginal
                     keepEnglishAudioOnly = defaultKeepEnglishAudioOnly
                     keepEnglishSubtitlesOnly = defaultKeepEnglishSubtitlesOnly
@@ -421,6 +429,7 @@ struct ContentView: View {
                 defaultSelectedResolutionRaw = newValue.selectedResolutionRaw
                 defaultSelectedPresetRaw = newValue.selectedPresetRaw
                 defaultCreateSubfolders = newValue.createSubfolders
+                defaultAutomaticRename = newValue.automaticRename
                 defaultDeleteOriginal = newValue.deleteOriginal
                 defaultKeepEnglishAudioOnly = newValue.keepEnglishAudioOnly
                 defaultKeepEnglishSubtitlesOnly = newValue.keepEnglishSubtitlesOnly
@@ -495,6 +504,7 @@ struct ExpandedSettingsPanel: View {
     @Binding var selectedResolution: ResolutionOption
     @Binding var selectedPreset: PresetOption
     @Binding var createSubfolders: Bool
+    @Binding var automaticRename: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
@@ -509,6 +519,7 @@ struct ExpandedSettingsPanel: View {
                 selectedResolution: $selectedResolution,
                 selectedPreset: $selectedPreset,
                 createSubfolders: $createSubfolders,
+                automaticRename: $automaticRename,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
                 keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,

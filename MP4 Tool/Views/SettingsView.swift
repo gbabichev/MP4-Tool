@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Binding var selectedResolution: ResolutionOption
     @Binding var selectedPreset: PresetOption
     @Binding var createSubfolders: Bool
+    @Binding var automaticRename: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
@@ -77,6 +78,12 @@ struct SettingsView: View {
 
                     SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
                         Toggle("", isOn: $createSubfolders)
+                            .toggleStyle(.switch)
+                            .disabled(isProcessing)
+                    }
+
+                    SettingsRow("Automatic Rename", subtitle: "Clean movie/TV output names when patterns are detected") {
+                        Toggle("", isOn: $automaticRename)
                             .toggleStyle(.switch)
                             .disabled(isProcessing)
                     }

@@ -13,6 +13,9 @@ Overview
 - Non-MP4 Scanner logic: `MP4 Tool/Logic/NonMP4ScannerViewModel.swift`
 - MP4 Validation window: `MP4 Tool/Views/MP4ValidationView.swift`
 - MP4 Validation logic: `MP4 Tool/Logic/MP4ValidationViewModel.swift`
+- Subtitle Merger window: `MP4 Tool/Views/SubtitleMuxerView.swift`
+- Subtitle Merger logic: `MP4 Tool/Logic/SubtitleMuxerViewModel.swift`
+- Shared rename logic: `MP4 Tool/Logic/AutomaticVideoFileNamer.swift`
 - App scenes/menus: `MP4 Tool/MP4_ToolApp.swift`
 
 UI conventions
@@ -93,12 +96,30 @@ MP4 Validation behavior
   - Folder section has an inline `Open` button to the left of `Input Folder` to reveal the selected folder in Finder.
   - Scan Results control: `Show Flagged` / `Show All`.
 
+Subtitle Merger behavior
+- Tools menu opens a separate window scene:
+  - Scene is `Window("Subtitle Merger", id: "subtitleMuxer")`
+- Output naming behavior:
+  - Output filename is auto-filled directly from the selected MP4 input filename.
+  - TV patterns use `Show Name - S01E02.mp4`.
+  - If a TV show title includes a year token, keep it in parentheses: `Show Name (2024) - S01E02.mp4`.
+  - Movie patterns use `Title (Year).mp4`.
+  - If custom naming cannot be derived, fallback is `<original_file_name>_remux.mp4`.
+- UI behavior:
+  - Rename is inline with the Output section (no separate rename card, no preview/apply sub-flow).
+  - `Output File` remains user-editable after auto-fill.
+
 Splitting
 - Split uses `-c copy` with `-ss` / `-to` for part 1, then `-ss` for part 2.
 - Split button only enabled when:
   - Output folder selected
   - At least one item selected
   - Not scanning/splitting
+
+Main app automatic rename behavior
+- Main Settings includes `Automatic Rename` toggle for encoder/remuxer workflow.
+- When enabled, output filenames in the main processing flow are auto-normalized for supported TV/movie patterns.
+- Conflict checks in the main workflow should use the same resolved output filename logic used at processing time.
 
 Rename logic
 - Optional “Rename Files” setting (persisted).

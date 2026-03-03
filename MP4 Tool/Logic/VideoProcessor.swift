@@ -552,6 +552,7 @@ class VideoProcessor: ObservableObject {
         resolution: ResolutionOption = .default,
         preset: PresetOption = .fast,
         createSubfolders: Bool,
+        automaticRename: Bool = false,
         deleteOriginal: Bool = true,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool
@@ -592,6 +593,7 @@ class VideoProcessor: ObservableObject {
             addLog("⚙️ Preset: \(preset.description)")
         }
         addLog("􀈕 Create Subfolders: \(createSubfolders)")
+        addLog("􀈕 Automatic Rename: \(automaticRename)")
         addLog("􀈑 Delete Original: \(deleteOriginal)")
         addLog("􀀁 Keep English Audio Only: \(keepEnglishAudioOnly)")
         addLog("􀀃 Keep English Subtitles Only: \(keepEnglishSubtitlesOnly)")
@@ -691,7 +693,7 @@ class VideoProcessor: ObservableObject {
             addLog("􀅴 Processing: \(fileInfo.name)")
 
             let inputFilePath = fileInfo.path
-            let outputFileName = ((fileInfo.name as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4")!
+            let outputFileName = makeOutputFileName(fromInputFileName: fileInfo.name, automaticRename: automaticRename)
 
             let sourceDuration = await probeDurationSeconds(inputFile: inputFilePath)
             DispatchQueue.main.async {
@@ -1642,13 +1644,14 @@ class VideoProcessor: ObservableObject {
     func checkFileForConflicts(
         fileIndex: Int,
         outputPath: String,
-        createSubfolders: Bool
+        createSubfolders: Bool,
+        automaticRename: Bool = false
     ) {
         guard fileIndex < videoFiles.count else { return }
 
         let fileInfo = videoFiles[fileIndex]
         let inputFilePath = fileInfo.filePath
-        let outputFileName = ((fileInfo.fileName as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4")!
+        let outputFileName = makeOutputFileName(fromInputFileName: fileInfo.fileName, automaticRename: automaticRename)
 
         let outputFilePath: String
         if createSubfolders {
@@ -1673,25 +1676,31 @@ class VideoProcessor: ObservableObject {
         }
 
         if !fileConflicts.isEmpty {
-            let conflictReason = fileConflicts.joined(separator: " • ")
-            DispatchQueue.main.async {
-                self.videoFiles[fileIndex].hasConflict = true
-                self.videoFiles[fileIndex].conflictReason = conflictReason
-            }
+            videoFiles[fileIndex].hasConflict = true
+            videoFiles[fileIndex].conflictReason = fileConflicts.joined(separator: " • ")
+        } else {
+            videoFiles[fileIndex].hasConflict = false
+            videoFiles[fileIndex].conflictReason = ""
         }
     }
 
     // Check for files that would be replaced/overwritten during processing
     func checkForFileConflicts(
         outputPath: String,
-        createSubfolders: Bool
+        createSubfolders: Bool,
+        automaticRename: Bool = false
     ) -> Bool {
         var hasConflicts = false
 
         // Only check files in the queue
         if !videoFiles.isEmpty {
             for (index, _) in videoFiles.enumerated() {
-                checkFileForConflicts(fileIndex: index, outputPath: outputPath, createSubfolders: createSubfolders)
+                checkFileForConflicts(
+                    fileIndex: index,
+                    outputPath: outputPath,
+                    createSubfolders: createSubfolders,
+                    automaticRename: automaticRename
+                )
                 if videoFiles[index].hasConflict {
                     hasConflicts = true
                 }
@@ -1699,5 +1708,16 @@ class VideoProcessor: ObservableObject {
         }
 
         return hasConflicts
+    }
+
+    private func makeOutputFileName(fromInputFileName inputFileName: String, automaticRename: Bool) -> String {
+        if automaticRename {
+            return AutomaticVideoFileNamer.suggestedOutputFileName(
+                fromInputFileName: inputFileName,
+                outputExtension: "mp4",
+                fallbackSuffix: nil
+            )
+        }
+        return ((inputFileName as NSString).deletingPathExtension as NSString).appendingPathExtension("mp4") ?? inputFileName
     }
 }
