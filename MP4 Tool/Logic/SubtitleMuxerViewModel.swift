@@ -63,6 +63,12 @@ final class SubtitleMuxerViewModel: ObservableObject {
         isMuxing
     }
 
+    private var shouldRenameInputToPreserveOriginal: Bool {
+        let outputPath = resolvedOutputPath
+        guard !outputPath.isEmpty, !inputMP4Path.isEmpty else { return false }
+        return outputPath == inputMP4Path
+    }
+
     var outputFileAlreadyExists: Bool {
         let path = resolvedOutputPath
         guard !path.isEmpty else { return false }
@@ -162,7 +168,7 @@ final class SubtitleMuxerViewModel: ObservableObject {
         guard canMux else {
             return
         }
-        if outputFileAlreadyExists {
+        if outputFileAlreadyExists && !shouldRenameInputToPreserveOriginal {
             showOverwriteConfirmation = true
             return
         }
@@ -211,20 +217,39 @@ final class SubtitleMuxerViewModel: ObservableObject {
             return
         }
 
-        guard overwriteExisting || !outputFileAlreadyExists else {
+        let shouldRenameInput = shouldRenameInputToPreserveOriginal
+
+        guard overwriteExisting || !outputFileAlreadyExists || shouldRenameInput else {
             muxProgress = ""
             statusMessage = "Output file already exists. Choose a different output file name or folder."
             isMuxing = false
             return
         }
 
-        let expectedBytes = expectedOutputBytes()
+        var muxInputPath = inputMP4Path
+        var renamedOriginalInputPath: String?
+        if shouldRenameInput {
+            let renamedPath = makeOriginalRenamePath(for: inputMP4Path)
+            do {
+                try FileManager.default.moveItem(atPath: inputMP4Path, toPath: renamedPath)
+                muxInputPath = renamedPath
+                renamedOriginalInputPath = renamedPath
+                inputMP4Path = renamedPath
+            } catch {
+                muxProgress = "Mux failed."
+                statusMessage = "Failed to rename original input file: \(error.localizedDescription)"
+                isMuxing = false
+                return
+            }
+        }
+
+        let expectedBytes = max(1, fileSize(at: muxInputPath) + fileSize(at: inputSRTPath))
         startProgressMonitoring(outputPath: outputPath, expectedBytes: expectedBytes)
 
         let arguments = [
             "-hide_banner",
             overwriteExisting ? "-y" : "-n",
-            "-i", inputMP4Path,
+            "-i", muxInputPath,
             "-i", inputSRTPath,
             "-map", "0:v",
             "-map", "0:a?",
@@ -253,8 +278,17 @@ final class SubtitleMuxerViewModel: ObservableObject {
         if result.exitCode == 0 {
             muxProgress = "Mux complete."
             muxProgressFraction = 1
-            statusMessage = "Created \(outputPath)."
+            if let renamedOriginalInputPath {
+                statusMessage = "Created \(outputPath). Original renamed to \(renamedOriginalInputPath)."
+            } else {
+                statusMessage = "Created \(outputPath)."
+            }
         } else {
+            if let renamedOriginalInputPath, !FileManager.default.fileExists(atPath: outputPath) {
+                if (try? FileManager.default.moveItem(atPath: renamedOriginalInputPath, toPath: outputPath)) != nil {
+                    inputMP4Path = outputPath
+                }
+            }
             muxProgress = "Mux failed."
             statusMessage = "FFmpeg failed: \(lastMeaningfulLine(in: result.stderr) ?? "Unknown error")"
         }
@@ -281,8 +315,27 @@ final class SubtitleMuxerViewModel: ObservableObject {
             .first(where: { !$0.isEmpty })
     }
 
-    private func expectedOutputBytes() -> Int64 {
-        max(1, fileSize(at: inputMP4Path) + fileSize(at: inputSRTPath))
+    private func makeOriginalRenamePath(for inputPath: String) -> String {
+        let inputURL = URL(fileURLWithPath: inputPath)
+        let directoryURL = inputURL.deletingLastPathComponent()
+        let baseName = inputURL.deletingPathExtension().lastPathComponent
+        let ext = inputURL.pathExtension
+
+        var suffixIndex = 0
+        while true {
+            let suffix = suffixIndex == 0 ? "_original" : "_original\(suffixIndex)"
+            let renamedBaseName = "\(baseName)\(suffix)"
+            var renamedURL = directoryURL.appendingPathComponent(renamedBaseName)
+            if !ext.isEmpty {
+                renamedURL = renamedURL.appendingPathExtension(ext)
+            }
+
+            if !FileManager.default.fileExists(atPath: renamedURL.path) {
+                return renamedURL.path
+            }
+
+            suffixIndex += 1
+        }
     }
 
     private func fileSize(at path: String) -> Int64 {
