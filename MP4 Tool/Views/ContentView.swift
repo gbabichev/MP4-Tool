@@ -251,7 +251,7 @@ struct ContentView: View {
             // Main Content - Right Side
             MainContentView(viewModel: viewModel)
         }
-        .frame(minWidth: 800, minHeight: 650)
+        .frame(minWidth: 800, minHeight: 360)
         .safeAreaInset(edge: .bottom) {
             logPanel
         }

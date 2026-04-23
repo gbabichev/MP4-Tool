@@ -10,7 +10,7 @@ BUILD_DIR="$HOME/ffmpeg-build"
 PREFIX="$BUILD_DIR/install"
 WORKSPACE="$BUILD_DIR/workspace"
 ARCH="arm64"
-MACOS_MIN_VERSION="11.0"
+MACOS_MIN_VERSION="15.0"
 
 # Compiler flags for ARM64
 export CFLAGS="-arch $ARCH -mmacosx-version-min=$MACOS_MIN_VERSION -O3"
@@ -24,20 +24,9 @@ mkdir -p "$WORKSPACE" "$PREFIX"
 
 cd "$WORKSPACE"
 
-# Build NASM (assembler needed for x264/x265)
-echo "==================================="
-echo "Building NASM..."
-echo "==================================="
-if [ ! -f "$PREFIX/bin/nasm" ]; then
-    curl -L -O https://www.nasm.us/pub/nasm/releasebuilds/2.16.01/nasm-2.16.01.tar.bz2
-    tar xjf nasm-2.16.01.tar.bz2
-    cd nasm-2.16.01
-    ./configure --prefix="$PREFIX"
-    make -j$(sysctl -n hw.ncpu)
-    make install
-    cd ..
-fi
-
+# Keep locally installed helper tools first if this workspace is reused.
+# NASM is intentionally not built here; it is only needed for x86/x86_64 assembly,
+# not for this arm64-only FFmpeg build.
 export PATH="$PREFIX/bin:$PATH"
 
 # Build x264
@@ -91,7 +80,7 @@ echo "==================================="
 
 FFMPEG_REMOTE="https://git.ffmpeg.org/ffmpeg.git"
 FFMPEG_DIR="ffmpeg"
-FFMPEG_TAG="${FFMPEG_TAG:-n8.0.1}"                  # expected FFmpeg tag name
+FFMPEG_TAG="${FFMPEG_TAG:-n8.1}"                  # expected FFmpeg tag name
 FFMPEG_BRANCH="${FFMPEG_BRANCH:-release/8.0.1}"     # fallback branch name
 FFMPEG_OID="${FFMPEG_OID:-a4044e04486d1136022498891088a90baf5b2775}" # your link's object id
 
