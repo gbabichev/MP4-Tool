@@ -103,6 +103,10 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.6.1
+- Settings sidebar is now scrollable, so the app can fit better on smaller displays. 
+- Updated ffmpeg build script to support 8.1
+
 ### 1.6.0
 - Added automatic file naming for Movies & TV Shows, stripping out junk. 
 - Added a "clear" button to the results table. 
