@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MP4ValidationView: View {
     @StateObject private var viewModel = MP4ValidationViewModel()
@@ -9,7 +10,7 @@ struct MP4ValidationView: View {
         VStack(alignment: .leading, spacing: 16) {
             statusContent
 
-            Text("Validate MP4 files in a folder (including subfolders) and flag files that may need full re-encoding before processing.")
+            Text("Validate MP4 files in a folder and subfolders for Apple platform playback. Flags files that are not playable, have missing or unreadable audio, or contain audio/video codecs that should be re-encoded.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -92,6 +93,10 @@ struct MP4ValidationView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(minWidth: 760, minHeight: 560)
+        .contentShape(Rectangle())
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            handleFolderDrop(providers: providers)
+        }
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -154,6 +159,24 @@ struct MP4ValidationView: View {
         DispatchQueue.main.async {
             viewModel.sendFlaggedToMainApp()
         }
+    }
+
+    private func handleFolderDrop(providers: [NSItemProvider]) -> Bool {
+        guard !viewModel.isScanning else { return false }
+
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
+                guard let url, error == nil else { return }
+
+                DispatchQueue.main.async {
+                    _ = viewModel.setInputFolder(url: url)
+                }
+            }
+
+            return true
+        }
+
+        return false
     }
 
     @ViewBuilder

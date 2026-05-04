@@ -7,6 +7,27 @@ import UniformTypeIdentifiers
 let queueMP4ValidationFlaggedFilesNotification = Notification.Name("MP4Tool.QueueMP4ValidationFlaggedFiles")
 let queueMP4ValidationFlaggedFilesPathsKey = "paths"
 
+private struct MP4ValidationAudioProbeOutput: Decodable {
+    let streams: [MP4ValidationAudioStream]
+}
+
+private struct MP4ValidationAudioStream: Decodable {
+    let codecName: String?
+    let codecTagString: String?
+    let sampleFormat: String?
+
+    enum CodingKeys: String, CodingKey {
+        case codecName = "codec_name"
+        case codecTagString = "codec_tag_string"
+        case sampleFormat = "sample_fmt"
+    }
+}
+
+private struct MP4ValidationAudioCompatibility {
+    let hasAudioStreams: Bool
+    let issues: [String]
+}
+
 struct MP4ValidationResult: Identifiable {
     let id = UUID()
     let fileName: String
@@ -70,6 +91,18 @@ final class MP4ValidationViewModel: ObservableObject {
     func openInputFolderInFinder() {
         guard !inputFolderPath.isEmpty else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+    }
+
+    func setInputFolder(url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return false
+        }
+
+        inputFolderPath = url.path
+        scanAlertText = ""
+        return true
     }
 
     func scan() {
@@ -152,7 +185,18 @@ final class MP4ValidationViewModel: ObservableObject {
     }
 
     private func runScan(token: UUID) async {
-        let files = collectMP4FilesRecursively(in: inputFolderPath)
+        let rootPath = inputFolderPath
+        scanProgress = "Collecting MP4 files in folder and subfolders..."
+
+        let files = await Task.detached(priority: .userInitiated) {
+            Self.collectMP4FilesRecursively(in: rootPath)
+        }.value
+
+        if Task.isCancelled || token != scanToken {
+            scanProgress = "Validation canceled."
+            isScanning = false
+            return
+        }
 
         if files.isEmpty {
             scanProgress = "No MP4 files found in folder or subfolders."
@@ -201,18 +245,26 @@ final class MP4ValidationViewModel: ObservableObject {
 
     private func validationIssue(filePath: String) async -> String? {
         var reasons: [String] = []
+        var audioCompatibility: MP4ValidationAudioCompatibility?
 
         if ffprobeAvailable {
             if let hasAV1 = await hasAV1Video(filePath: filePath), hasAV1 {
                 reasons.append("AV1 video")
             }
 
-            if let hasDTS = await hasDTSAudio(filePath: filePath), hasDTS {
-                reasons.append("DTS audio")
+            audioCompatibility = await probeAudioCompatibility(filePath: filePath)
+            if let audioCompatibility {
+                reasons.append(contentsOf: audioCompatibility.issues)
             }
         }
 
         let asset = AVURLAsset(url: URL(fileURLWithPath: filePath))
+        let appleAudioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+
+        if audioCompatibility?.hasAudioStreams == true && appleAudioTracks.isEmpty {
+            reasons.append("audio not readable by Apple media frameworks")
+        }
+
         do {
             let isPlayable = try await asset.load(.isPlayable)
             if !isPlayable {
@@ -255,12 +307,12 @@ final class MP4ValidationViewModel: ObservableObject {
         return codec == "av1"
     }
 
-    private func hasDTSAudio(filePath: String) async -> Bool? {
+    private func probeAudioCompatibility(filePath: String) async -> MP4ValidationAudioCompatibility? {
         let arguments = [
             "-v", "error",
             "-select_streams", "a",
-            "-show_entries", "stream=codec_name",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-show_entries", "stream=codec_name,codec_tag_string,sample_fmt",
+            "-print_format", "json",
             filePath
         ]
 
@@ -268,17 +320,85 @@ final class MP4ValidationViewModel: ObservableObject {
             return nil
         }
 
-        let codecs = output
-            .split(whereSeparator: \.isNewline)
-            .map {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            }
-            .filter { !$0.isEmpty }
+        guard let data = output.data(using: .utf8),
+              let probeOutput = try? JSONDecoder().decode(MP4ValidationAudioProbeOutput.self, from: data) else {
+            return nil
+        }
 
-        return codecs.contains(where: { $0.contains("dts") || $0.contains("dca") })
+        guard !probeOutput.streams.isEmpty else {
+            return MP4ValidationAudioCompatibility(hasAudioStreams: false, issues: ["missing audio"])
+        }
+
+        var issues: [String] = []
+        for stream in probeOutput.streams {
+            let codec = normalizedProbeValue(stream.codecName)
+
+            if isDTSAudioCodec(codec) {
+                issues.append("DTS audio")
+                continue
+            }
+
+            if isFloatingPointPCMAudio(stream) {
+                issues.append("PCM float audio")
+                continue
+            }
+
+            if !isAppleCompatibleAudioCodec(codec) {
+                issues.append("unsupported audio codec \(displayProbeValue(stream.codecName))")
+            }
+        }
+
+        var uniqueIssues: [String] = []
+        for issue in issues where !uniqueIssues.contains(issue) {
+            uniqueIssues.append(issue)
+        }
+        return MP4ValidationAudioCompatibility(hasAudioStreams: true, issues: uniqueIssues)
     }
 
-    private func collectMP4FilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {
+    private func isAppleCompatibleAudioCodec(_ codec: String) -> Bool {
+        [
+            "aac",
+            "alac",
+            "mp3",
+            "ac3",
+            "eac3"
+        ].contains(codec)
+    }
+
+    private func isDTSAudioCodec(_ codec: String) -> Bool {
+        codec.contains("dts") || codec.contains("dca")
+    }
+
+    private func isFloatingPointPCMAudio(_ stream: MP4ValidationAudioStream) -> Bool {
+        let codec = normalizedProbeValue(stream.codecName)
+        let codecTag = normalizedProbeValue(stream.codecTagString)
+        let sampleFormat = normalizedProbeValue(stream.sampleFormat)
+
+        let hasFloatCodec = codec.contains("float") || codec.hasPrefix("pcm_f")
+        let hasFloatTag = codecTag.contains("float")
+            || codecTag.contains("fl32")
+            || codecTag.contains("fl64")
+            || codecTag.contains("f32")
+            || codecTag.contains("f64")
+        let hasFloatSampleFormat = sampleFormat.contains("float")
+            || sampleFormat.contains("flt")
+            || sampleFormat.contains("dbl")
+
+        return (codec.hasPrefix("pcm_") || hasFloatCodec || hasFloatTag) && hasFloatSampleFormat
+    }
+
+    private func normalizedProbeValue(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
+
+    private func displayProbeValue(_ value: String?) -> String {
+        let normalizedValue = normalizedProbeValue(value)
+        return normalizedValue.isEmpty ? "unknown" : normalizedValue
+    }
+
+    nonisolated private static func collectMP4FilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {
         let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
         let keys: [URLResourceKey] = [.isRegularFileKey]
         let options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]

@@ -15,6 +15,8 @@ struct VideoStream: Codable {
     let index: Int
     let codecType: String?
     let codecName: String?
+    let codecTagString: String?
+    let sampleFormat: String?
     let tags: [String: String]?
     let width: Int?
     let height: Int?
@@ -23,6 +25,8 @@ struct VideoStream: Codable {
         case index
         case codecType = "codec_type"
         case codecName = "codec_name"
+        case codecTagString = "codec_tag_string"
+        case sampleFormat = "sample_fmt"
         case tags
         case width
         case height
@@ -915,10 +919,14 @@ class VideoProcessor: ObservableObject {
             }
         }
 
-        // Check for DTS audio in remux mode
-        if mode == .remux && hasDtsAudio(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly) {
-            addLog("􀁡 DTS audio detected. Remux requires re-encoding.")
-            return (false, "DTS audio not supported in remux mode - must be re-encoded")
+        if mode == .remux,
+           let compatibilityIssue = await remuxCompatibilityIssue(
+            inputFile: inputFile,
+            audioStreams: audioStreams,
+            keepEnglishOnly: keepEnglishAudioOnly
+           ) {
+            addLog("􀁡 \(compatibilityIssue). Please use encode mode.")
+            return (false, "\(compatibilityIssue) - use encode mode instead")
         }
 
         // Get video codec
@@ -1075,25 +1083,104 @@ class VideoProcessor: ObservableObject {
         }
     }
 
-    private func hasDtsAudio(audioStreams: FFProbeOutput, keepEnglishOnly: Bool) -> Bool {
-        let dtsCodecs: Set<String> = ["dts", "dts_hd_ma", "dts_hd_hra", "dts_es", "dca"]
+    private func remuxCompatibilityIssue(
+        inputFile: String,
+        audioStreams: FFProbeOutput,
+        keepEnglishOnly: Bool
+    ) async -> String? {
+        let filteredStreams = remuxCandidateAudioStreams(
+            audioStreams: audioStreams,
+            keepEnglishOnly: keepEnglishOnly
+        )
+
+        if filteredStreams.contains(where: { isDtsAudioCodec($0.codecName) }) {
+            return "DTS audio detected. Remux requires re-encoding"
+        }
+
+        if filteredStreams.contains(where: isFloatingPointPCMAudio) {
+            return "PCM float audio detected. Remux requires re-encoding"
+        }
+
+        if let unsupportedCodec = filteredStreams
+            .compactMap({ normalizedProbeValue($0.codecName) })
+            .first(where: { !isAppleCompatibleAudioCodec($0) }) {
+            return "Unsupported audio codec \(unsupportedCodec) detected. Remux requires re-encoding"
+        }
+
+        if isAppleMediaContainer(inputFile) && !filteredStreams.isEmpty {
+            let asset = AVURLAsset(url: URL(fileURLWithPath: inputFile))
+            let appleAudioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+            if appleAudioTracks.isEmpty {
+                return "Audio track is not readable by Apple media frameworks. Remux requires re-encoding"
+            }
+        }
+
+        if isAppleMediaContainer(inputFile) {
+            let asset = AVURLAsset(url: URL(fileURLWithPath: inputFile))
+            let isPlayable = (try? await asset.load(.isPlayable)) ?? false
+            if !isPlayable {
+                return "Input is not playable by Apple media frameworks. Remux requires re-encoding"
+            }
+        }
+
+        return nil
+    }
+
+    private func remuxCandidateAudioStreams(audioStreams: FFProbeOutput, keepEnglishOnly: Bool) -> [VideoStream] {
         let streams = audioStreams.streams
 
-        let filteredStreams: [VideoStream]
         if keepEnglishOnly {
             let englishStreams = streams.filter { stream in
                 let language = (stream.tags?["language"] ?? "und").lowercased()
                 return language == "eng" || language == "und"
             }
-            filteredStreams = englishStreams.isEmpty ? streams : englishStreams
-        } else {
-            filteredStreams = streams
+            return englishStreams.isEmpty ? streams : englishStreams
         }
 
-        return filteredStreams.contains { stream in
-            guard let codec = stream.codecName?.lowercased() else { return false }
-            return dtsCodecs.contains(codec)
-        }
+        return streams
+    }
+
+    private func isAppleMediaContainer(_ inputFile: String) -> Bool {
+        ["mp4", "m4v", "mov"].contains(URL(fileURLWithPath: inputFile).pathExtension.lowercased())
+    }
+
+    private func isAppleCompatibleAudioCodec(_ codec: String) -> Bool {
+        [
+            "aac",
+            "alac",
+            "mp3",
+            "ac3",
+            "eac3"
+        ].contains(codec)
+    }
+
+    private func isDtsAudioCodec(_ codecName: String?) -> Bool {
+        let codec = normalizedProbeValue(codecName)
+        return codec.contains("dts") || codec.contains("dca")
+    }
+
+    private func isFloatingPointPCMAudio(_ stream: VideoStream) -> Bool {
+        let codec = normalizedProbeValue(stream.codecName)
+        let codecTag = normalizedProbeValue(stream.codecTagString)
+        let sampleFormat = normalizedProbeValue(stream.sampleFormat)
+
+        let hasFloatCodec = codec.contains("float") || codec.hasPrefix("pcm_f")
+        let hasFloatTag = codecTag.contains("float")
+            || codecTag.contains("fl32")
+            || codecTag.contains("fl64")
+            || codecTag.contains("f32")
+            || codecTag.contains("f64")
+        let hasFloatSampleFormat = sampleFormat.contains("float")
+            || sampleFormat.contains("flt")
+            || sampleFormat.contains("dbl")
+
+        return (codec.hasPrefix("pcm_") || hasFloatCodec || hasFloatTag) && hasFloatSampleFormat
+    }
+
+    private func normalizedProbeValue(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
     }
 
     private func getVideoCodec(videoStreams: FFProbeOutput) -> String? {
