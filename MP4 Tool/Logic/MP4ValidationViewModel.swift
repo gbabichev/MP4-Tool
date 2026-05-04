@@ -205,6 +205,7 @@ final class MP4ValidationViewModel: ObservableObject {
             return
         }
 
+        let scanStartDate = Date()
         for (index, fileInfo) in files.enumerated() {
             if Task.isCancelled || token != scanToken {
                 scanProgress = "Validation canceled."
@@ -212,7 +213,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 return
             }
 
-            scanProgress = "Validating \(index + 1)/\(files.count): \(fileInfo.relativePath)"
+            scanProgress = "Validating \(index + 1)/\(files.count): \(fileInfo.relativePath) \(validationETA(elapsed: Date().timeIntervalSince(scanStartDate), completedCount: index, totalCount: files.count))"
 
             let issue = await validationIssue(filePath: fileInfo.fullPath)
             results.append(
@@ -396,6 +397,33 @@ final class MP4ValidationViewModel: ObservableObject {
     private func displayProbeValue(_ value: String?) -> String {
         let normalizedValue = normalizedProbeValue(value)
         return normalizedValue.isEmpty ? "unknown" : normalizedValue
+    }
+
+    private func validationETA(elapsed: TimeInterval, completedCount: Int, totalCount: Int) -> String {
+        guard completedCount > 0, totalCount > completedCount else {
+            return "(ETA calculating...)"
+        }
+
+        let averageSecondsPerFile = elapsed / Double(completedCount)
+        let remainingSeconds = averageSecondsPerFile * Double(totalCount - completedCount)
+        return "(ETA \(Self.formatDuration(remainingSeconds)))"
+    }
+
+    nonisolated private static func formatDuration(_ duration: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+
+        return "\(seconds)s"
     }
 
     nonisolated private static func collectMP4FilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {
