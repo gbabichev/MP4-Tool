@@ -103,6 +103,11 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.7.0
+- Added support encoding audio only. 
+- Improved reliability of the remux tool to capture codec errors on Apple platforms.
+- Improved reliability of the MP4 Validator tool to capture code errors on Apple platforms. 
+
 ### 1.6.1
 - Settings sidebar is now scrollable, so the app can fit better on smaller displays. 
 - Updated ffmpeg build script to support 8.1
