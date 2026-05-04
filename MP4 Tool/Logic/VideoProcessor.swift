@@ -555,6 +555,8 @@ class VideoProcessor: ObservableObject {
         crfValue: Int = 23,
         resolution: ResolutionOption = .default,
         preset: PresetOption = .fast,
+        encodeVideo: Bool = true,
+        encodeAudio: Bool = true,
         createSubfolders: Bool,
         automaticRename: Bool = false,
         deleteOriginal: Bool = true,
@@ -592,6 +594,8 @@ class VideoProcessor: ObservableObject {
         addLog("􀈖 Output Directory: \(outputPath)")
         addLog("􀣋 Mode: \(mode.rawValue)")
         if mode == .encodeH265 || mode == .encodeH264 {
+            addLog("􀈄 Encode Video: \(encodeVideo)")
+            addLog("􀀁 Encode Audio: \(encodeAudio)")
             addLog("􀏃 CRF: \(crfValue)")
             addLog("􀠅 Resolution: \(resolution.description)")
             addLog("⚙️ Preset: \(preset.description)")
@@ -728,6 +732,8 @@ class VideoProcessor: ObservableObject {
                 crfValue: crfValue,
                 resolution: resolution,
                 preset: preset,
+                encodeVideo: encodeVideo,
+                encodeAudio: encodeAudio,
                 keepEnglishAudioOnly: keepEnglishAudioOnly,
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
             )
@@ -893,6 +899,8 @@ class VideoProcessor: ObservableObject {
         crfValue: Int = 23,
         resolution: ResolutionOption = .default,
         preset: PresetOption = .fast,
+        encodeVideo: Bool = true,
+        encodeAudio: Bool = true,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool
     ) async -> (success: Bool, errorReason: String) {
@@ -964,6 +972,8 @@ class VideoProcessor: ObservableObject {
             crfValue: crfValue,
             resolution: resolution,
             preset: preset,
+            encodeVideo: encodeVideo,
+            encodeAudio: encodeAudio,
             videoCodec: videoCodec,
             videoWidth: videoDimensions?.width,
             videoHeight: videoDimensions?.height,
@@ -1229,6 +1239,8 @@ class VideoProcessor: ObservableObject {
         crfValue: Int = 23,
         resolution: ResolutionOption = .default,
         preset: PresetOption = .fast,
+        encodeVideo: Bool = true,
+        encodeAudio: Bool = true,
         videoCodec: String?,
         videoWidth: Int?,
         videoHeight: Int?,
@@ -1240,39 +1252,25 @@ class VideoProcessor: ObservableObject {
         if mode == .encodeH265 {
             cmd = [
                 "-i", inputFile, "-y",
-                "-c:v", "libx265", "-x265-params", "log-level=0:threads=0", "-preset", preset.rawValue, "-crf", "\(crfValue)",
-                "-map", "0:v:0", "-map_metadata", "-1",
-                "-tag:v", "hvc1", "-movflags", "+faststart",
-                "-loglevel", "error", "-nostats", "-progress", "pipe:2"
-            ]
-            // Add audio codec parameters only if there are audio tracks
-            if !audioMappings.isEmpty {
-                if let insertIndex = cmd.firstIndex(of: "-map") {
-                    cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
-                }
-            } else {
-                // No audio tracks - add -an flag
-                if let insertIndex = cmd.firstIndex(of: "-map") {
-                    cmd.insert("-an", at: insertIndex)
-                }
-            }
-            // Add video filter for resolution scaling if needed
-            if let width = videoWidth, let height = videoHeight,
-               let scaleFilter = resolution.scaleFilter(width: width, height: height) {
-                cmd.insert(contentsOf: ["-vf", scaleFilter], at: cmd.firstIndex(of: "-c:v") ?? 2)
-            }
-        } else if mode == .encodeH264 {
-            cmd = [
-                "-i", inputFile, "-y",
-                "-c:v", "libx264", "-preset", preset.rawValue, "-crf", "\(crfValue)", "-threads", "0",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-movflags", "+faststart",
                 "-loglevel", "error", "-nostats", "-progress", "pipe:2"
             ]
+            if let insertIndex = cmd.firstIndex(of: "-map") {
+                if encodeVideo {
+                    cmd.insert(contentsOf: ["-c:v", "libx265", "-x265-params", "log-level=0:threads=0", "-preset", preset.rawValue, "-crf", "\(crfValue)"], at: insertIndex)
+                } else {
+                    cmd.insert(contentsOf: ["-c:v", "copy"], at: insertIndex)
+                }
+            }
             // Add audio codec parameters only if there are audio tracks
             if !audioMappings.isEmpty {
                 if let insertIndex = cmd.firstIndex(of: "-map") {
-                    cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
+                    if encodeAudio {
+                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
+                    } else {
+                        cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
+                    }
                 }
             } else {
                 // No audio tracks - add -an flag
@@ -1281,9 +1279,51 @@ class VideoProcessor: ObservableObject {
                 }
             }
             // Add video filter for resolution scaling if needed
-            if let width = videoWidth, let height = videoHeight,
+            if encodeVideo,
+               let width = videoWidth, let height = videoHeight,
                let scaleFilter = resolution.scaleFilter(width: width, height: height) {
                 cmd.insert(contentsOf: ["-vf", scaleFilter], at: cmd.firstIndex(of: "-c:v") ?? 2)
+            }
+            if encodeVideo || videoCodec == "hevc" {
+                cmd.append(contentsOf: ["-tag:v", "hvc1"])
+            }
+        } else if mode == .encodeH264 {
+            cmd = [
+                "-i", inputFile, "-y",
+                "-map", "0:v:0", "-map_metadata", "-1",
+                "-movflags", "+faststart",
+                "-loglevel", "error", "-nostats", "-progress", "pipe:2"
+            ]
+            if let insertIndex = cmd.firstIndex(of: "-map") {
+                if encodeVideo {
+                    cmd.insert(contentsOf: ["-c:v", "libx264", "-preset", preset.rawValue, "-crf", "\(crfValue)", "-threads", "0"], at: insertIndex)
+                } else {
+                    cmd.insert(contentsOf: ["-c:v", "copy"], at: insertIndex)
+                }
+            }
+            // Add audio codec parameters only if there are audio tracks
+            if !audioMappings.isEmpty {
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    if encodeAudio {
+                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
+                    } else {
+                        cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
+                    }
+                }
+            } else {
+                // No audio tracks - add -an flag
+                if let insertIndex = cmd.firstIndex(of: "-map") {
+                    cmd.insert("-an", at: insertIndex)
+                }
+            }
+            // Add video filter for resolution scaling if needed
+            if encodeVideo,
+               let width = videoWidth, let height = videoHeight,
+               let scaleFilter = resolution.scaleFilter(width: width, height: height) {
+                cmd.insert(contentsOf: ["-vf", scaleFilter], at: cmd.firstIndex(of: "-c:v") ?? 2)
+            }
+            if !encodeVideo && videoCodec == "hevc" {
+                cmd.append(contentsOf: ["-tag:v", "hvc1"])
             }
         } else { // remux
             cmd = [

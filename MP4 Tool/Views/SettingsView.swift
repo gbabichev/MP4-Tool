@@ -12,6 +12,8 @@ struct SettingsView: View {
     @Binding var crfValue: Double
     @Binding var selectedResolution: ResolutionOption
     @Binding var selectedPreset: PresetOption
+    @Binding var encodeVideo: Bool
+    @Binding var encodeAudio: Bool
     @Binding var createSubfolders: Bool
     @Binding var automaticRename: Bool
     @Binding var deleteOriginal: Bool
@@ -45,11 +47,23 @@ struct SettingsView: View {
                         }
 
                         if selectedMode == .encodeH265 || selectedMode == .encodeH264 {
+                            SettingsRow("Encode Video", subtitle: "Turn off to copy video and only process audio") {
+                                Toggle("", isOn: $encodeVideo)
+                                    .toggleStyle(.switch)
+                                    .disabled(isProcessing || !encodeAudio)
+                            }
+
+                            SettingsRow("Encode Audio", subtitle: "Turn off to copy existing compatible audio") {
+                                Toggle("", isOn: $encodeAudio)
+                                    .toggleStyle(.switch)
+                                    .disabled(isProcessing || !encodeVideo)
+                            }
+
                             SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
                                 HStack {
                                     Slider(value: $crfValue, in: 0...50, step: 1)
                                         .frame(width: 200)
-                                        .disabled(isProcessing)
+                                        .disabled(isProcessing || !encodeVideo)
                                     Text("\(Int(crfValue))")
                                         .frame(width: 30)
                                         .monospacedDigit()
@@ -63,7 +77,7 @@ struct SettingsView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .disabled(isProcessing)
+                                .disabled(isProcessing || !encodeVideo)
                             }
 
                             SettingsRow("Preset", subtitle: "Slower = better compression. Default: fast") {
@@ -73,7 +87,7 @@ struct SettingsView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .disabled(isProcessing)
+                                .disabled(isProcessing || !encodeVideo)
                             }
                         }
 

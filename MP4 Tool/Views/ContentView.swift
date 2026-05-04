@@ -31,6 +31,8 @@ private struct DefaultsSnapshot: Equatable {
     let crfValue: Double
     let selectedResolutionRaw: String
     let selectedPresetRaw: String
+    let encodeVideo: Bool
+    let encodeAudio: Bool
     let createSubfolders: Bool
     let automaticRename: Bool
     let deleteOriginal: Bool
@@ -58,6 +60,8 @@ struct ContentView: View {
     @SceneStorage("crfValue") private var crfValue: Double = 23
     @SceneStorage("selectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
     @SceneStorage("selectedPreset") private var selectedPresetRaw: String = PresetOption.fast.rawValue
+    @SceneStorage("encodeVideo") private var encodeVideo: Bool = true
+    @SceneStorage("encodeAudio") private var encodeAudio: Bool = true
     @SceneStorage("createSubfolders") private var createSubfolders: Bool = false
     @SceneStorage("automaticRename") private var automaticRename: Bool = false
     @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = true
@@ -70,6 +74,8 @@ struct ContentView: View {
     @AppStorage("defaultCrfValue") private var defaultCrfValue: Double = 23
     @AppStorage("defaultSelectedResolution") private var defaultSelectedResolutionRaw: String = ResolutionOption.default.rawValue
     @AppStorage("defaultSelectedPreset") private var defaultSelectedPresetRaw: String = PresetOption.fast.rawValue
+    @AppStorage("defaultEncodeVideo") private var defaultEncodeVideo: Bool = true
+    @AppStorage("defaultEncodeAudio") private var defaultEncodeAudio: Bool = true
     @AppStorage("defaultCreateSubfolders") private var defaultCreateSubfolders: Bool = false
     @AppStorage("defaultAutomaticRename") private var defaultAutomaticRename: Bool = false
     @AppStorage("defaultDeleteOriginal") private var defaultDeleteOriginal: Bool = true
@@ -142,6 +148,8 @@ struct ContentView: View {
                     crfValue: Int(crfValue),
                     resolution: selectedResolution,
                     preset: selectedPreset,
+                    encodeVideo: encodeVideo,
+                    encodeAudio: encodeAudio,
                     createSubfolders: createSubfolders,
                     automaticRename: automaticRename,
                     deleteOriginal: deleteOriginal,
@@ -167,6 +175,8 @@ struct ContentView: View {
             crfValue: crfValue,
             selectedResolutionRaw: selectedResolutionRaw,
             selectedPresetRaw: selectedPresetRaw,
+            encodeVideo: encodeVideo,
+            encodeAudio: encodeAudio,
             createSubfolders: createSubfolders,
             automaticRename: automaticRename,
             deleteOriginal: deleteOriginal,
@@ -235,6 +245,8 @@ struct ContentView: View {
                     crfValue: $crfValue,
                     selectedResolution: selectedResolutionBinding,
                     selectedPreset: selectedPresetBinding,
+                    encodeVideo: $encodeVideo,
+                    encodeAudio: $encodeAudio,
                     createSubfolders: $createSubfolders,
                     automaticRename: $automaticRename,
                     deleteOriginal: $deleteOriginal,
@@ -339,6 +351,8 @@ struct ContentView: View {
                                 crfValue: Int(crfValue),
                                 resolution: selectedResolution,
                                 preset: selectedPreset,
+                                encodeVideo: encodeVideo,
+                                encodeAudio: encodeAudio,
                                 createSubfolders: createSubfolders,
                                 automaticRename: automaticRename,
                                 deleteOriginal: deleteOriginal,
@@ -403,6 +417,8 @@ struct ContentView: View {
                     crfValue = defaultCrfValue
                     selectedResolutionRaw = defaultSelectedResolutionRaw
                     selectedPresetRaw = defaultSelectedPresetRaw
+                    encodeVideo = defaultEncodeVideo
+                    encodeAudio = defaultEncodeAudio
                     createSubfolders = defaultCreateSubfolders
                     automaticRename = defaultAutomaticRename
                     deleteOriginal = defaultDeleteOriginal
@@ -428,6 +444,8 @@ struct ContentView: View {
                 defaultCrfValue = newValue.crfValue
                 defaultSelectedResolutionRaw = newValue.selectedResolutionRaw
                 defaultSelectedPresetRaw = newValue.selectedPresetRaw
+                defaultEncodeVideo = newValue.encodeVideo
+                defaultEncodeAudio = newValue.encodeAudio
                 defaultCreateSubfolders = newValue.createSubfolders
                 defaultAutomaticRename = newValue.automaticRename
                 defaultDeleteOriginal = newValue.deleteOriginal
@@ -503,6 +521,8 @@ struct ExpandedSettingsPanel: View {
     @Binding var crfValue: Double
     @Binding var selectedResolution: ResolutionOption
     @Binding var selectedPreset: PresetOption
+    @Binding var encodeVideo: Bool
+    @Binding var encodeAudio: Bool
     @Binding var createSubfolders: Bool
     @Binding var automaticRename: Bool
     @Binding var deleteOriginal: Bool
@@ -518,6 +538,8 @@ struct ExpandedSettingsPanel: View {
                 crfValue: $crfValue,
                 selectedResolution: $selectedResolution,
                 selectedPreset: $selectedPreset,
+                encodeVideo: $encodeVideo,
+                encodeAudio: $encodeAudio,
                 createSubfolders: $createSubfolders,
                 automaticRename: $automaticRename,
                 deleteOriginal: $deleteOriginal,
