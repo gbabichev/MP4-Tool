@@ -334,7 +334,7 @@ private extension VideoSplitterView {
         } else {
             Text(viewModel.ffmpegStatusLabel)
                 .font(.caption)
-                .foregroundColor(viewModel.ffmpegAvailable ? .secondary : .orange)
+                .foregroundColor(viewModel.mediaToolsStatusIsWarning ? .orange : .secondary)
             if !viewModel.scanAlertText.isEmpty {
                 Text(viewModel.scanAlertText)
                     .font(.caption)

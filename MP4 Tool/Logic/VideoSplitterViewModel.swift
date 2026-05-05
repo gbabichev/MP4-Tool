@@ -77,9 +77,15 @@ final class VideoSplitterViewModel: ObservableObject {
 
     var ffmpegStatusLabel: String {
         if ffmpegAvailable {
-            return isUsingSystemFFmpeg ? "FFmpeg: System" : "FFmpeg: Bundled"
+            let ffmpegLabel = isUsingSystemFFmpeg ? "FFmpeg: System" : "FFmpeg: Bundled"
+            let ffprobeLabel = ffprobeAvailable ? "FFprobe: Available" : "FFprobe: Missing"
+            return "\(ffmpegLabel) • \(ffprobeLabel)"
         }
         return "FFmpeg: Not Available"
+    }
+
+    var mediaToolsStatusIsWarning: Bool {
+        !ffmpegAvailable || !ffprobeAvailable
     }
 
     func selectFolder(isInput: Bool) {
@@ -270,6 +276,13 @@ final class VideoSplitterViewModel: ObservableObject {
             return
         }
 
+        guard ffprobeAvailable else {
+            showAlert(title: "FFprobe Missing", message: "Clean splitting requires ffprobe to align the requested split time to the nearest video packet/keyframe. Please install or bundle ffprobe.")
+            isSplitting = false
+            splitProgress = ""
+            return
+        }
+
         let selectedResults = results.filter { selectedResultIDs.contains($0.id) }
         if selectedResults.isEmpty {
             splitProgress = ""
@@ -297,7 +310,9 @@ final class VideoSplitterViewModel: ObservableObject {
             let output2 = (outputFolderPath as NSString).appendingPathComponent(outputNames.second)
 
             let splitSeconds = manualSplitSeconds(for: result) ?? result.splitTimeSeconds
-            let splitTime = formatTime(splitSeconds)
+            let cleanSplitSeconds = await resolvedCleanSplitTime(filePath: inputFile, requestedSplitSeconds: splitSeconds)
+            let splitTime = formatTimestamp(cleanSplitSeconds)
+            splitProgress = "Splitting \(index + 1)/\(selectedResults.count): \(result.fileName) at \(formatTime(cleanSplitSeconds))"
 
             let cmd1 = [
                 "-ss", "00:00:00",
@@ -611,6 +626,99 @@ final class VideoSplitterViewModel: ObservableObject {
         let minutes = (totalSeconds % 3600) / 60
         let remaining = totalSeconds % 60
         return String(format: "%02d:%02d:%02d", hours, minutes, remaining)
+    }
+
+    private func formatTimestamp(_ seconds: TimeInterval) -> String {
+        String(format: "%.6f", max(0, seconds))
+    }
+
+    private func resolvedCleanSplitTime(filePath: String, requestedSplitSeconds: TimeInterval) async -> TimeInterval {
+        guard ffprobeAvailable else {
+            return requestedSplitSeconds
+        }
+
+        let firstPacketPTS = await firstVideoPacketPTS(filePath: filePath) ?? 0
+        let adjustedTarget = max(0, requestedSplitSeconds + firstPacketPTS)
+
+        if let nearestSeekPoint = await nearestSeekPoint(filePath: filePath, targetPTS: adjustedTarget) {
+            return nearestSeekPoint
+        }
+
+        return adjustedTarget
+    }
+
+    private func nearestSeekPoint(filePath: String, targetPTS: TimeInterval) async -> TimeInterval? {
+        if let keyframePTS = await nearestVideoTimestamp(filePath: filePath, targetPTS: targetPTS, keyframesOnly: true) {
+            return keyframePTS
+        }
+
+        return await nearestVideoTimestamp(filePath: filePath, targetPTS: targetPTS, keyframesOnly: false)
+    }
+
+    private func nearestVideoTimestamp(
+        filePath: String,
+        targetPTS: TimeInterval,
+        keyframesOnly: Bool
+    ) async -> TimeInterval? {
+        let windowStart = max(0, targetPTS - 3)
+        let arguments = [
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "packet=pts_time,flags",
+            "-read_intervals", "\(formatTimestamp(windowStart))%+\(formatTimestamp(6))",
+            "-of", "csv=p=0",
+            filePath
+        ]
+
+        guard let output = await runProcessCaptureStdout(path: ffprobePath, arguments: arguments) else {
+            return nil
+        }
+
+        let timestamps = output
+            .split(whereSeparator: \.isNewline)
+            .compactMap { line -> TimeInterval? in
+                let fields = line.split(separator: ",", omittingEmptySubsequences: false)
+                guard let firstField = fields.first,
+                      let timestamp = TimeInterval(firstField.trimmingCharacters(in: .whitespacesAndNewlines)),
+                      timestamp.isFinite else {
+                    return nil
+                }
+
+                if keyframesOnly {
+                    let flags = fields.dropFirst().joined(separator: ",")
+                    guard flags.contains("K") else { return nil }
+                }
+
+                return timestamp
+            }
+
+        return timestamps.min(by: { abs($0 - targetPTS) < abs($1 - targetPTS) })
+    }
+
+    private func firstVideoPacketPTS(filePath: String) async -> TimeInterval? {
+        let arguments = [
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "packet=pts_time",
+            "-read_intervals", "%+#1",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            filePath
+        ]
+
+        guard let output = await runProcessCaptureStdout(path: ffprobePath, arguments: arguments) else {
+            return nil
+        }
+
+        let firstLine = output
+            .split(whereSeparator: \.isNewline)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let firstLine, !firstLine.isEmpty else {
+            return nil
+        }
+
+        return TimeInterval(firstLine)
     }
 
     private func runProcessCaptureStderr(path: String, arguments: [String]) async -> String? {
