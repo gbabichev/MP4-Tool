@@ -249,8 +249,8 @@ final class MP4ValidationViewModel: ObservableObject {
         var audioCompatibility: MP4ValidationAudioCompatibility?
 
         if ffprobeAvailable {
-            if let hasAV1 = await hasAV1Video(filePath: filePath), hasAV1 {
-                reasons.append("AV1 video")
+            if let unsupportedVideoCodec = await unsupportedAppleVideoCodec(filePath: filePath) {
+                reasons.append("unsupported video codec \(unsupportedVideoCodec)")
             }
 
             audioCompatibility = await probeAudioCompatibility(filePath: filePath)
@@ -282,7 +282,7 @@ final class MP4ValidationViewModel: ObservableObject {
         return reasons.joined(separator: ", ")
     }
 
-    private func hasAV1Video(filePath: String) async -> Bool? {
+    private func unsupportedAppleVideoCodec(filePath: String) async -> String? {
         let arguments = [
             "-v", "error",
             "-select_streams", "v:0",
@@ -301,11 +301,20 @@ final class MP4ValidationViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
 
-        guard let codec else {
+        guard let codec, !codec.isEmpty else {
             return nil
         }
 
-        return codec == "av1"
+        return isAppleCompatibleVideoCodec(codec) ? nil : codec
+    }
+
+    private func isAppleCompatibleVideoCodec(_ codec: String) -> Bool {
+        [
+            "h264",
+            "hevc",
+            "h265",
+            "mpeg4"
+        ].contains(codec)
     }
 
     private func probeAudioCompatibility(filePath: String) async -> MP4ValidationAudioCompatibility? {

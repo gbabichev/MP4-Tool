@@ -927,26 +927,21 @@ class VideoProcessor: ObservableObject {
             }
         }
 
-        if mode == .remux,
-           let compatibilityIssue = await remuxCompatibilityIssue(
-            inputFile: inputFile,
-            audioStreams: audioStreams,
-            keepEnglishOnly: keepEnglishAudioOnly
-           ) {
-            addLog("􀁡 \(compatibilityIssue). Please use encode mode.")
-            return (false, "\(compatibilityIssue) - use encode mode instead")
-        }
-
         // Get video codec
         let videoCodec = getVideoCodec(videoStreams: videoStreams)
 
         // Get video dimensions
         let videoDimensions = getVideoDimensions(videoStreams: videoStreams)
 
-        // Check for AV1 in remux mode
-        if mode == .remux && videoCodec == "av1" {
-            addLog("􀁡 AV1 codec detected. Please use encode mode.")
-            return (false, "AV1 codec not supported in remux mode - use encode mode instead")
+        if mode == .remux,
+           let compatibilityIssue = await remuxCompatibilityIssue(
+            inputFile: inputFile,
+            videoCodec: videoCodec,
+            audioStreams: audioStreams,
+            keepEnglishOnly: keepEnglishAudioOnly
+           ) {
+            addLog("􀁡 \(compatibilityIssue). Please use encode mode.")
+            return (false, "\(compatibilityIssue) - use encode mode instead")
         }
 
         // Determine subtitle stream mappings
@@ -1095,9 +1090,16 @@ class VideoProcessor: ObservableObject {
 
     private func remuxCompatibilityIssue(
         inputFile: String,
+        videoCodec: String?,
         audioStreams: FFProbeOutput,
         keepEnglishOnly: Bool
     ) async -> String? {
+        let normalizedVideoCodec = normalizedProbeValue(videoCodec)
+        if !normalizedVideoCodec.isEmpty,
+           !isAppleCompatibleVideoCodec(normalizedVideoCodec) {
+            return "Unsupported video codec \(normalizedVideoCodec) detected. Remux requires re-encoding"
+        }
+
         let filteredStreams = remuxCandidateAudioStreams(
             audioStreams: audioStreams,
             keepEnglishOnly: keepEnglishOnly
@@ -1161,6 +1163,15 @@ class VideoProcessor: ObservableObject {
             "mp3",
             "ac3",
             "eac3"
+        ].contains(codec)
+    }
+
+    private func isAppleCompatibleVideoCodec(_ codec: String) -> Bool {
+        [
+            "h264",
+            "hevc",
+            "h265",
+            "mpeg4"
         ].contains(codec)
     }
 
