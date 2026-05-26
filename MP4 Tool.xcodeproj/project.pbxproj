@@ -7,14 +7,21 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F60718293A0009 /* mp4toolctl in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0001 /* mp4toolctl */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A1B2C3D4E5F60718293A000D /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0014 /* main.swift */; };
 		A1B2C3D4E5F60718293A000E /* MP4ToolPrivilegedTool in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0013 /* MP4ToolPrivilegedTool */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A1B2C3D4E5F60718293A000F /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0016 /* main.c */; };
 		A1B2C3D4E5F60718293A0010 /* MP4ToolElevationRunner in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0015 /* MP4ToolElevationRunner */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		A1B2C3D4E5F60718293A0009 /* mp4toolctl in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0001 /* mp4toolctl */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		A1B2C3D4E5F60718293A000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FF0BBA102E9B0EC500C99AA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D4E5F60718293A0005;
+			remoteInfo = mp4toolctl;
+		};
 		A1B2C3D4E5F60718293A0011 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = FF0BBA102E9B0EC500C99AA6 /* Project object */;
@@ -28,13 +35,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = A1B2C3D4E5F60718293A001C;
 			remoteInfo = MP4ToolElevationRunner;
-		};
-		A1B2C3D4E5F60718293A000A /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = FF0BBA102E9B0EC500C99AA6 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A1B2C3D4E5F60718293A0005;
-			remoteInfo = mp4toolctl;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -108,17 +108,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		FF0BBA0F2E9B0EC500C99AA6 = {
-			isa = PBXGroup;
-			children = (
-				FF0BBA1A2E9B0EC500C99AA6 /* MP4 Tool */,
-				A1B2C3D4E5F60718293A0002 /* mp4toolctl */,
-				A1B2C3D4E5F60718293A0017 /* MP4ToolPrivilegedTool */,
-				A1B2C3D4E5F60718293A0018 /* MP4ToolElevationRunner */,
-				FF0BBA192E9B0EC500C99AA6 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
 		A1B2C3D4E5F60718293A0017 /* MP4ToolPrivilegedTool */ = {
 			isa = PBXGroup;
 			children = (
@@ -133,6 +122,17 @@
 				A1B2C3D4E5F60718293A0016 /* main.c */,
 			);
 			path = MP4ToolElevationRunner;
+			sourceTree = "<group>";
+		};
+		FF0BBA0F2E9B0EC500C99AA6 = {
+			isa = PBXGroup;
+			children = (
+				FF0BBA1A2E9B0EC500C99AA6 /* MP4 Tool */,
+				A1B2C3D4E5F60718293A0002 /* mp4toolctl */,
+				A1B2C3D4E5F60718293A0017 /* MP4ToolPrivilegedTool */,
+				A1B2C3D4E5F60718293A0018 /* MP4ToolElevationRunner */,
+				FF0BBA192E9B0EC500C99AA6 /* Products */,
+			);
 			sourceTree = "<group>";
 		};
 		FF0BBA192E9B0EC500C99AA6 /* Products */ = {
@@ -593,7 +593,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 7GK58M2353;
 				ENABLE_APP_SANDBOX = NO;
@@ -609,7 +609,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.7.0;
+				MARKETING_VERSION = 1.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -629,7 +629,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 7GK58M2353;
 				ENABLE_APP_SANDBOX = NO;
@@ -645,7 +645,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.7.0;
+				MARKETING_VERSION = 1.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

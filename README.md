@@ -32,6 +32,8 @@ MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files 
 - Customization options to strip out non-english audio & subtitle tracks. 
 - System notification support. 
 - Thorough logging. 
+- Post-processing script support.
+- CLI tool for managing the app queue from Terminal or SSH.
 - Tool for recursively scanning a directory for non-MP4 files. 
 - Tool for validating that MP4 files are valid & playable. 
 
@@ -102,6 +104,10 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 ```
 
 ## 📝 Changelog
+
+### 1.8.0
+- Added a setting to run a post-processing script. 
+- Added a CLI tool to manage the local app queue. 
 
 ### 1.7.0
 - Added support encoding audio only. 
