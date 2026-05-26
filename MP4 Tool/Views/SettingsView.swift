@@ -221,8 +221,43 @@ private struct PostProcessScriptSettingsSection: View {
         }
 
         if panel.runModal() == .OK, let url = panel.url {
+            guard preflightScriptAccess(url) else { return }
             scriptPath = url.path
         }
+    }
+
+    private func preflightScriptAccess(_ url: URL) -> Bool {
+        let didStartAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            _ = try handle.read(upToCount: 1)
+            return true
+        } catch {
+            showScriptAccessAlert(url: url, error: error)
+            return false
+        }
+    }
+
+    private func showScriptAccessAlert(url: URL, error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Could Not Read Post-Process Script"
+        alert.informativeText = """
+        MP4 Tool could not read \(url.path).
+
+        Choose a script the app can read, or grant access when macOS asks. This check prevents a later CLI-started run from blocking on a file access prompt.
+
+        \(error.localizedDescription)
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func clearPassFileNameIfNeeded() {
