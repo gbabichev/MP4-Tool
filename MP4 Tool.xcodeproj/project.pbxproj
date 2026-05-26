@@ -353,6 +353,7 @@
 				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.mp4toolctl";
 				PRODUCT_NAME = mp4toolctl;
+				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -373,6 +374,7 @@
 				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.mp4toolctl";
 				PRODUCT_NAME = mp4toolctl;
+				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -393,6 +395,7 @@
 				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.privileged-tool";
 				PRODUCT_NAME = MP4ToolPrivilegedTool;
+				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -413,6 +416,7 @@
 				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.privileged-tool";
 				PRODUCT_NAME = MP4ToolPrivilegedTool;
+				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -438,6 +442,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.elevation-runner";
 				PRODUCT_NAME = MP4ToolElevationRunner;
+				SKIP_INSTALL = YES;
 			};
 			name = Debug;
 		};
@@ -459,6 +464,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.elevation-runner";
 				PRODUCT_NAME = MP4ToolElevationRunner;
+				SKIP_INSTALL = YES;
 			};
 			name = Release;
 		};
