@@ -143,6 +143,8 @@ struct ContentView: View {
         )
     }
 
+    private static let cliVideoExtensions: Set<String> = ["mkv", "mp4", "avi", "mov", "m4v"]
+
     private var isSettingsExpanded: Bool {
         sceneIsSettingsExpanded ?? defaultIsSettingsExpanded
     }
@@ -261,6 +263,209 @@ struct ContentView: View {
         } else {
             lastOutputFolderPath = ""
         }
+    }
+
+    private func registerCLIHandler() {
+        CLICommandCenter.shared.register(
+            handler: MP4ToolCLIHandler(
+                addFiles: { paths, shouldStart in
+                    addFilesFromCLI(paths: paths, shouldStart: shouldStart)
+                },
+                startProcessing: {
+                    startProcessingFromCLI()
+                },
+                stopProcessing: {
+                    stopProcessingFromCLI()
+                },
+                clearQueue: {
+                    clearQueueFromCLI()
+                },
+                status: {
+                    cliStatusResponse()
+                }
+            )
+        )
+    }
+
+    private func addFilesFromCLI(paths: [String], shouldStart: Bool) -> MP4ToolCLIResponse {
+        guard !paths.isEmpty else {
+            return .failure("No files were provided.", status: currentCLIStatus())
+        }
+
+        let beforeQueuedPaths = Set(viewModel.processor.videoFiles.map(\.filePath))
+        let (fileURLs, skippedCount) = collectCLIFileURLs(paths: paths)
+
+        for url in fileURLs {
+            viewModel.addVideoFile(url: url)
+        }
+
+        let afterQueuedPaths = Set(viewModel.processor.videoFiles.map(\.filePath))
+        let addedCount = afterQueuedPaths.subtracting(beforeQueuedPaths).count
+        var messageParts = ["Queued \(addedCount) file\(addedCount == 1 ? "" : "s")."]
+        if skippedCount > 0 {
+            messageParts.append("Skipped \(skippedCount) unsupported or missing path\(skippedCount == 1 ? "" : "s").")
+        }
+
+        if shouldStart {
+            let startResponse = startProcessingFromCLI()
+            messageParts.append(startResponse.message)
+            return MP4ToolCLIResponse(
+                success: startResponse.success,
+                message: messageParts.joined(separator: " "),
+                status: currentCLIStatus()
+            )
+        }
+
+        return .success(messageParts.joined(separator: " "), status: currentCLIStatus())
+    }
+
+    private func collectCLIFileURLs(paths: [String]) -> (urls: [URL], skippedCount: Int) {
+        var urls: [URL] = []
+        var skippedCount = 0
+        let fileManager = FileManager.default
+
+        for path in paths {
+            guard let url = absoluteCLIURL(from: path) else {
+                skippedCount += 1
+                continue
+            }
+
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+                skippedCount += 1
+                continue
+            }
+
+            if isDirectory.boolValue {
+                guard let enumerator = fileManager.enumerator(
+                    at: url,
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) else {
+                    skippedCount += 1
+                    continue
+                }
+
+                for case let fileURL as URL in enumerator {
+                    guard Self.cliVideoExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
+                    urls.append(fileURL.standardizedFileURL)
+                }
+            } else if Self.cliVideoExtensions.contains(url.pathExtension.lowercased()) {
+                urls.append(url.standardizedFileURL)
+            } else {
+                skippedCount += 1
+            }
+        }
+
+        let uniqueURLs = Dictionary(grouping: urls, by: \.path)
+            .compactMap { $0.value.first }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        return (uniqueURLs, skippedCount)
+    }
+
+    private func absoluteCLIURL(from path: String) -> URL? {
+        let expandedPath = (path as NSString).expandingTildeInPath
+        guard expandedPath.hasPrefix("/") else {
+            return nil
+        }
+        return URL(fileURLWithPath: expandedPath).standardizedFileURL
+    }
+
+    private func startProcessingFromCLI() -> MP4ToolCLIResponse {
+        guard !viewModel.processor.isProcessing else {
+            return .failure("MP4 Tool is already processing.", status: currentCLIStatus())
+        }
+
+        guard viewModel.canStartProcessing else {
+            return .failure("Cannot start: queue files and select an output folder first.", status: currentCLIStatus())
+        }
+
+        let selectedMode = selectedMode
+        let selectedResolution = selectedResolution
+        let selectedPreset = selectedPreset
+        let crfValue = Int(crfValue)
+        let encodeVideo = encodeVideo
+        let encodeAudio = encodeAudio
+        let createSubfolders = createSubfolders
+        let automaticRename = automaticRename
+        let deleteOriginal = deleteOriginal
+        let keepEnglishAudioOnly = keepEnglishAudioOnly
+        let keepEnglishSubtitlesOnly = keepEnglishSubtitlesOnly
+        let postEncodeScriptPath = postEncodeScriptPath
+        let postEncodeScriptRunTiming = postEncodeScriptRunTiming
+        let postEncodeScriptPassFileNameAsFirstArgument = postEncodeScriptPassFileNameAsFirstArgument
+
+        Task { @MainActor in
+            viewModel.startProcessing(
+                mode: selectedMode,
+                crfValue: crfValue,
+                resolution: selectedResolution,
+                preset: selectedPreset,
+                encodeVideo: encodeVideo,
+                encodeAudio: encodeAudio,
+                createSubfolders: createSubfolders,
+                automaticRename: automaticRename,
+                deleteOriginal: deleteOriginal,
+                keepEnglishAudioOnly: keepEnglishAudioOnly,
+                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                postEncodeScriptPath: postEncodeScriptPath,
+                postEncodeScriptRunTiming: postEncodeScriptRunTiming,
+                postEncodeScriptPassFileNameAsFirstArgument: postEncodeScriptPassFileNameAsFirstArgument
+            )
+        }
+
+        return .success("Start requested.", status: currentCLIStatus())
+    }
+
+    private func stopProcessingFromCLI() -> MP4ToolCLIResponse {
+        guard viewModel.processor.isProcessing else {
+            return .success("MP4 Tool is not currently processing.", status: currentCLIStatus())
+        }
+
+        viewModel.processor.cancelScan()
+        return .success("Stop requested.", status: currentCLIStatus())
+    }
+
+    private func clearQueueFromCLI() -> MP4ToolCLIResponse {
+        guard !viewModel.processor.isProcessing else {
+            return .failure("Cannot clear queue while processing.", status: currentCLIStatus())
+        }
+
+        viewModel.clearFilesToProcess()
+        return .success("Queue cleared.", status: currentCLIStatus())
+    }
+
+    private func cliStatusResponse() -> MP4ToolCLIResponse {
+        let status = currentCLIStatus()
+        var parts: [String] = [
+            status.isProcessing
+                ? "Processing \(status.currentFileIndex)/\(status.totalFiles): \(status.currentFile)"
+                : "Idle",
+            "Queue: \(status.queueCount)",
+            status.outputFolder.isEmpty ? "Output: not selected" : "Output: \(status.outputFolder)"
+        ]
+
+        if !status.ffmpegAvailable {
+            parts.append("FFmpeg: not available")
+        }
+        if status.processingHadError {
+            parts.append("Last run has errors")
+        }
+
+        return .success(parts.joined(separator: "\n"), status: status)
+    }
+
+    private func currentCLIStatus() -> MP4ToolCLIStatus {
+        MP4ToolCLIStatus(
+            isProcessing: viewModel.processor.isProcessing,
+            queueCount: viewModel.processor.videoFiles.count,
+            currentFileIndex: viewModel.processor.currentFileIndex,
+            totalFiles: viewModel.processor.totalFiles,
+            currentFile: viewModel.processor.currentFile,
+            outputFolder: viewModel.outputFolderPath,
+            ffmpegAvailable: viewModel.processor.ffmpegAvailable,
+            processingHadError: viewModel.processor.processingHadError
+        )
     }
     
     var mainContent: some View {
@@ -474,6 +679,7 @@ struct ContentView: View {
                 }
 
                 clearCompletionNotificationsIfPossible()
+                registerCLIHandler()
             }
             .onChange(of: defaultsSnapshot) { _, newValue in
                 defaultSelectedModeRaw = newValue.selectedModeRaw
@@ -491,6 +697,7 @@ struct ContentView: View {
                 defaultPostEncodeScriptRunTimingRaw = newValue.postEncodeScriptRunTimingRaw
                 defaultPostEncodeScriptPassFileNameAsFirstArgument = newValue.postEncodeScriptPassFileNameAsFirstArgument
                 defaultIsLogExpanded = newValue.isLogExpanded
+                registerCLIHandler()
             }
             .onChange(of: scenePhase, initial: false) { _, newPhase in
                 guard newPhase == .active else { return }

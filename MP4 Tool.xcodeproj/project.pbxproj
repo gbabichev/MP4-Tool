@@ -6,11 +6,69 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A1B2C3D4E5F60718293A000D /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0014 /* main.swift */; };
+		A1B2C3D4E5F60718293A000E /* MP4ToolPrivilegedTool in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0013 /* MP4ToolPrivilegedTool */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A1B2C3D4E5F60718293A000F /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0016 /* main.c */; };
+		A1B2C3D4E5F60718293A0010 /* MP4ToolElevationRunner in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0015 /* MP4ToolElevationRunner */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A1B2C3D4E5F60718293A0009 /* mp4toolctl in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0001 /* mp4toolctl */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A1B2C3D4E5F60718293A0011 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FF0BBA102E9B0EC500C99AA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D4E5F60718293A001B;
+			remoteInfo = MP4ToolPrivilegedTool;
+		};
+		A1B2C3D4E5F60718293A0012 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FF0BBA102E9B0EC500C99AA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D4E5F60718293A001C;
+			remoteInfo = MP4ToolElevationRunner;
+		};
+		A1B2C3D4E5F60718293A000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FF0BBA102E9B0EC500C99AA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D4E5F60718293A0005;
+			remoteInfo = mp4toolctl;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1B2C3D4E5F60718293A000B /* Embed Command Line Tool */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				A1B2C3D4E5F60718293A0009 /* mp4toolctl in Embed Command Line Tool */,
+				A1B2C3D4E5F60718293A000E /* MP4ToolPrivilegedTool in Embed Command Line Tool */,
+				A1B2C3D4E5F60718293A0010 /* MP4ToolElevationRunner in Embed Command Line Tool */,
+			);
+			name = "Embed Command Line Tool";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F60718293A0001 /* mp4toolctl */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = mp4toolctl; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60718293A0013 /* MP4ToolPrivilegedTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = MP4ToolPrivilegedTool; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60718293A0014 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0015 /* MP4ToolElevationRunner */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = MP4ToolElevationRunner; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60718293A0016 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		FF0BBA182E9B0EC500C99AA6 /* MP4 Tool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MP4 Tool.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A1B2C3D4E5F60718293A0002 /* mp4toolctl */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = mp4toolctl;
+			sourceTree = "<group>";
+		};
 		FF0BBA1A2E9B0EC500C99AA6 /* MP4 Tool */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "MP4 Tool";
@@ -19,6 +77,27 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A1B2C3D4E5F60718293A0003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A0019 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A001A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FF0BBA152E9B0EC500C99AA6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -33,14 +112,36 @@
 			isa = PBXGroup;
 			children = (
 				FF0BBA1A2E9B0EC500C99AA6 /* MP4 Tool */,
+				A1B2C3D4E5F60718293A0002 /* mp4toolctl */,
+				A1B2C3D4E5F60718293A0017 /* MP4ToolPrivilegedTool */,
+				A1B2C3D4E5F60718293A0018 /* MP4ToolElevationRunner */,
 				FF0BBA192E9B0EC500C99AA6 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60718293A0017 /* MP4ToolPrivilegedTool */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A0014 /* main.swift */,
+			);
+			path = MP4ToolPrivilegedTool;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60718293A0018 /* MP4ToolElevationRunner */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A0016 /* main.c */,
+			);
+			path = MP4ToolElevationRunner;
 			sourceTree = "<group>";
 		};
 		FF0BBA192E9B0EC500C99AA6 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				FF0BBA182E9B0EC500C99AA6 /* MP4 Tool.app */,
+				A1B2C3D4E5F60718293A0001 /* mp4toolctl */,
+				A1B2C3D4E5F60718293A0013 /* MP4ToolPrivilegedTool */,
+				A1B2C3D4E5F60718293A0015 /* MP4ToolElevationRunner */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +149,63 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A1B2C3D4E5F60718293A0005 /* mp4toolctl */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60718293A0008 /* Build configuration list for PBXNativeTarget "mp4toolctl" */;
+			buildPhases = (
+				A1B2C3D4E5F60718293A0004 /* Sources */,
+				A1B2C3D4E5F60718293A0003 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D4E5F60718293A0002 /* mp4toolctl */,
+			);
+			name = mp4toolctl;
+			packageProductDependencies = (
+			);
+			productName = mp4toolctl;
+			productReference = A1B2C3D4E5F60718293A0001 /* mp4toolctl */;
+			productType = "com.apple.product-type.tool";
+		};
+		A1B2C3D4E5F60718293A001B /* MP4ToolPrivilegedTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60718293A0025 /* Build configuration list for PBXNativeTarget "MP4ToolPrivilegedTool" */;
+			buildPhases = (
+				A1B2C3D4E5F60718293A001D /* Sources */,
+				A1B2C3D4E5F60718293A0019 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MP4ToolPrivilegedTool;
+			packageProductDependencies = (
+			);
+			productName = MP4ToolPrivilegedTool;
+			productReference = A1B2C3D4E5F60718293A0013 /* MP4ToolPrivilegedTool */;
+			productType = "com.apple.product-type.tool";
+		};
+		A1B2C3D4E5F60718293A001C /* MP4ToolElevationRunner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60718293A0026 /* Build configuration list for PBXNativeTarget "MP4ToolElevationRunner" */;
+			buildPhases = (
+				A1B2C3D4E5F60718293A001E /* Sources */,
+				A1B2C3D4E5F60718293A001A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MP4ToolElevationRunner;
+			packageProductDependencies = (
+			);
+			productName = MP4ToolElevationRunner;
+			productReference = A1B2C3D4E5F60718293A0015 /* MP4ToolElevationRunner */;
+			productType = "com.apple.product-type.tool";
+		};
 		FF0BBA172E9B0EC500C99AA6 /* MP4 Tool */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FF0BBA232E9B0EC600C99AA6 /* Build configuration list for PBXNativeTarget "MP4 Tool" */;
@@ -55,10 +213,14 @@
 				FF0BBA142E9B0EC500C99AA6 /* Sources */,
 				FF0BBA152E9B0EC500C99AA6 /* Frameworks */,
 				FF0BBA162E9B0EC500C99AA6 /* Resources */,
+				A1B2C3D4E5F60718293A000B /* Embed Command Line Tool */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A1B2C3D4E5F60718293A000C /* PBXTargetDependency */,
+				A1B2C3D4E5F60718293A001F /* PBXTargetDependency */,
+				A1B2C3D4E5F60718293A0020 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				FF0BBA1A2E9B0EC500C99AA6 /* MP4 Tool */,
@@ -80,6 +242,15 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
+					A1B2C3D4E5F60718293A0005 = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
+					A1B2C3D4E5F60718293A001B = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
+					A1B2C3D4E5F60718293A001C = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
 					FF0BBA172E9B0EC500C99AA6 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
@@ -100,6 +271,9 @@
 			projectRoot = "";
 			targets = (
 				FF0BBA172E9B0EC500C99AA6 /* MP4 Tool */,
+				A1B2C3D4E5F60718293A0005 /* mp4toolctl */,
+				A1B2C3D4E5F60718293A001B /* MP4ToolPrivilegedTool */,
+				A1B2C3D4E5F60718293A001C /* MP4ToolElevationRunner */,
 			);
 		};
 /* End PBXProject section */
@@ -115,6 +289,29 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A1B2C3D4E5F60718293A0004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A001D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F60718293A000D /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A001E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F60718293A000F /* main.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FF0BBA142E9B0EC500C99AA6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +321,147 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A1B2C3D4E5F60718293A000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3D4E5F60718293A0005 /* mp4toolctl */;
+			targetProxy = A1B2C3D4E5F60718293A000A /* PBXContainerItemProxy */;
+		};
+		A1B2C3D4E5F60718293A001F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3D4E5F60718293A001B /* MP4ToolPrivilegedTool */;
+			targetProxy = A1B2C3D4E5F60718293A0011 /* PBXContainerItemProxy */;
+		};
+		A1B2C3D4E5F60718293A0020 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3D4E5F60718293A001C /* MP4ToolElevationRunner */;
+			targetProxy = A1B2C3D4E5F60718293A0012 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		A1B2C3D4E5F60718293A0006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 14;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 7GK58M2353;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.7.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.mp4toolctl";
+				PRODUCT_NAME = mp4toolctl;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60718293A0007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 14;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 7GK58M2353;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.7.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.mp4toolctl";
+				PRODUCT_NAME = mp4toolctl;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A1B2C3D4E5F60718293A0021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 14;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 7GK58M2353;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.7.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.privileged-tool";
+				PRODUCT_NAME = MP4ToolPrivilegedTool;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60718293A0022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 14;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 7GK58M2353;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.7.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.privileged-tool";
+				PRODUCT_NAME = MP4ToolPrivilegedTool;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A1B2C3D4E5F60718293A0023 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 14;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 7GK58M2353;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.7.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Security,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.elevation-runner";
+				PRODUCT_NAME = MP4ToolElevationRunner;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60718293A0024 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 14;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 7GK58M2353;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.7.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Security,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.georgebabichev.MP4-Tool.elevation-runner";
+				PRODUCT_NAME = MP4ToolElevationRunner;
+			};
+			name = Release;
+		};
 		FF0BBA212E9B0EC600C99AA6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -324,6 +661,33 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A1B2C3D4E5F60718293A0008 /* Build configuration list for PBXNativeTarget "mp4toolctl" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60718293A0006 /* Debug */,
+				A1B2C3D4E5F60718293A0007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F60718293A0025 /* Build configuration list for PBXNativeTarget "MP4ToolPrivilegedTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60718293A0021 /* Debug */,
+				A1B2C3D4E5F60718293A0022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F60718293A0026 /* Build configuration list for PBXNativeTarget "MP4ToolElevationRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60718293A0023 /* Debug */,
+				A1B2C3D4E5F60718293A0024 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		FF0BBA132E9B0EC500C99AA6 /* Build configuration list for PBXProject "MP4 Tool" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

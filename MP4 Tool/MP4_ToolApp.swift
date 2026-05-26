@@ -11,14 +11,42 @@ import SwiftUI
 struct MP4_ToolApp: App {
     @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.windowCommandHandler) private var windowCommandHandler
+    @State private var isCommandLineToolInstalled = CommandLineToolInstaller.canRemoveInstalledTool
 
     init() {
+        Task { @MainActor in
+            do {
+                try CLICommandServer.shared.start()
+                AppUpdateCenter.debugLog("CLI command server listening at \(CLICommandServer.socketPath)")
+            } catch {
+                AppUpdateCenter.debugLog("CLI command server failed to start: \(error.localizedDescription)")
+            }
+        }
+
         Task.detached(priority: .utility) {
             try? await Task.sleep(for: .seconds(2))
             await MainActor.run {
                 AppUpdateCenter.debugLog("Firing init-scheduled automatic launch update check")
                 AppUpdateCenter.shared.checkForUpdates(trigger: .automaticLaunch)
             }
+        }
+    }
+
+    private func refreshCommandLineToolState() {
+        isCommandLineToolInstalled = CommandLineToolInstaller.canRemoveInstalledTool
+    }
+
+    private func installCommandLineTool() {
+        Task { @MainActor in
+            await CommandLineToolInstaller.installFromMenu()
+            refreshCommandLineToolState()
+        }
+    }
+
+    private func uninstallCommandLineTool() {
+        Task { @MainActor in
+            await CommandLineToolInstaller.removeFromMenu()
+            refreshCommandLineToolState()
         }
     }
 
@@ -39,6 +67,22 @@ struct MP4_ToolApp: App {
                     AppUpdateCenter.shared.checkForUpdates(trigger: .manual)
                 }) {
                     Label("Check for Updates...", systemImage: "arrow.triangle.2.circlepath.circle")
+                }
+
+                Divider()
+
+                if isCommandLineToolInstalled {
+                    Button(action: {
+                        uninstallCommandLineTool()
+                    }) {
+                        Label("Uninstall Command Line Tool...", systemImage: "trash")
+                    }
+                } else {
+                    Button(action: {
+                        installCommandLineTool()
+                    }) {
+                        Label("Install Command Line Tool...", systemImage: "terminal")
+                    }
                 }
             }
 
