@@ -461,6 +461,14 @@ struct ContentView: View {
             status.outputFolder.isEmpty ? "Output: not selected" : "Output: \(status.outputFolder)"
         ]
 
+        if status.isProcessing {
+            if let totalETASeconds = status.totalETASeconds {
+                parts.append("ETA: \(formatCLIStatusDuration(seconds: totalETASeconds))")
+            } else {
+                parts.append("ETA: calculating")
+            }
+        }
+
         if !status.ffmpegAvailable {
             parts.append("FFmpeg: not available")
         }
@@ -472,16 +480,34 @@ struct ContentView: View {
     }
 
     private func currentCLIStatus() -> MP4ToolCLIStatus {
-        MP4ToolCLIStatus(
+        let eta = viewModel.processor.processingETASnapshot()
+        return MP4ToolCLIStatus(
             isProcessing: viewModel.processor.isProcessing,
             queueCount: viewModel.processor.videoFiles.count,
             currentFileIndex: viewModel.processor.currentFileIndex,
             totalFiles: viewModel.processor.totalFiles,
             currentFile: viewModel.processor.currentFile,
+            currentFileETASeconds: eta.currentFileSeconds,
+            totalETASeconds: eta.totalSeconds,
             outputFolder: viewModel.outputFolderPath,
             ffmpegAvailable: viewModel.processor.ffmpegAvailable,
             processingHadError: viewModel.processor.processingHadError
         )
+    }
+
+    private func formatCLIStatusDuration(seconds: Int) -> String {
+        let totalSeconds = max(seconds, 0)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let remainingSeconds = totalSeconds % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m \(remainingSeconds)s"
+        }
+        if minutes > 0 {
+            return "\(minutes)m \(remainingSeconds)s"
+        }
+        return "\(remainingSeconds)s"
     }
     
     var mainContent: some View {

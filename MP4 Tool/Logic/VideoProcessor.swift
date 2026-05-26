@@ -507,6 +507,25 @@ class VideoProcessor: ObservableObject {
         return currentFileETA + (Double(remainingAfterCurrent) * perFileEstimate)
     }
 
+    func processingETASnapshot() -> (currentFileSeconds: Int?, totalSeconds: Int?) {
+        guard isProcessing, let startTime else {
+            return (nil, nil)
+        }
+
+        let elapsedWallSeconds = Date().timeIntervalSince(startTime)
+        let currentETA = estimateCurrentFileETASeconds(elapsedWallSeconds: elapsedWallSeconds)
+        let currentFileEstimatedTotal = currentETA.map { elapsedWallSeconds + $0 }
+        let totalETA = estimateAllFilesETASeconds(
+            currentFileETA: currentETA,
+            currentFileEstimatedTotalWallSeconds: currentFileEstimatedTotal
+        )
+
+        return (
+            currentETA.map { max(Int($0.rounded(.up)), 0) },
+            totalETA.map { max(Int($0.rounded(.up)), 0) }
+        )
+    }
+
     private func updateEncodingProgressDisplay(elapsedWallSeconds: TimeInterval) {
         if let duration = currentInputDurationSeconds, duration > 0 {
             currentFileProgressFraction = min(max(currentEncodedTimeSeconds / duration, 0), 1)

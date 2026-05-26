@@ -18,6 +18,8 @@ nonisolated struct MP4ToolCLIStatus: Codable, Sendable {
     let currentFileIndex: Int
     let totalFiles: Int
     let currentFile: String
+    let currentFileETASeconds: Int?
+    let totalETASeconds: Int?
     let outputFolder: String
     let ffmpegAvailable: Bool
     let processingHadError: Bool
