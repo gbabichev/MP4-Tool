@@ -109,9 +109,9 @@ class ContentViewModel: ObservableObject {
         deleteOriginal: Bool,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool,
-        postEncodeScriptPath: String,
-        postEncodeScriptRunTiming: PostEncodeScriptRunTiming,
-        postEncodeScriptPassFileNameAsFirstArgument: Bool
+        postProcessScriptPath: String,
+        postProcessScriptRunTiming: PostProcessScriptRunTiming,
+        postProcessScriptPassFileNameAsFirstArgument: Bool
     ) {
         // Re-check for file conflicts in case settings changed (like createSubfolders)
         _ = processor.checkForFileConflicts(
@@ -151,9 +151,9 @@ class ContentViewModel: ObservableObject {
                 deleteOriginal: deleteOriginal,
                 keepEnglishAudioOnly: keepEnglishAudioOnly,
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
-                postEncodeScriptPath: postEncodeScriptPath,
-                postEncodeScriptRunTiming: postEncodeScriptRunTiming,
-                postEncodeScriptPassFileNameAsFirstArgument: postEncodeScriptPassFileNameAsFirstArgument
+                postProcessScriptPath: postProcessScriptPath,
+                postProcessScriptRunTiming: postProcessScriptRunTiming,
+                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
             )
         }
     }

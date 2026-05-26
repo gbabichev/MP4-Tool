@@ -20,9 +20,9 @@ struct SettingsView: View {
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
-    @Binding var postEncodeScriptPath: String
-    @Binding var postEncodeScriptRunTiming: PostEncodeScriptRunTiming
-    @Binding var postEncodeScriptPassFileNameAsFirstArgument: Bool
+    @Binding var postProcessScriptPath: String
+    @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
+    @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
     @Binding var isExpanded: Bool
 
@@ -127,10 +127,10 @@ struct SettingsView: View {
 
                         Divider()
 
-                        PostEncodeScriptSettingsSection(
-                            scriptPath: $postEncodeScriptPath,
-                            runTiming: $postEncodeScriptRunTiming,
-                            passFileNameAsFirstArgument: $postEncodeScriptPassFileNameAsFirstArgument,
+                        PostProcessScriptSettingsSection(
+                            scriptPath: $postProcessScriptPath,
+                            runTiming: $postProcessScriptRunTiming,
+                            passFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
                             isProcessing: isProcessing
                         )
                     }
@@ -145,19 +145,26 @@ struct SettingsView: View {
     }
 }
 
-private struct PostEncodeScriptSettingsSection: View {
+private struct PostProcessScriptSettingsSection: View {
     @Binding var scriptPath: String
-    @Binding var runTiming: PostEncodeScriptRunTiming
+    @Binding var runTiming: PostProcessScriptRunTiming
     @Binding var passFileNameAsFirstArgument: Bool
     let isProcessing: Bool
 
     private var scriptSubtitle: String {
-        scriptPath.isEmpty ? "Optional local script to run after encoding" : scriptPath
+        scriptPath.isEmpty ? "Optional local script to run after processing" : scriptPath
+    }
+
+    private var passFileNameBinding: Binding<Bool> {
+        Binding(
+            get: { runTiming == .afterEachItem && passFileNameAsFirstArgument },
+            set: { passFileNameAsFirstArgument = runTiming == .afterEachItem ? $0 : false }
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SettingsRow("Post-Encode Script", subtitle: scriptSubtitle) {
+            SettingsRow("Post-Process Script", subtitle: scriptSubtitle) {
                 HStack(spacing: 6) {
                     Button("Choose...") {
                         chooseScript()
@@ -179,7 +186,7 @@ private struct PostEncodeScriptSettingsSection: View {
             if !scriptPath.isEmpty {
                 SettingsRow("Script Timing", subtitle: "Choose when the selected script runs") {
                     Picker("", selection: $runTiming) {
-                        ForEach(PostEncodeScriptRunTiming.allCases, id: \.self) { timing in
+                        ForEach(PostProcessScriptRunTiming.allCases, id: \.self) { timing in
                             Text(timing.description).tag(timing)
                         }
                     }
@@ -188,11 +195,15 @@ private struct PostEncodeScriptSettingsSection: View {
                 }
 
                 SettingsRow("Pass File Name First", subtitle: "For per-item scripts, pass the output file name before input/output paths") {
-                    Toggle("", isOn: $passFileNameAsFirstArgument)
+                    Toggle("", isOn: passFileNameBinding)
                         .toggleStyle(.switch)
                         .disabled(isProcessing || runTiming != .afterEachItem)
                 }
             }
+        }
+        .onAppear(perform: clearPassFileNameIfNeeded)
+        .onChange(of: runTiming) { _, _ in
+            clearPassFileNameIfNeeded()
         }
     }
 
@@ -202,7 +213,7 @@ private struct PostEncodeScriptSettingsSection: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
-        panel.message = "Choose a local script to run after encoding"
+        panel.message = "Choose a local script to run after processing"
         panel.prompt = "Choose"
 
         if !scriptPath.isEmpty {
@@ -212,5 +223,10 @@ private struct PostEncodeScriptSettingsSection: View {
         if panel.runModal() == .OK, let url = panel.url {
             scriptPath = url.path
         }
+    }
+
+    private func clearPassFileNameIfNeeded() {
+        guard runTiming != .afterEachItem else { return }
+        passFileNameAsFirstArgument = false
     }
 }
