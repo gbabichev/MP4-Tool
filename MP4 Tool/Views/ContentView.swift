@@ -67,7 +67,7 @@ struct ContentView: View {
     @SceneStorage("encodeAudio") private var encodeAudio: Bool = true
     @SceneStorage("createSubfolders") private var createSubfolders: Bool = false
     @SceneStorage("automaticRename") private var automaticRename: Bool = false
-    @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = true
+    @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = false
     @SceneStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @SceneStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @SceneStorage("postProcessScriptPath") private var postProcessScriptPath: String = ""
@@ -84,7 +84,7 @@ struct ContentView: View {
     @AppStorage("defaultEncodeAudio") private var defaultEncodeAudio: Bool = true
     @AppStorage("defaultCreateSubfolders") private var defaultCreateSubfolders: Bool = false
     @AppStorage("defaultAutomaticRename") private var defaultAutomaticRename: Bool = false
-    @AppStorage("defaultDeleteOriginal") private var defaultDeleteOriginal: Bool = true
+    @AppStorage("defaultDeleteOriginal") private var defaultDeleteOriginal: Bool = false
     @AppStorage("defaultKeepEnglishAudioOnly") private var defaultKeepEnglishAudioOnly: Bool = true
     @AppStorage("defaultKeepEnglishSubtitlesOnly") private var defaultKeepEnglishSubtitlesOnly: Bool = true
     @AppStorage("defaultPostProcessScriptPath") private var defaultPostProcessScriptPath: String = ""

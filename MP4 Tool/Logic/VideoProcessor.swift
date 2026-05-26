@@ -584,7 +584,7 @@ class VideoProcessor: ObservableObject {
         encodeAudio: Bool = true,
         createSubfolders: Bool,
         automaticRename: Bool = false,
-        deleteOriginal: Bool = true,
+        deleteOriginal: Bool = false,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool,
         postProcessScriptPath: String = "",
