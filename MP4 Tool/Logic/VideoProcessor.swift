@@ -123,6 +123,18 @@ enum PresetOption: String, CaseIterable {
     }
 }
 
+enum PostEncodeScriptRunTiming: String, CaseIterable {
+    case afterEachItem = "after_each_item"
+    case atEnd = "at_end"
+
+    var description: String {
+        switch self {
+        case .afterEachItem: return "Run after each item"
+        case .atEnd: return "Run at the end"
+        }
+    }
+}
+
 enum ProcessingStatus {
     case pending
     case processing
@@ -143,6 +155,19 @@ struct VideoFileInfo: Identifiable {
     var newSizeMB: Int = 0
     var hasConflict: Bool = false
     var conflictReason: String = ""
+}
+
+private struct CompletedPostEncodeFile {
+    let inputPath: String
+    let outputPath: String
+    let fileName: String
+}
+
+private struct PostEncodeScriptResult {
+    let terminationStatus: Int32?
+    let outputText: String
+    let errorText: String
+    let startErrorMessage: String?
 }
 
 private final class ThreadSafeDataBuffer: @unchecked Sendable {
@@ -561,7 +586,10 @@ class VideoProcessor: ObservableObject {
         automaticRename: Bool = false,
         deleteOriginal: Bool = true,
         keepEnglishAudioOnly: Bool,
-        keepEnglishSubtitlesOnly: Bool
+        keepEnglishSubtitlesOnly: Bool,
+        postEncodeScriptPath: String = "",
+        postEncodeScriptRunTiming: PostEncodeScriptRunTiming = .afterEachItem,
+        postEncodeScriptPassFileNameAsFirstArgument: Bool = false
     ) async {
         DispatchQueue.main.async {
             self.isProcessing = true
@@ -605,6 +633,15 @@ class VideoProcessor: ObservableObject {
         addLog("􀈑 Delete Original: \(deleteOriginal)")
         addLog("􀀁 Keep English Audio Only: \(keepEnglishAudioOnly)")
         addLog("􀀃 Keep English Subtitles Only: \(keepEnglishSubtitlesOnly)")
+
+        let activePostEncodeScriptPath = validatedPostEncodeScriptPath(postEncodeScriptPath)
+        if let activePostEncodeScriptPath {
+            addLog("Post-Encode Script: \(activePostEncodeScriptPath)")
+            addLog("Post-Encode Script Timing: \(postEncodeScriptRunTiming.description)")
+            if postEncodeScriptRunTiming == .afterEachItem {
+                addLog("Post-Encode Script Pass File Name First: \(postEncodeScriptPassFileNameAsFirstArgument)")
+            }
+        }
 
         // Verify output directory exists
         guard FileManager.default.fileExists(atPath: outputPath) else {
@@ -662,6 +699,7 @@ class VideoProcessor: ObservableObject {
         // Set initial dock badge with total files
         updateDockBadge(filesRemaining: filesToProcess.count)
 
+        var completedPostEncodeFiles: [CompletedPostEncodeFile] = []
         var index = 0
         while index < filesToProcess.count {
             let fileInfo = filesToProcess[index]
@@ -809,6 +847,29 @@ class VideoProcessor: ObservableObject {
                     }
                 }
 
+                let completedPostEncodeFile = CompletedPostEncodeFile(
+                    inputPath: inputFilePath,
+                    outputPath: outputFilePath,
+                    fileName: URL(fileURLWithPath: outputFilePath).lastPathComponent
+                )
+                completedPostEncodeFiles.append(completedPostEncodeFile)
+
+                if let activePostEncodeScriptPath,
+                   postEncodeScriptRunTiming == .afterEachItem,
+                   !shouldCancelProcessing {
+                    let scriptSucceeded = await runPostEncodeScriptForItem(
+                        scriptPath: activePostEncodeScriptPath,
+                        completedFile: completedPostEncodeFile,
+                        mode: mode,
+                        passFileNameAsFirstArgument: postEncodeScriptPassFileNameAsFirstArgument
+                    )
+                    if !scriptSucceeded {
+                        DispatchQueue.main.async {
+                            self.processingHadError = true
+                        }
+                    }
+                }
+
                 // Update dock badge with remaining files
                 if filesRemaining > 0 {
                     updateDockBadge(filesRemaining: filesRemaining)
@@ -872,6 +933,26 @@ class VideoProcessor: ObservableObject {
             index += 1
         }
 
+        if let activePostEncodeScriptPath,
+           postEncodeScriptRunTiming == .atEnd,
+           !shouldCancelProcessing {
+            if completedPostEncodeFiles.isEmpty {
+                addLog("Post-Encode Script skipped: no successful output files")
+            } else {
+                let scriptSucceeded = await runPostEncodeScriptAtEnd(
+                    scriptPath: activePostEncodeScriptPath,
+                    outputPath: outputPath,
+                    completedFiles: completedPostEncodeFiles,
+                    mode: mode
+                )
+                if !scriptSucceeded {
+                    DispatchQueue.main.async {
+                        self.processingHadError = true
+                    }
+                }
+            }
+        }
+
         addLog("\n􀋚 All files processed!")
 
         // Set dock badge to checkmark when done
@@ -889,6 +970,262 @@ class VideoProcessor: ObservableObject {
             if !NSApplication.shared.isActive {
                 self.sendProcessingCompleteNotification()
             }
+        }
+    }
+
+    private func validatedPostEncodeScriptPath(_ scriptPath: String) -> String? {
+        let trimmedPath = scriptPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { return nil }
+
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: trimmedPath, isDirectory: &isDirectory)
+        guard exists, !isDirectory.boolValue else {
+            addLog("Post-Encode Script warning: selected script was not found: \(trimmedPath)")
+            DispatchQueue.main.async {
+                self.processingHadError = true
+            }
+            return nil
+        }
+
+        return trimmedPath
+    }
+
+    private func postEncodeScriptLaunchCommand(
+        scriptPath: String,
+        scriptArguments: [String]
+    ) -> (executable: String, arguments: [String]) {
+        let scriptExtension = URL(fileURLWithPath: scriptPath).pathExtension.lowercased()
+
+        switch scriptExtension {
+        case "sh":
+            return ("/bin/sh", [scriptPath] + scriptArguments)
+        case "bash":
+            return ("/usr/bin/env", ["bash", scriptPath] + scriptArguments)
+        case "zsh":
+            return ("/bin/zsh", [scriptPath] + scriptArguments)
+        case "py":
+            return ("/usr/bin/env", ["python3", scriptPath] + scriptArguments)
+        default:
+            if FileManager.default.isExecutableFile(atPath: scriptPath) {
+                return (scriptPath, scriptArguments)
+            }
+            return ("/bin/zsh", [scriptPath] + scriptArguments)
+        }
+    }
+
+    private func runPostEncodeScriptForItem(
+        scriptPath: String,
+        completedFile: CompletedPostEncodeFile,
+        mode: ProcessingMode,
+        passFileNameAsFirstArgument: Bool
+    ) async -> Bool {
+        let outputURL = URL(fileURLWithPath: completedFile.outputPath)
+        let outputDirectoryURL = outputURL.deletingLastPathComponent()
+        var scriptArguments = [completedFile.inputPath, completedFile.outputPath]
+        if passFileNameAsFirstArgument {
+            scriptArguments.insert(completedFile.fileName, at: 0)
+        }
+
+        return await runPostEncodeScript(
+            scriptPath: scriptPath,
+            phaseLabel: "item",
+            scriptArguments: scriptArguments,
+            environment: [
+                "MP4_TOOL_POST_ENCODE_PHASE": "item",
+                "MP4_TOOL_MODE": mode.rawValue,
+                "MP4_TOOL_INPUT_FILE": completedFile.inputPath,
+                "MP4_TOOL_OUTPUT_FILE": completedFile.outputPath,
+                "MP4_TOOL_OUTPUT_DIR": outputDirectoryURL.path,
+                "MP4_TOOL_FILE_NAME": completedFile.fileName
+            ],
+            currentDirectoryURL: outputDirectoryURL
+        )
+    }
+
+    private func runPostEncodeScriptAtEnd(
+        scriptPath: String,
+        outputPath: String,
+        completedFiles: [CompletedPostEncodeFile],
+        mode: ProcessingMode
+    ) async -> Bool {
+        let outputFiles = completedFiles.map(\.outputPath)
+        let inputFiles = completedFiles.map(\.inputPath)
+
+        return await runPostEncodeScript(
+            scriptPath: scriptPath,
+            phaseLabel: "end",
+            scriptArguments: [outputPath] + outputFiles,
+            environment: [
+                "MP4_TOOL_POST_ENCODE_PHASE": "end",
+                "MP4_TOOL_MODE": mode.rawValue,
+                "MP4_TOOL_OUTPUT_DIR": outputPath,
+                "MP4_TOOL_OUTPUT_FILES": outputFiles.joined(separator: "\n"),
+                "MP4_TOOL_INPUT_FILES": inputFiles.joined(separator: "\n"),
+                "MP4_TOOL_OUTPUT_COUNT": "\(outputFiles.count)"
+            ],
+            currentDirectoryURL: URL(fileURLWithPath: outputPath, isDirectory: true)
+        )
+    }
+
+    private func runPostEncodeScript(
+        scriptPath: String,
+        phaseLabel: String,
+        scriptArguments: [String],
+        environment: [String: String],
+        currentDirectoryURL: URL?
+    ) async -> Bool {
+        let launchCommand = postEncodeScriptLaunchCommand(
+            scriptPath: scriptPath,
+            scriptArguments: scriptArguments
+        )
+        let scriptName = URL(fileURLWithPath: scriptPath).lastPathComponent
+        addLog("Running post-encode script (\(phaseLabel)): \(scriptName)")
+
+        let result: PostEncodeScriptResult = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: PostEncodeScriptResult(
+                        terminationStatus: nil,
+                        outputText: "",
+                        errorText: "",
+                        startErrorMessage: "Process initialization failed"
+                    ))
+                    return
+                }
+
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: launchCommand.executable)
+                process.arguments = launchCommand.arguments
+                process.currentDirectoryURL = currentDirectoryURL
+
+                var processEnvironment = ProcessInfo.processInfo.environment
+                processEnvironment["MP4_TOOL_POST_ENCODE_SCRIPT"] = scriptPath
+                for (key, value) in environment {
+                    processEnvironment[key] = value
+                }
+                process.environment = processEnvironment
+
+                let outputPipe = Pipe()
+                let errorPipe = Pipe()
+                process.standardOutput = outputPipe
+                process.standardError = errorPipe
+
+                let outputBuffer = ThreadSafeDataBuffer()
+                let errorBuffer = ThreadSafeDataBuffer()
+
+                outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let chunk = handle.availableData
+                    guard !chunk.isEmpty else { return }
+                    outputBuffer.append(chunk)
+                }
+
+                errorPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let chunk = handle.availableData
+                    guard !chunk.isEmpty else { return }
+                    errorBuffer.append(chunk)
+                }
+
+                DispatchQueue.main.async {
+                    self.currentProcess = process
+                }
+
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+
+                    let remainingOutput = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    if !remainingOutput.isEmpty {
+                        outputBuffer.append(remainingOutput)
+                    }
+
+                    let remainingError = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    if !remainingError.isEmpty {
+                        errorBuffer.append(remainingError)
+                    }
+
+                    let outputText = String(data: outputBuffer.snapshot(), encoding: .utf8) ?? ""
+                    let errorText = String(data: errorBuffer.snapshot(), encoding: .utf8) ?? ""
+                    let terminationStatus = process.terminationStatus
+
+                    DispatchQueue.main.async {
+                        if self.currentProcess === process {
+                            self.currentProcess = nil
+                        }
+                    }
+
+                    continuation.resume(returning: PostEncodeScriptResult(
+                        terminationStatus: terminationStatus,
+                        outputText: outputText,
+                        errorText: errorText,
+                        startErrorMessage: nil
+                    ))
+                } catch {
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+
+                    let outputText = String(data: outputBuffer.snapshot(), encoding: .utf8) ?? ""
+                    let errorText = String(data: errorBuffer.snapshot(), encoding: .utf8) ?? ""
+                    let errorMessage = error.localizedDescription
+
+                    DispatchQueue.main.async {
+                        if self.currentProcess === process {
+                            self.currentProcess = nil
+                        }
+                    }
+
+                    continuation.resume(returning: PostEncodeScriptResult(
+                        terminationStatus: nil,
+                        outputText: outputText,
+                        errorText: errorText,
+                        startErrorMessage: errorMessage
+                    ))
+                }
+            }
+        }
+
+        if !result.outputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            logPostEncodeScriptOutput(result.outputText, label: "stdout")
+        }
+
+        if !result.errorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            logPostEncodeScriptOutput(result.errorText, label: "stderr")
+        }
+
+        if let startErrorMessage = result.startErrorMessage {
+            addLog("Post-Encode Script warning: failed to start: \(startErrorMessage)")
+            return false
+        }
+
+        guard let terminationStatus = result.terminationStatus else {
+            addLog("Post-Encode Script warning: process did not return a status")
+            return false
+        }
+
+        if terminationStatus == 0 {
+            addLog("Post-encode script completed")
+            return true
+        } else if shouldCancelProcessing {
+            addLog("Post-encode script cancelled")
+            return false
+        } else {
+            addLog("Post-Encode Script warning: exited with code \(terminationStatus)")
+            return false
+        }
+    }
+
+    private func logPostEncodeScriptOutput(_ output: String, label: String) {
+        let lines = output.split(whereSeparator: \.isNewline).map(String.init)
+        guard !lines.isEmpty else { return }
+
+        addLog("Post-encode script \(label):")
+        for line in lines.prefix(100) {
+            addLog("  \(line)")
+        }
+        if lines.count > 100 {
+            addLog("  ... \(lines.count - 100) more lines")
         }
     }
 

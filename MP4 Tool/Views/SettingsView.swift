@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @Binding var selectedMode: ProcessingMode
@@ -19,6 +20,9 @@ struct SettingsView: View {
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
+    @Binding var postEncodeScriptPath: String
+    @Binding var postEncodeScriptRunTiming: PostEncodeScriptRunTiming
+    @Binding var postEncodeScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
     @Binding var isExpanded: Bool
 
@@ -120,6 +124,15 @@ struct SettingsView: View {
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
                         }
+
+                        Divider()
+
+                        PostEncodeScriptSettingsSection(
+                            scriptPath: $postEncodeScriptPath,
+                            runTiming: $postEncodeScriptRunTiming,
+                            passFileNameAsFirstArgument: $postEncodeScriptPassFileNameAsFirstArgument,
+                            isProcessing: isProcessing
+                        )
                     }
                     .padding(.vertical, 4)
                 }
@@ -129,5 +142,75 @@ struct SettingsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct PostEncodeScriptSettingsSection: View {
+    @Binding var scriptPath: String
+    @Binding var runTiming: PostEncodeScriptRunTiming
+    @Binding var passFileNameAsFirstArgument: Bool
+    let isProcessing: Bool
+
+    private var scriptSubtitle: String {
+        scriptPath.isEmpty ? "Optional local script to run after encoding" : scriptPath
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsRow("Post-Encode Script", subtitle: scriptSubtitle) {
+                HStack(spacing: 6) {
+                    Button("Choose...") {
+                        chooseScript()
+                    }
+                    .disabled(isProcessing)
+
+                    if !scriptPath.isEmpty {
+                        Button {
+                            scriptPath = ""
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .help("Clear selected script")
+                        .disabled(isProcessing)
+                    }
+                }
+            }
+
+            if !scriptPath.isEmpty {
+                SettingsRow("Script Timing", subtitle: "Choose when the selected script runs") {
+                    Picker("", selection: $runTiming) {
+                        ForEach(PostEncodeScriptRunTiming.allCases, id: \.self) { timing in
+                            Text(timing.description).tag(timing)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(isProcessing)
+                }
+
+                SettingsRow("Pass File Name First", subtitle: "For per-item scripts, pass the output file name before input/output paths") {
+                    Toggle("", isOn: $passFileNameAsFirstArgument)
+                        .toggleStyle(.switch)
+                        .disabled(isProcessing || runTiming != .afterEachItem)
+                }
+            }
+        }
+    }
+
+    private func chooseScript() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.message = "Choose a local script to run after encoding"
+        panel.prompt = "Choose"
+
+        if !scriptPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: scriptPath).deletingLastPathComponent()
+        }
+
+        if panel.runModal() == .OK, let url = panel.url {
+            scriptPath = url.path
+        }
     }
 }

@@ -38,6 +38,9 @@ private struct DefaultsSnapshot: Equatable {
     let deleteOriginal: Bool
     let keepEnglishAudioOnly: Bool
     let keepEnglishSubtitlesOnly: Bool
+    let postEncodeScriptPath: String
+    let postEncodeScriptRunTimingRaw: String
+    let postEncodeScriptPassFileNameAsFirstArgument: Bool
     let isLogExpanded: Bool
 }
 
@@ -67,6 +70,9 @@ struct ContentView: View {
     @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = true
     @SceneStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @SceneStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
+    @SceneStorage("postEncodeScriptPath") private var postEncodeScriptPath: String = ""
+    @SceneStorage("postEncodeScriptRunTiming") private var postEncodeScriptRunTimingRaw: String = PostEncodeScriptRunTiming.afterEachItem.rawValue
+    @SceneStorage("postEncodeScriptPassFileNameAsFirstArgument") private var postEncodeScriptPassFileNameAsFirstArgument: Bool = false
     @SceneStorage("isLogExpanded") private var isLogExpanded = true
     @SceneStorage("isSettingsExpanded") private var sceneIsSettingsExpanded: Bool?
     @SceneStorage("didInitializeWindowDefaults") private var didInitializeWindowDefaults = false
@@ -81,6 +87,9 @@ struct ContentView: View {
     @AppStorage("defaultDeleteOriginal") private var defaultDeleteOriginal: Bool = true
     @AppStorage("defaultKeepEnglishAudioOnly") private var defaultKeepEnglishAudioOnly: Bool = true
     @AppStorage("defaultKeepEnglishSubtitlesOnly") private var defaultKeepEnglishSubtitlesOnly: Bool = true
+    @AppStorage("defaultPostEncodeScriptPath") private var defaultPostEncodeScriptPath: String = ""
+    @AppStorage("defaultPostEncodeScriptRunTiming") private var defaultPostEncodeScriptRunTimingRaw: String = PostEncodeScriptRunTiming.afterEachItem.rawValue
+    @AppStorage("defaultPostEncodeScriptPassFileNameAsFirstArgument") private var defaultPostEncodeScriptPassFileNameAsFirstArgument: Bool = false
     @AppStorage("defaultIsLogExpanded") private var defaultIsLogExpanded = true
     @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = true
     @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
@@ -101,6 +110,11 @@ struct ContentView: View {
         set { selectedPresetRaw = newValue.rawValue }
     }
 
+    private var postEncodeScriptRunTiming: PostEncodeScriptRunTiming {
+        get { PostEncodeScriptRunTiming(rawValue: postEncodeScriptRunTimingRaw) ?? .afterEachItem }
+        set { postEncodeScriptRunTimingRaw = newValue.rawValue }
+    }
+
     private var selectedModeBinding: Binding<ProcessingMode> {
         Binding(
             get: { ProcessingMode(rawValue: selectedModeRaw) ?? .encodeH265 },
@@ -119,6 +133,13 @@ struct ContentView: View {
         Binding(
             get: { PresetOption(rawValue: selectedPresetRaw) ?? .fast },
             set: { selectedPresetRaw = $0.rawValue }
+        )
+    }
+
+    private var postEncodeScriptRunTimingBinding: Binding<PostEncodeScriptRunTiming> {
+        Binding(
+            get: { PostEncodeScriptRunTiming(rawValue: postEncodeScriptRunTimingRaw) ?? .afterEachItem },
+            set: { postEncodeScriptRunTimingRaw = $0.rawValue }
         )
     }
 
@@ -154,7 +175,10 @@ struct ContentView: View {
                     automaticRename: automaticRename,
                     deleteOriginal: deleteOriginal,
                     keepEnglishAudioOnly: keepEnglishAudioOnly,
-                    keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
+                    keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                    postEncodeScriptPath: postEncodeScriptPath,
+                    postEncodeScriptRunTiming: postEncodeScriptRunTiming,
+                    postEncodeScriptPassFileNameAsFirstArgument: postEncodeScriptPassFileNameAsFirstArgument
                 )
             },
             exportLog: { viewModel.exportLogToFile() },
@@ -182,6 +206,9 @@ struct ContentView: View {
             deleteOriginal: deleteOriginal,
             keepEnglishAudioOnly: keepEnglishAudioOnly,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            postEncodeScriptPath: postEncodeScriptPath,
+            postEncodeScriptRunTimingRaw: postEncodeScriptRunTimingRaw,
+            postEncodeScriptPassFileNameAsFirstArgument: postEncodeScriptPassFileNameAsFirstArgument,
             isLogExpanded: isLogExpanded
         )
     }
@@ -252,6 +279,9 @@ struct ContentView: View {
                     deleteOriginal: $deleteOriginal,
                     keepEnglishAudioOnly: $keepEnglishAudioOnly,
                     keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                    postEncodeScriptPath: $postEncodeScriptPath,
+                    postEncodeScriptRunTiming: postEncodeScriptRunTimingBinding,
+                    postEncodeScriptPassFileNameAsFirstArgument: $postEncodeScriptPassFileNameAsFirstArgument,
                     isProcessing: viewModel.processor.isProcessing,
                     isExpanded: isSettingsExpandedBinding
                 )
@@ -357,7 +387,10 @@ struct ContentView: View {
                                 automaticRename: automaticRename,
                                 deleteOriginal: deleteOriginal,
                                 keepEnglishAudioOnly: keepEnglishAudioOnly,
-                                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
+                                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                                postEncodeScriptPath: postEncodeScriptPath,
+                                postEncodeScriptRunTiming: postEncodeScriptRunTiming,
+                                postEncodeScriptPassFileNameAsFirstArgument: postEncodeScriptPassFileNameAsFirstArgument
                             )
                         }) {
                             Label("Start Processing", systemImage: "play.fill")
@@ -424,6 +457,9 @@ struct ContentView: View {
                     deleteOriginal = defaultDeleteOriginal
                     keepEnglishAudioOnly = defaultKeepEnglishAudioOnly
                     keepEnglishSubtitlesOnly = defaultKeepEnglishSubtitlesOnly
+                    postEncodeScriptPath = defaultPostEncodeScriptPath
+                    postEncodeScriptRunTimingRaw = defaultPostEncodeScriptRunTimingRaw
+                    postEncodeScriptPassFileNameAsFirstArgument = defaultPostEncodeScriptPassFileNameAsFirstArgument
                     isLogExpanded = defaultIsLogExpanded
                     didInitializeWindowDefaults = true
                 }
@@ -451,6 +487,9 @@ struct ContentView: View {
                 defaultDeleteOriginal = newValue.deleteOriginal
                 defaultKeepEnglishAudioOnly = newValue.keepEnglishAudioOnly
                 defaultKeepEnglishSubtitlesOnly = newValue.keepEnglishSubtitlesOnly
+                defaultPostEncodeScriptPath = newValue.postEncodeScriptPath
+                defaultPostEncodeScriptRunTimingRaw = newValue.postEncodeScriptRunTimingRaw
+                defaultPostEncodeScriptPassFileNameAsFirstArgument = newValue.postEncodeScriptPassFileNameAsFirstArgument
                 defaultIsLogExpanded = newValue.isLogExpanded
             }
             .onChange(of: scenePhase, initial: false) { _, newPhase in
@@ -528,6 +567,9 @@ struct ExpandedSettingsPanel: View {
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
+    @Binding var postEncodeScriptPath: String
+    @Binding var postEncodeScriptRunTiming: PostEncodeScriptRunTiming
+    @Binding var postEncodeScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
     @Binding var isExpanded: Bool
     
@@ -545,6 +587,9 @@ struct ExpandedSettingsPanel: View {
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
                 keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                postEncodeScriptPath: $postEncodeScriptPath,
+                postEncodeScriptRunTiming: $postEncodeScriptRunTiming,
+                postEncodeScriptPassFileNameAsFirstArgument: $postEncodeScriptPassFileNameAsFirstArgument,
                 isProcessing: isProcessing,
                 isExpanded: $isExpanded
             )
