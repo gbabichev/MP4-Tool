@@ -11,6 +11,7 @@ import SwiftUI
 struct MP4_ToolApp: App {
     @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.windowCommandHandler) private var windowCommandHandler
+    @StateObject private var viewModel = ContentViewModel()
     @State private var isCommandLineToolInstalled = CommandLineToolInstaller.canRemoveInstalledTool
 
     init() {
@@ -52,7 +53,7 @@ struct MP4_ToolApp: App {
 
     var body: some Scene {
         WindowGroup(id: "main") {
-            ContentView()
+            ContentView(viewModel: viewModel)
         }
         .commands {
             CommandGroup(replacing: .appInfo) {

@@ -56,7 +56,7 @@ extension FocusedValues {
 }
 
 struct ContentView: View {
-    @StateObject private var viewModel = ContentViewModel()
+    @ObservedObject private var viewModel: ContentViewModel
     @ObservedObject private var updateCenter = AppUpdateCenter.shared
     @Environment(\.scenePhase) private var scenePhase
     @SceneStorage("selectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
@@ -94,6 +94,10 @@ struct ContentView: View {
     @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = true
     @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+
+    init(viewModel: ContentViewModel) {
+        _viewModel = ObservedObject(wrappedValue: viewModel)
+    }
 
     private var selectedMode: ProcessingMode {
         get { ProcessingMode(rawValue: selectedModeRaw) ?? .encodeH265 }

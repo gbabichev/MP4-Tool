@@ -25,47 +25,47 @@ MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files 
 <b>You must have ffmpeg & ffprobe in your $PATH</b>, or compile the app with ffmpeg & ffprobe in the Resources directory.
 <a href="Documentation/build-ffmpeg-arm64.sh">FFmpeg ARM64 Build script is in the repo</a>
 
-## Features 
+## Features
 - Batch Processing.
 - H264 & H265 Encoding Support.
 - Remux support.
-- Customization options to strip out non-english audio & subtitle tracks. 
-- System notification support. 
-- Thorough logging. 
+- Customization options to strip out non-english audio & subtitle tracks.
+- System notification support.
+- Thorough logging.
 - Post-processing script support.
 - CLI tool for managing the app queue from Terminal or SSH.
-- Tool for recursively scanning a directory for non-MP4 files. 
-- Tool for validating that MP4 files are valid & playable. 
+- Tool for recursively scanning a directory for non-MP4 files.
+- Tool for validating that MP4 files are valid & playable.
 
 ## Built in additional tools
 
 ### Video Splitter
-Some video files have multiple episodes in one file. This tool scans the video for black space, and attempts to automatically determine the split. 
+Some video files have multiple episodes in one file. This tool scans the video for black space, and attempts to automatically determine the split.
 - Advanced Features:
-  - Scan around half-time. 
-  - Change how black the frame must be. 
-  - Manually input the split time. 
-  - Automatic episode naming. 
+  - Scan around half-time.
+  - Change how black the frame must be.
+  - Manually input the split time.
+  - Automatic episode naming.
 
 ### Check Offset Starts
-Some videos have their first frame not at 00:00, which makes certain video players not start the video exactly at 00:00. 
+Some videos have their first frame not at 00:00, which makes certain video players not start the video exactly at 00:00.
 If you use the Video Splitter and you don't encode, you may run into this issue. This tool punts the start as close as possible, and notifies if you have to re-encode a video.
 
 ### Subtitle Merger
 Select MP4. Select SRT. Create a single file.
-Multiple languages supported. 
+Multiple languages supported.
 
 ### Scan for Non-MP4 Files
-Scans your given directory for files that are not MP4. 
+Scans your given directory for files that are not MP4.
 
 ### Validate MP4 Files
-Scans your given directory to ensure that MP4 files are in a format natively readable by Apple platforms for full compatibility. 
+Scans your given directory to ensure that MP4 files are in a format natively readable by Apple platforms for full compatibility.
 
 ## Tutorial Summary
 
 ### 1. Install FFmpeg
 - brew install ffmpeg
-- or however else you want to do it. 
+- or however else you want to do it.
 
 ### 2. Select Folders
 - Use the toolbar folder buttons to pick input and output directories. (or drag and drop)
@@ -79,7 +79,7 @@ Scans your given directory to ensure that MP4 files are in a format natively rea
 ### 3. Adjust Settings
 - In Encode mode, configure the CRF quality (recommended range 18–28, where lower values produce higher quality).
 - Optional settings let you manage subfolders and control whether original files are deleted after processing.
-- Optional settings let you remove any non-english Audio tracks and Subtitles. 
+- Optional settings let you remove any non-english Audio tracks and Subtitles.
 
 ### 4. Start Processing
 - Click **Start Processing** or press `⌘P` to run the selected jobs.
@@ -87,9 +87,9 @@ Scans your given directory to ensure that MP4 files are in a format natively rea
 
 ## 🖥️ Install & Minimum Requirements
 
-- macOS 14.0 or later  
+- macOS 14.0 or later
 - Apple Silicon & Intel (Not tested on Intel)
-- ~10 MB free disk space  
+- ~10 MB free disk space
 
 ### ⚙️ Installation
 
@@ -105,27 +105,30 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.8.1
+- Fixed app lifecycle. UI will no longer clear files added via CLI.
+
 ### 1.8.0
-- Added a setting to run a post-processing script. 
-- Added a CLI tool to manage the local app queue. 
+- Added a setting to run a post-processing script.
+- Added a CLI tool to manage the local app queue.
 
 ### 1.7.0
-- Added support encoding audio only. 
+- Added support encoding audio only.
 - Improved reliability of the remux tool to capture codec errors on Apple platforms.
-- Improved reliability of the MP4 Validator tool to capture code errors on Apple platforms. 
-- Improved video splitter tool. We cut at nearest keyframe now, to avoid sync issues. 
+- Improved reliability of the MP4 Validator tool to capture code errors on Apple platforms.
+- Improved video splitter tool. We cut at nearest keyframe now, to avoid sync issues.
 
 ### 1.6.1
-- Settings sidebar is now scrollable, so the app can fit better on smaller displays. 
+- Settings sidebar is now scrollable, so the app can fit better on smaller displays.
 - Updated ffmpeg build script to support 8.1
 
 ### 1.6.0
-- Added automatic file naming for Movies & TV Shows, stripping out junk. 
-- Added a "clear" button to the results table. 
+- Added automatic file naming for Movies & TV Shows, stripping out junk.
+- Added a "clear" button to the results table.
 
 ### 1.5.0
-- Added 'Subtitle Merger' tool. Lets you select an MP4 & SRT, and merge them to a single file. Supports multiple languages. 
-- Added online update checker. Checks github for the latest release. 
+- Added 'Subtitle Merger' tool. Lets you select an MP4 & SRT, and merge them to a single file. Supports multiple languages.
+- Added online update checker. Checks github for the latest release.
 
 ### 1.4.1
 - Fixed:
@@ -138,54 +141,54 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 ### 1.4.0
 - Added Offset Tool
   - Scan a directory, and output if videos have significant offsets (meaning they don't start at true 0)
-  - Repair in place. 
+  - Repair in place.
   - Offsets can happen when splitting a video not on a keyframe and not re-encoding.
 - Enhanced Video Splitter to also repair offsets after a split.
-- Added UI for "Validate MP4" & "Scan for Non-MP4" Tools. 
-- Added "Open in Finder" buttons to all folder selections. 
+- Added UI for "Validate MP4" & "Scan for Non-MP4" Tools.
+- Added "Open in Finder" buttons to all folder selections.
 
 ### 1.3.1
 - Video Splitter Enhancements:
-  - If a split is not found, the video is now added to the list requiring manual input. 
-  - Added select all / deselect all buttons. 
-  - Added halfway mark to display so you can at a glance validate that the split passes a gut check. 
-  - Adjusted regex for renaming. 
+  - If a split is not found, the video is now added to the list requiring manual input.
+  - Added select all / deselect all buttons.
+  - Added halfway mark to display so you can at a glance validate that the split passes a gut check.
+  - Adjusted regex for renaming.
   - Settings pane is now collapsible to increase the size of the results table.
 
 ### 1.3.0
-- Added Video Splitter tool. 
+- Added Video Splitter tool.
  - Video Splitter takes a single MP4 file which contains multiple episodes, finds black space in the middle and splits the file into two episdoes while automatically renaming.
 - Added support for multiple MP4 Tool Windows, so you can do a video action & use tools at the same time.
 
 ### 1.2.3
-- Added DTS Review support. Apple platforms cannot natively play DTS, therefore we now check for it and throw an error. 
+- Added DTS Review support. Apple platforms cannot natively play DTS, therefore we now check for it and throw an error.
  - App now throws errors in remux mode if DTS Audio is detected. DTS is not compatible on Apple Platforms.
- - Validate MP4 Files tool now throws an error if DTS audio is deteceted. 
+ - Validate MP4 Files tool now throws an error if DTS audio is deteceted.
 
 ### 1.2.2
-- Enhanced resolution logic. Videos will no longer be upscaled if they are a smaller resolution than requested. 
-- Vertical videos are properly processed. 
+- Enhanced resolution logic. Videos will no longer be upscaled if they are a smaller resolution than requested.
+- Vertical videos are properly processed.
 - Video status will reset if the same batch is re-processed.
 
 ### 1.2.1
 - Added toggle to switch between bundled FFMpeg & system FFmpeg, if the app is compiled with FFmpeg.
 
 ### 1.2.0
-- Added Resolution options. Original, 1080, & 720. 
-- Added preset quality options from placebo->ultrafast. 
+- Added Resolution options. Original, 1080, & 720.
+- Added preset quality options from placebo->ultrafast.
 
 ### 1.1.0
-- Added batching. You can now drag in additional files to add to an existing processing batch. 
-- Enabled settings sidebar to be collapsible. 
-- Updated ffmpeg build script. 
+- Added batching. You can now drag in additional files to add to an existing processing batch.
+- Enabled settings sidebar to be collapsible.
+- Updated ffmpeg build script.
 - Adjusted quality slider to allow for more quality settings.
 
 ### 1.0.0
-- Initial Release. 
+- Initial Release.
 
 ## 📄 License
 
-MIT — free for personal and commercial use. 
+MIT — free for personal and commercial use.
 
 ## Credits
-Thanks to the FFmpeg team for making an awesome utility. 
+Thanks to the FFmpeg team for making an awesome utility.
