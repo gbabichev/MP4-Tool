@@ -662,9 +662,27 @@ class VideoProcessor: ObservableObject {
             }
         }
 
-        // Verify output directory exists
+        // Verify output directory exists, recreating it if a previously selected folder was deleted.
+        var isOutputDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: outputPath, isDirectory: &isOutputDirectory) {
+            guard isOutputDirectory.boolValue else {
+                addLog("Output path exists but is not a folder: \(outputPath)")
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+        } else {
+            do {
+                try FileManager.default.createDirectory(atPath: outputPath, withIntermediateDirectories: true)
+                addLog("Created output directory: \(outputPath)")
+            } catch {
+                addLog("Failed to create output directory: \(error.localizedDescription)")
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+        }
+
         guard FileManager.default.fileExists(atPath: outputPath) else {
-            addLog("􀁡 Output directory does not exist!")
+            addLog("Output directory does not exist!")
             DispatchQueue.main.async { self.isProcessing = false }
             return
         }

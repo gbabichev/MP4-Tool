@@ -275,14 +275,7 @@ struct ContentView: View {
 
     private func restoreLastOutputFolderIfAvailable() {
         guard viewModel.outputFolderPath.isEmpty, !lastOutputFolderPath.isEmpty else { return }
-
-        var isDirectory: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: lastOutputFolderPath, isDirectory: &isDirectory)
-        if exists && isDirectory.boolValue {
-            viewModel.setOutputFolder(path: lastOutputFolderPath)
-        } else {
-            lastOutputFolderPath = ""
-        }
+        viewModel.setOutputFolder(path: lastOutputFolderPath, createIfMissing: true)
     }
 
     private func registerCLIHandler() {

@@ -69,8 +69,11 @@ class ContentViewModel: ObservableObject {
         checkForSameFolderWarning()
     }
 
-    func setOutputFolder(path: String) {
+    func setOutputFolder(path: String, createIfMissing: Bool = false) {
         outputFolderPath = path
+        if createIfMissing {
+            _ = ensureOutputFolderExists()
+        }
         checkForSameFolderWarning()
 
         // Check for conflicts with existing files in queue
@@ -79,8 +82,32 @@ class ContentViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func ensureOutputFolderExists() -> Bool {
+        guard !outputFolderPath.isEmpty else { return false }
+
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: outputFolderPath, isDirectory: &isDirectory) {
+            if isDirectory.boolValue {
+                return true
+            }
+
+            processor.addLog("Output path exists but is not a folder: \(outputFolderPath)")
+            return false
+        }
+
+        do {
+            try FileManager.default.createDirectory(atPath: outputFolderPath, withIntermediateDirectories: true)
+            processor.addLog("Created output directory: \(outputFolderPath)")
+            return true
+        } catch {
+            processor.addLog("Failed to create output directory: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     func openOutputFolderInFinder() {
-        guard !outputFolderPath.isEmpty else { return }
+        guard ensureOutputFolderExists() else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: outputFolderPath, isDirectory: true))
     }
 
@@ -113,6 +140,8 @@ class ContentViewModel: ObservableObject {
         postProcessScriptRunTiming: PostProcessScriptRunTiming,
         postProcessScriptPassFileNameAsFirstArgument: Bool
     ) {
+        guard ensureOutputFolderExists() else { return }
+
         // Re-check for file conflicts in case settings changed (like createSubfolders)
         _ = processor.checkForFileConflicts(
             outputPath: outputFolderPath,
