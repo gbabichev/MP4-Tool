@@ -10,8 +10,8 @@ import SwiftUI
 @main
 struct MP4_ToolApp: App {
     @Environment(\.openWindow) private var openWindow
-    @FocusedValue(\.windowCommandHandler) private var windowCommandHandler
-    @StateObject private var viewModel = ContentViewModel()
+    @StateObject private var sharedCLIViewModel = ContentViewModel()
+    @StateObject private var windowCommandRegistry = WindowCommandRegistry()
     @State private var isCommandLineToolInstalled = CommandLineToolInstaller.canRemoveInstalledTool
 
     init() {
@@ -53,16 +53,20 @@ struct MP4_ToolApp: App {
 
     var body: some Scene {
         WindowGroup(id: "main") {
-            ContentView(viewModel: viewModel)
+            MainWindowRootView(
+                sharedViewModel: isCommandLineToolInstalled ? sharedCLIViewModel : nil,
+                registersCLIHandler: isCommandLineToolInstalled
+            )
+            .environmentObject(windowCommandRegistry)
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(action: {
-                    windowCommandHandler?.showAbout()
+                    windowCommandRegistry.activeActions?.showAbout()
                 }) {
                     Label("About MP4 Tool", systemImage: "info.circle")
                 }
-                .disabled(windowCommandHandler == nil)
+                .disabled(!windowCommandRegistry.hasActiveWindow)
 
                 Button(action: {
                     AppUpdateCenter.shared.checkForUpdates(trigger: .manual)
@@ -94,48 +98,50 @@ struct MP4_ToolApp: App {
                     Label("New Window", systemImage: "plus.rectangle.on.rectangle")
                 }
                 .keyboardShortcut("n", modifiers: .command)
+                .disabled(isCommandLineToolInstalled)
+                .help(isCommandLineToolInstalled ? "New windows are disabled while the command line tool is installed so CLI actions target one shared queue." : "Open a new MP4 Tool window")
 
                 Button(action: {
-                    windowCommandHandler?.openInputFolder()
+                    windowCommandRegistry.activeActions?.openInputFolder()
                 }) {
                     Label("Open Input Folder...", systemImage: "folder")
                 }
                 .keyboardShortcut("o", modifiers: .command)
-                .disabled(windowCommandHandler?.isProcessing ?? true)
+                .disabled(windowCommandRegistry.activeAvailability.isProcessing || !windowCommandRegistry.hasActiveWindow)
 
                 Button(action: {
-                    windowCommandHandler?.selectOutputFolder()
+                    windowCommandRegistry.activeActions?.selectOutputFolder()
                 }) {
                     Label("Select Output Folder...", systemImage: "folder.badge.plus")
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
-                .disabled(windowCommandHandler?.isProcessing ?? true)
+                .disabled(windowCommandRegistry.activeAvailability.isProcessing || !windowCommandRegistry.hasActiveWindow)
 
                 Divider()
 
                 Button(action: {
-                    windowCommandHandler?.clearFolders()
+                    windowCommandRegistry.activeActions?.clearFolders()
                 }) {
                     Label("Clear List", systemImage: "arrow.counterclockwise")
                 }
                 .keyboardShortcut("l", modifiers: .command)
-                .disabled(!(windowCommandHandler?.canClearFolders ?? false) || (windowCommandHandler?.isProcessing ?? false))
+                .disabled(!windowCommandRegistry.activeAvailability.canClearFolders || windowCommandRegistry.activeAvailability.isProcessing)
             }
 
             CommandMenu("Tools") {
                 Button(action: {
-                    windowCommandHandler?.startProcessing()
+                    windowCommandRegistry.activeActions?.startProcessing()
                 }) {
                     Label("Process", systemImage: "play.fill")
                 }
                 .keyboardShortcut("p", modifiers: .command)
-                .disabled(!(windowCommandHandler?.canStartProcessing ?? false) || (windowCommandHandler?.isProcessing ?? false))
+                .disabled(!windowCommandRegistry.activeAvailability.canStartProcessing || windowCommandRegistry.activeAvailability.isProcessing)
 
                 Divider()
 
-                if windowCommandHandler?.canToggleFFmpeg == true {
+                if windowCommandRegistry.activeAvailability.canToggleFFmpeg {
                     Button(action: {
-                        windowCommandHandler?.toggleFFmpegSource()
+                        windowCommandRegistry.activeActions?.toggleFFmpegSource()
                     }) {
                         Label("Toggle FFmpeg Source", systemImage: "arrow.triangle.swap")
                     }
@@ -181,22 +187,22 @@ struct MP4_ToolApp: App {
                 Divider()
 
                 Button(action: {
-                    windowCommandHandler?.exportLog()
+                    windowCommandRegistry.activeActions?.exportLog()
                 }) {
                     Label("Export Log to TXT...", systemImage: "square.and.arrow.up")
                 }
                 .keyboardShortcut("E", modifiers: [.command, .shift])
-                .disabled(!(windowCommandHandler?.canExportLog ?? false))
+                .disabled(!windowCommandRegistry.activeAvailability.canExportLog)
             }
 
             CommandGroup(after: .help) {
                 Button(action: {
-                    windowCommandHandler?.showTutorial()
+                    windowCommandRegistry.activeActions?.showTutorial()
                 }) {
                     Label("Tutorial", systemImage: "lightbulb.fill")
                 }
                 .keyboardShortcut("/", modifiers: .command)
-                .disabled(windowCommandHandler == nil)
+                .disabled(!windowCommandRegistry.hasActiveWindow)
             }
         }
         
@@ -219,5 +225,25 @@ struct MP4_ToolApp: App {
         Window("Validate MP4 Files", id: "mp4Validation") {
             MP4ValidationView()
         }
+    }
+}
+
+private struct MainWindowRootView: View {
+    let sharedViewModel: ContentViewModel?
+    let registersCLIHandler: Bool
+
+    @StateObject private var localViewModel = ContentViewModel()
+    @State private var windowID = UUID()
+
+    private var activeViewModel: ContentViewModel {
+        sharedViewModel ?? localViewModel
+    }
+
+    var body: some View {
+        ContentView(
+            viewModel: activeViewModel,
+            windowID: windowID,
+            registersCLIHandler: registersCLIHandler
+        )
     }
 }

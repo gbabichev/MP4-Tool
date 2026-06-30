@@ -10,22 +10,6 @@ import UniformTypeIdentifiers
 import AppKit
 import UserNotifications
 
-struct WindowCommandHandler {
-    let openInputFolder: () -> Void
-    let selectOutputFolder: () -> Void
-    let clearFolders: () -> Void
-    let startProcessing: () -> Void
-    let exportLog: () -> Void
-    let showTutorial: () -> Void
-    let showAbout: () -> Void
-    let toggleFFmpegSource: () -> Void
-    let canStartProcessing: Bool
-    let isProcessing: Bool
-    let canClearFolders: Bool
-    let canExportLog: Bool
-    let canToggleFFmpeg: Bool
-}
-
 private struct DefaultsSnapshot: Equatable {
     let selectedModeRaw: String
     let crfValue: Double
@@ -44,21 +28,13 @@ private struct DefaultsSnapshot: Equatable {
     let isLogExpanded: Bool
 }
 
-private struct WindowCommandHandlerKey: FocusedValueKey {
-    typealias Value = WindowCommandHandler
-}
-
-extension FocusedValues {
-    var windowCommandHandler: WindowCommandHandler? {
-        get { self[WindowCommandHandlerKey.self] }
-        set { self[WindowCommandHandlerKey.self] = newValue }
-    }
-}
-
 struct ContentView: View {
     @ObservedObject private var viewModel: ContentViewModel
     @ObservedObject private var updateCenter = AppUpdateCenter.shared
+    @EnvironmentObject private var windowCommandRegistry: WindowCommandRegistry
     @Environment(\.scenePhase) private var scenePhase
+    private let windowID: UUID
+    private let registersCLIHandler: Bool
     @SceneStorage("selectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
     @SceneStorage("crfValue") private var crfValue: Double = 23
     @SceneStorage("selectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
@@ -95,8 +71,10 @@ struct ContentView: View {
     @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
-    init(viewModel: ContentViewModel) {
+    init(viewModel: ContentViewModel, windowID: UUID, registersCLIHandler: Bool) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
+        self.windowID = windowID
+        self.registersCLIHandler = registersCLIHandler
     }
 
     private var selectedMode: ProcessingMode {
@@ -173,34 +151,23 @@ struct ContentView: View {
         )
     }
 
-    private var commandHandler: WindowCommandHandler {
-        WindowCommandHandler(
+    private var commandActions: WindowCommandActions {
+        WindowCommandActions(
             openInputFolder: { viewModel.selectFolder(isInput: true) },
             selectOutputFolder: { viewModel.selectFolder(isInput: false) },
             clearFolders: { viewModel.clearFolders() },
             startProcessing: {
-                guard viewModel.canStartProcessing, !viewModel.processor.isProcessing else { return }
-                viewModel.startProcessing(
-                    mode: selectedMode,
-                    crfValue: Int(crfValue),
-                    resolution: selectedResolution,
-                    preset: selectedPreset,
-                    encodeVideo: encodeVideo,
-                    encodeAudio: encodeAudio,
-                    createSubfolders: createSubfolders,
-                    automaticRename: automaticRename,
-                    deleteOriginal: deleteOriginal,
-                    keepEnglishAudioOnly: keepEnglishAudioOnly,
-                    keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
-                    postProcessScriptPath: postProcessScriptPath,
-                    postProcessScriptRunTiming: postProcessScriptRunTiming,
-                    postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
-                )
+                startProcessingFromWindowCommand()
             },
             exportLog: { viewModel.exportLogToFile() },
             showTutorial: { viewModel.showTutorial() },
             showAbout: { viewModel.showAbout() },
-            toggleFFmpegSource: { viewModel.toggleFFmpegSource() },
+            toggleFFmpegSource: { viewModel.toggleFFmpegSource() }
+        )
+    }
+
+    private var commandAvailability: WindowCommandAvailability {
+        WindowCommandAvailability(
             canStartProcessing: viewModel.canStartProcessing,
             isProcessing: viewModel.processor.isProcessing,
             canClearFolders: !(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty),
@@ -278,7 +245,40 @@ struct ContentView: View {
         viewModel.setOutputFolder(path: lastOutputFolderPath, createIfMissing: true)
     }
 
+    private func startProcessingFromWindowCommand() {
+        guard viewModel.canStartProcessing, !viewModel.processor.isProcessing else { return }
+        viewModel.startProcessing(
+            mode: selectedMode,
+            crfValue: Int(crfValue),
+            resolution: selectedResolution,
+            preset: selectedPreset,
+            encodeVideo: encodeVideo,
+            encodeAudio: encodeAudio,
+            createSubfolders: createSubfolders,
+            automaticRename: automaticRename,
+            deleteOriginal: deleteOriginal,
+            keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            postProcessScriptPath: postProcessScriptPath,
+            postProcessScriptRunTiming: postProcessScriptRunTiming,
+            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+        )
+    }
+
+    private func registerWindowCommands() {
+        windowCommandRegistry.register(
+            windowID: windowID,
+            actions: commandActions,
+            availability: commandAvailability
+        )
+    }
+
     private func registerCLIHandler() {
+        guard registersCLIHandler else {
+            CLICommandCenter.shared.unregister()
+            return
+        }
+
         CLICommandCenter.shared.register(
             handler: MP4ToolCLIHandler(
                 addFiles: { paths, shouldStart in
@@ -538,6 +538,7 @@ struct ContentView: View {
             MainContentView(viewModel: viewModel)
         }
         .frame(minWidth: 800, minHeight: 360)
+        .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
         .safeAreaInset(edge: .bottom) {
             logPanel
         }
@@ -644,7 +645,6 @@ struct ContentView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .windowToolbar)
-            .focusedSceneValue(\.windowCommandHandler, commandHandler)
             .overlay {
                 if viewModel.showingTutorial {
                     TutorialView(isPresented: $viewModel.showingTutorial)
@@ -720,6 +720,7 @@ struct ContentView: View {
 
                 clearCompletionNotificationsIfPossible()
                 registerCLIHandler()
+                registerWindowCommands()
             }
             .onChange(of: defaultsSnapshot) { _, newValue in
                 defaultSelectedModeRaw = newValue.selectedModeRaw
@@ -738,6 +739,14 @@ struct ContentView: View {
                 defaultPostProcessScriptPassFileNameAsFirstArgument = newValue.postProcessScriptPassFileNameAsFirstArgument
                 defaultIsLogExpanded = newValue.isLogExpanded
                 registerCLIHandler()
+                registerWindowCommands()
+            }
+            .onChange(of: commandAvailability) { _, newValue in
+                windowCommandRegistry.updateAvailability(newValue, for: windowID)
+            }
+            .onChange(of: registersCLIHandler) { _, _ in
+                registerCLIHandler()
+                registerWindowCommands()
             }
             .onChange(of: scenePhase, initial: false) { _, newPhase in
                 guard newPhase == .active else { return }
@@ -746,6 +755,9 @@ struct ContentView: View {
             .onChange(of: viewModel.outputFolderPath) { _, newValue in
                 guard !newValue.isEmpty else { return }
                 lastOutputFolderPath = newValue
+            }
+            .onDisappear {
+                windowCommandRegistry.unregister(windowID: windowID)
             }
             .fileExporter(
                 isPresented: $viewModel.showingLogExporter,
