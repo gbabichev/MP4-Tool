@@ -105,6 +105,10 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 1.8.2
+- Fixed UI lag when adding items to the table.
+- Split the apps queue. If CLI tool is installed, the UI and the CLI share the same queueu (single window). If CLI is not installed, you can have multiple windows with independent queues.
+
 ### 1.8.1
 - Fixed app lifecycle. UI will no longer clear files added via CLI.
 

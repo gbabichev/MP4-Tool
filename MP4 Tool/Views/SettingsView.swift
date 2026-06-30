@@ -135,6 +135,7 @@ struct SettingsView: View {
                         )
                     }
                     .padding(.vertical, 4)
+                    .padding(.trailing, 14)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
