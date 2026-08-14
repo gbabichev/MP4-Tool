@@ -54,6 +54,42 @@ extension ProcessingPreset {
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: false
+        ),
+        ProcessingPreset(
+            id: UUID(uuidString: "C0841EEB-374A-454E-9B22-197336362639")!,
+            name: "Animated",
+            modeRawValue: ProcessingMode.encodeH265.rawValue,
+            crfValue: 25,
+            resolutionRawValue: ResolutionOption.default.rawValue,
+            encoderPresetRawValue: PresetOption.ultrafast.rawValue,
+            encodeVideo: true,
+            encodeAudio: true,
+            createSubfolders: false,
+            automaticRename: true,
+            deleteOriginal: false,
+            keepEnglishAudioOnly: true,
+            keepEnglishSubtitlesOnly: true,
+            postProcessScriptPath: "",
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
+            postProcessScriptPassFileNameAsFirstArgument: false
+        ),
+        ProcessingPreset(
+            id: UUID(uuidString: "887384C7-6F3A-456A-B21D-E8240EFE97F8")!,
+            name: "Space Saver - 720p",
+            modeRawValue: ProcessingMode.encodeH265.rawValue,
+            crfValue: 24,
+            resolutionRawValue: ResolutionOption.p720.rawValue,
+            encoderPresetRawValue: PresetOption.ultrafast.rawValue,
+            encodeVideo: true,
+            encodeAudio: true,
+            createSubfolders: false,
+            automaticRename: true,
+            deleteOriginal: false,
+            keepEnglishAudioOnly: true,
+            keepEnglishSubtitlesOnly: true,
+            postProcessScriptPath: "",
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
+            postProcessScriptPassFileNameAsFirstArgument: false
         )
     ]
 }
