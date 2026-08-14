@@ -28,6 +28,11 @@ private struct DefaultsSnapshot: Equatable {
     let isLogExpanded: Bool
 }
 
+private struct DefaultsPersistenceRequest: Equatable {
+    let snapshot: DefaultsSnapshot
+    let settingsAreInitialized: Bool
+}
+
 struct ContentView: View {
     @ObservedObject private var viewModel: ContentViewModel
     @ObservedObject private var updateCenter = AppUpdateCenter.shared
@@ -70,6 +75,9 @@ struct ContentView: View {
     @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = true
     @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    @AppStorage("processingPresets") private var encodedProcessingPresets = ""
+    @AppStorage("selectedProcessingPresetID") private var selectedProcessingPresetIDRawValue = ""
+    @State private var settingsRestoreIsComplete = false
 
     init(viewModel: ContentViewModel, windowID: UUID, registersCLIHandler: Bool) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -196,10 +204,74 @@ struct ContentView: View {
         )
     }
 
+    private var defaultsPersistenceRequest: DefaultsPersistenceRequest {
+        DefaultsPersistenceRequest(
+            snapshot: defaultsSnapshot,
+            settingsAreInitialized: settingsRestoreIsComplete
+        )
+    }
+
+    private func persistWindowDefaults(_ snapshot: DefaultsSnapshot) {
+        defaultSelectedModeRaw = snapshot.selectedModeRaw
+        defaultCrfValue = snapshot.crfValue
+        defaultSelectedResolutionRaw = snapshot.selectedResolutionRaw
+        defaultSelectedPresetRaw = snapshot.selectedPresetRaw
+        defaultEncodeVideo = snapshot.encodeVideo
+        defaultEncodeAudio = snapshot.encodeAudio
+        defaultCreateSubfolders = snapshot.createSubfolders
+        defaultAutomaticRename = snapshot.automaticRename
+        defaultDeleteOriginal = snapshot.deleteOriginal
+        defaultKeepEnglishAudioOnly = snapshot.keepEnglishAudioOnly
+        defaultKeepEnglishSubtitlesOnly = snapshot.keepEnglishSubtitlesOnly
+        defaultPostProcessScriptPath = snapshot.postProcessScriptPath
+        defaultPostProcessScriptRunTimingRaw = snapshot.postProcessScriptRunTimingRaw
+        defaultPostProcessScriptPassFileNameAsFirstArgument = snapshot.postProcessScriptPassFileNameAsFirstArgument
+        defaultIsLogExpanded = snapshot.isLogExpanded
+        registerCLIHandler()
+        registerWindowCommands()
+    }
+
     private func clearPostProcessFileNameArgumentIfNeeded() {
         let timing = PostProcessScriptRunTiming(rawValue: postProcessScriptRunTimingRaw) ?? .afterEachItem
         guard timing != .afterEachItem else { return }
         postProcessScriptPassFileNameAsFirstArgument = false
+    }
+
+    private func restoreSelectedProcessingPresetIfAvailable() {
+        guard let selectedID = UUID(uuidString: selectedProcessingPresetIDRawValue) else {
+            return
+        }
+
+        let userPresets: [ProcessingPreset]
+        if let data = encodedProcessingPresets.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([ProcessingPreset].self, from: data) {
+            userPresets = decoded
+        } else {
+            userPresets = []
+        }
+
+        guard let preset = (ProcessingPreset.builtInPresets + userPresets)
+            .first(where: { $0.id == selectedID }) else {
+            selectedProcessingPresetIDRawValue = ""
+            return
+        }
+
+        selectedModeRaw = preset.mode.rawValue
+        crfValue = min(max(preset.crfValue, 0), 50)
+        selectedResolutionRaw = preset.resolution.rawValue
+        selectedPresetRaw = preset.encoderPreset.rawValue
+        encodeVideo = preset.encodeVideo
+        encodeAudio = preset.encodeAudio
+        createSubfolders = preset.createSubfolders
+        automaticRename = preset.automaticRename
+        deleteOriginal = preset.deleteOriginal
+        keepEnglishAudioOnly = preset.keepEnglishAudioOnly
+        keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
+        postProcessScriptPath = preset.postProcessScriptPath
+        postProcessScriptRunTimingRaw = preset.postProcessScriptRunTiming.rawValue
+        postProcessScriptPassFileNameAsFirstArgument =
+            preset.postProcessScriptRunTiming == .afterEachItem
+            && preset.postProcessScriptPassFileNameAsFirstArgument
     }
 
     private func enqueueQueuedOffsetFailures(_ notification: Notification) {
@@ -527,6 +599,7 @@ struct ContentView: View {
                     postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
                     postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
                     isProcessing: viewModel.processor.isProcessing,
+                    settingsAreInitialized: settingsRestoreIsComplete,
                     isExpanded: isSettingsExpandedBinding
                 )
 
@@ -690,6 +763,8 @@ struct ContentView: View {
                 clearCompletionNotificationsIfPossible()
             }
             .onAppear {
+                settingsRestoreIsComplete = false
+
                 if !hasSeenTutorial {
                     viewModel.showingTutorial = true
                 }
@@ -718,6 +793,9 @@ struct ContentView: View {
                     didInitializeWindowDefaults = true
                 }
 
+                restoreSelectedProcessingPresetIfAvailable()
+                settingsRestoreIsComplete = true
+
                 restoreLastOutputFolderIfAvailable()
                 
                 // Request notification permissions
@@ -731,24 +809,32 @@ struct ContentView: View {
                 registerCLIHandler()
                 registerWindowCommands()
             }
-            .onChange(of: defaultsSnapshot) { _, newValue in
-                defaultSelectedModeRaw = newValue.selectedModeRaw
-                defaultCrfValue = newValue.crfValue
-                defaultSelectedResolutionRaw = newValue.selectedResolutionRaw
-                defaultSelectedPresetRaw = newValue.selectedPresetRaw
-                defaultEncodeVideo = newValue.encodeVideo
-                defaultEncodeAudio = newValue.encodeAudio
-                defaultCreateSubfolders = newValue.createSubfolders
-                defaultAutomaticRename = newValue.automaticRename
-                defaultDeleteOriginal = newValue.deleteOriginal
-                defaultKeepEnglishAudioOnly = newValue.keepEnglishAudioOnly
-                defaultKeepEnglishSubtitlesOnly = newValue.keepEnglishSubtitlesOnly
-                defaultPostProcessScriptPath = newValue.postProcessScriptPath
-                defaultPostProcessScriptRunTimingRaw = newValue.postProcessScriptRunTimingRaw
-                defaultPostProcessScriptPassFileNameAsFirstArgument = newValue.postProcessScriptPassFileNameAsFirstArgument
-                defaultIsLogExpanded = newValue.isLogExpanded
-                registerCLIHandler()
-                registerWindowCommands()
+            .task {
+                var candidateRequest: DefaultsPersistenceRequest?
+                var persistedSnapshot: DefaultsSnapshot?
+
+                while !Task.isCancelled {
+                    do {
+                        try await Task.sleep(nanoseconds: 50_000_000)
+                    } catch {
+                        return
+                    }
+
+                    let request = defaultsPersistenceRequest
+                    guard request.settingsAreInitialized else {
+                        candidateRequest = nil
+                        continue
+                    }
+
+                    guard candidateRequest == request else {
+                        candidateRequest = request
+                        continue
+                    }
+
+                    guard persistedSnapshot != request.snapshot else { continue }
+                    persistWindowDefaults(request.snapshot)
+                    persistedSnapshot = request.snapshot
+                }
             }
             .onChange(of: commandAvailability) { _, newValue in
                 windowCommandRegistry.updateAvailability(newValue, for: windowID)
@@ -766,6 +852,7 @@ struct ContentView: View {
                 lastOutputFolderPath = newValue
             }
             .onDisappear {
+                settingsRestoreIsComplete = false
                 windowCommandRegistry.unregister(windowID: windowID)
             }
             .fileExporter(
@@ -839,6 +926,7 @@ struct ExpandedSettingsPanel: View {
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
+    let settingsAreInitialized: Bool
     @Binding var isExpanded: Bool
     
     var body: some View {
@@ -859,6 +947,7 @@ struct ExpandedSettingsPanel: View {
                 postProcessScriptRunTiming: $postProcessScriptRunTiming,
                 postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
                 isProcessing: isProcessing,
+                settingsAreInitialized: settingsAreInitialized,
                 isExpanded: $isExpanded
             )
             .frame(width: 400)

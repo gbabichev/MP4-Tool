@@ -8,6 +8,21 @@
 import SwiftUI
 import AppKit
 
+private struct PresetModificationSnapshot: Equatable {
+    let settingsAreInitialized: Bool
+    let selectedPreset: ProcessingPreset?
+    let currentSettings: ProcessingPreset?
+
+    var isModified: Bool {
+        guard settingsAreInitialized,
+              let selectedPreset,
+              let currentSettings else {
+            return false
+        }
+        return selectedPreset != currentSettings
+    }
+}
+
 struct SettingsView: View {
     @Binding var selectedMode: ProcessingMode
     @Binding var crfValue: Double
@@ -24,12 +39,14 @@ struct SettingsView: View {
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
+    let settingsAreInitialized: Bool
     @Binding var isExpanded: Bool
     @AppStorage("processingPresets") private var encodedPresets = ""
     @AppStorage("selectedProcessingPresetID") private var selectedProcessingPresetIDRawValue = ""
     @State private var isShowingSavePresetAlert = false
     @State private var isShowingDeletePresetAlert = false
     @State private var newPresetName = ""
+    @State private var displaysModifiedState = false
 
     private var userProcessingPresets: [ProcessingPreset] {
         guard let data = encodedPresets.data(using: .utf8),
@@ -68,11 +85,26 @@ struct SettingsView: View {
     }
 
     private var selectedPresetIsModified: Bool {
-        guard let selectedProcessingPreset else { return false }
-        return currentPreset(
-            id: selectedProcessingPreset.id,
-            name: selectedProcessingPreset.name
-        ) != selectedProcessingPreset
+        displaysModifiedState && presetModificationSnapshot.isModified
+    }
+
+    private var presetModificationSnapshot: PresetModificationSnapshot {
+        guard let selectedProcessingPreset else {
+            return PresetModificationSnapshot(
+                settingsAreInitialized: settingsAreInitialized,
+                selectedPreset: nil,
+                currentSettings: nil
+            )
+        }
+
+        return PresetModificationSnapshot(
+            settingsAreInitialized: settingsAreInitialized,
+            selectedPreset: selectedProcessingPreset,
+            currentSettings: currentPreset(
+                id: selectedProcessingPreset.id,
+                name: selectedProcessingPreset.name
+            )
+        )
     }
 
     private var newPresetUsesReservedName: Bool {
@@ -216,6 +248,34 @@ struct SettingsView: View {
                 return
             }
             apply(preset)
+        }
+        .task {
+            var candidateSnapshot: PresetModificationSnapshot?
+            var stableObservationCount = 0
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                } catch {
+                    return
+                }
+
+                let snapshot = presetModificationSnapshot
+                if candidateSnapshot == snapshot {
+                    stableObservationCount += 1
+                } else {
+                    candidateSnapshot = snapshot
+                    stableObservationCount = 0
+                    displaysModifiedState = false
+                }
+
+                if stableObservationCount >= 2 {
+                    displaysModifiedState = snapshot.isModified
+                }
+            }
+        }
+        .onDisappear {
+            displaysModifiedState = false
         }
         .alert("Save Processing Preset", isPresented: $isShowingSavePresetAlert) {
             TextField("Preset Name", text: $newPresetName)
