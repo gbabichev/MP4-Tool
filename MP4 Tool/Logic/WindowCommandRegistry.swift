@@ -38,10 +38,12 @@ final class WindowCommandRegistry: ObservableObject {
     @Published private(set) var hasActiveWindow = false
 
     private var entries: [UUID: Entry] = [:]
+    private var selectedWindowID: UUID?
+    private var isPublicationScheduled = false
 
     var activeActions: WindowCommandActions? {
-        guard let activeWindowID else { return nil }
-        return entries[activeWindowID]?.actions
+        guard let selectedWindowID else { return nil }
+        return entries[selectedWindowID]?.actions
     }
 
     func register(
@@ -50,10 +52,10 @@ final class WindowCommandRegistry: ObservableObject {
         availability: WindowCommandAvailability
     ) {
         entries[windowID] = Entry(actions: actions, availability: availability)
-        if activeWindowID == nil {
+        if selectedWindowID == nil {
             setActiveWindow(windowID)
-        } else if activeWindowID == windowID {
-            publishActiveState()
+        } else if selectedWindowID == windowID {
+            scheduleActiveStatePublication()
         }
     }
 
@@ -61,34 +63,51 @@ final class WindowCommandRegistry: ObservableObject {
         guard var entry = entries[windowID] else { return }
         entry.availability = availability
         entries[windowID] = entry
-        if activeWindowID == windowID {
-            publishActiveState()
+        if selectedWindowID == windowID {
+            scheduleActiveStatePublication()
         }
     }
 
     func setActiveWindow(_ windowID: UUID) {
         guard entries[windowID] != nil else { return }
-        activeWindowID = windowID
-        publishActiveState()
+        selectedWindowID = windowID
+        scheduleActiveStatePublication()
     }
 
     func unregister(windowID: UUID) {
         entries.removeValue(forKey: windowID)
 
-        if activeWindowID == windowID {
-            activeWindowID = entries.keys.first
+        if selectedWindowID == windowID {
+            selectedWindowID = entries.keys.first
         }
 
-        publishActiveState()
+        scheduleActiveStatePublication()
+    }
+
+    private func scheduleActiveStatePublication() {
+        guard !isPublicationScheduled else { return }
+        isPublicationScheduled = true
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isPublicationScheduled = false
+            self.publishActiveState()
+        }
     }
 
     private func publishActiveState() {
-        if let activeWindowID, let entry = entries[activeWindowID] {
-            activeAvailability = entry.availability
-            hasActiveWindow = true
-        } else {
-            activeAvailability = WindowCommandAvailability()
-            hasActiveWindow = false
+        let entry = selectedWindowID.flatMap { entries[$0] }
+        let newAvailability = entry?.availability ?? WindowCommandAvailability()
+        let newHasActiveWindow = entry != nil
+
+        if activeWindowID != selectedWindowID {
+            activeWindowID = selectedWindowID
+        }
+        if activeAvailability != newAvailability {
+            activeAvailability = newAvailability
+        }
+        if hasActiveWindow != newHasActiveWindow {
+            hasActiveWindow = newHasActiveWindow
         }
     }
 }

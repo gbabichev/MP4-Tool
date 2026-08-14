@@ -242,7 +242,7 @@ struct ContentView: View {
 
     private func restoreLastOutputFolderIfAvailable() {
         guard viewModel.outputFolderPath.isEmpty, !lastOutputFolderPath.isEmpty else { return }
-        viewModel.setOutputFolder(path: lastOutputFolderPath, createIfMissing: true)
+        viewModel.setOutputFolder(path: lastOutputFolderPath)
     }
 
     private func startProcessingFromWindowCommand() {

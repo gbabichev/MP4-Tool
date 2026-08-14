@@ -106,6 +106,31 @@ class ContentViewModel: ObservableObject {
         }
     }
 
+    private func validateOutputFolderForProcessing() -> Bool {
+        guard !outputFolderPath.isEmpty else { return false }
+
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: outputFolderPath, isDirectory: &isDirectory)
+        guard exists, isDirectory.boolValue else {
+            let issue = exists ? "is not a folder" : "no longer exists"
+            processor.addLog("Output folder \(issue): \(outputFolderPath)")
+
+            let alert = NSAlert()
+            alert.messageText = exists ? "Invalid Output Folder" : "Output Folder Not Found"
+            alert.informativeText = "The selected output folder \(issue):\n\n\(outputFolderPath)\n\nPlease choose another output folder before starting."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Choose Folder…")
+            alert.addButton(withTitle: "Cancel")
+
+            if alert.runModal() == .alertFirstButtonReturn {
+                selectFolder(isInput: false)
+            }
+            return false
+        }
+
+        return true
+    }
+
     func openOutputFolderInFinder() {
         guard ensureOutputFolderExists() else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: outputFolderPath, isDirectory: true))
@@ -140,7 +165,7 @@ class ContentViewModel: ObservableObject {
         postProcessScriptRunTiming: PostProcessScriptRunTiming,
         postProcessScriptPassFileNameAsFirstArgument: Bool
     ) {
-        guard ensureOutputFolderExists() else { return }
+        guard validateOutputFolderForProcessing() else { return }
 
         // Re-check for file conflicts in case settings changed (like createSubfolders)
         _ = processor.checkForFileConflicts(
