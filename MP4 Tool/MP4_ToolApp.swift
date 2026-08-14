@@ -6,9 +6,50 @@
 //
 
 import SwiftUI
+import AppKit
+
+@MainActor
+private final class MP4ToolAppDelegate: NSObject, NSApplicationDelegate {
+    weak var videoProcessor: VideoProcessor?
+    private var terminationTask: Task<Void, Never>?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let videoProcessor, videoProcessor.isProcessing else {
+            return .terminateNow
+        }
+
+        guard terminationTask == nil else {
+            return .terminateLater
+        }
+
+        terminationTask = Task { [weak self, weak videoProcessor, weak sender] in
+            guard let videoProcessor else {
+                sender?.reply(toApplicationShouldTerminate: true)
+                return
+            }
+
+            await videoProcessor.cancelForApplicationTermination()
+
+            // Allow the processing task to consume its cancellation and clean up.
+            for _ in 0..<20 where videoProcessor.isProcessing {
+                do {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                } catch {
+                    break
+                }
+            }
+
+            self?.terminationTask = nil
+            sender?.reply(toApplicationShouldTerminate: true)
+        }
+
+        return .terminateLater
+    }
+}
 
 @main
 struct MP4_ToolApp: App {
+    @NSApplicationDelegateAdaptor(MP4ToolAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
     @StateObject private var sharedCLIViewModel = ContentViewModel()
     @StateObject private var windowCommandRegistry = WindowCommandRegistry()
@@ -57,6 +98,9 @@ struct MP4_ToolApp: App {
                 viewModel: sharedCLIViewModel
             )
             .environmentObject(windowCommandRegistry)
+            .onAppear {
+                appDelegate.videoProcessor = sharedCLIViewModel.processor
+            }
         }
         .commands {
             CommandGroup(replacing: .appInfo) {

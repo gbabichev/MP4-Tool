@@ -11,6 +11,7 @@ import UserNotifications
 import AppKit
 import AVFoundation
 import SwiftUI
+import Darwin
 
 struct VideoStream: Codable {
     let index: Int
@@ -2125,6 +2126,28 @@ class VideoProcessor: ObservableObject {
 
         // Clear dock badge when cancelled
         clearDockBadge()
+    }
+
+    func cancelForApplicationTermination() async {
+        cancelScan()
+
+        guard let process = currentProcess, process.isRunning else { return }
+
+        // Give FFmpeg a brief opportunity to close its output and exit cleanly.
+        for _ in 0..<20 {
+            guard process.isRunning else { return }
+            do {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            } catch {
+                return
+            }
+        }
+
+        // Do not leave a child encoder behind if it ignores SIGTERM.
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+            addLog("Forced the current operation to stop before quitting.")
+        }
     }
 
     func scanInputFolder(directoryPath: String, outputPath: String = "") async {
