@@ -668,6 +668,15 @@ struct ContentView: View {
                     )
                 }
             }
+            .overlay {
+                if let summary = viewModel.processor.completionSummary {
+                    ProcessingCompletionOverlayView(summary: summary) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            viewModel.processor.completionSummary = nil
+                        }
+                    }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: queueOffsetCheckerFailuresNotification)) { notification in
                 enqueueQueuedOffsetFailures(notification)
             }

@@ -158,6 +158,24 @@ struct VideoFileInfo: Identifiable {
     var conflictReason: String = ""
 }
 
+struct ProcessingCompletionSummary: Equatable {
+    let mode: ProcessingMode
+    let completedFileCount: Int
+    let failedFileCount: Int
+    let originalBytes: Int64
+    let outputBytes: Int64
+    let startedAt: Date
+    let endedAt: Date
+
+    var savedBytes: Int64 {
+        originalBytes - outputBytes
+    }
+
+    var runTime: TimeInterval {
+        endedAt.timeIntervalSince(startedAt)
+    }
+}
+
 private struct CompletedPostProcessFile {
     let inputPath: String
     let outputPath: String
@@ -215,6 +233,7 @@ class VideoProcessor: ObservableObject {
     @Published var ffmpegAvailable = false
     @Published var ffmpegMissingMessage = ""
     @Published var processingHadError = false
+    @Published var completionSummary: ProcessingCompletionSummary?
 
     private var startTime: Date?
     private var currentInputDurationSeconds: TimeInterval?
@@ -621,6 +640,11 @@ class VideoProcessor: ObservableObject {
         postProcessScriptRunTiming: PostProcessScriptRunTiming = .afterEachItem,
         postProcessScriptPassFileNameAsFirstArgument: Bool = false
     ) async {
+        let runStartedAt = Date()
+        var totalOriginalBytes: Int64 = 0
+        var totalOutputBytes: Int64 = 0
+        var failedFileCount = 0
+
         DispatchQueue.main.async {
             self.isProcessing = true
             self.logText = ""
@@ -632,6 +656,7 @@ class VideoProcessor: ObservableObject {
             self.currentFileProgressFraction = 0
             self.shouldCancelProcessing = false
             self.processingHadError = false
+            self.completionSummary = nil
             self.initialBatchCount = self.videoFiles.count
             self.pendingBatchFiles = []
 
@@ -838,6 +863,7 @@ class VideoProcessor: ObservableObject {
                 let moveSuccess = await moveFileAsync(from: tempOutputFile, to: outputFilePath)
 
                 if !moveSuccess {
+                    failedFileCount += 1
                     addLog("⏱ End time: \(getTimestampString())")
                     addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     addLog("􀁡 FAILED: Could not move file to output location")
@@ -864,6 +890,8 @@ class VideoProcessor: ObservableObject {
                 addLog("⏱ End time: \(getTimestampString())")
                 addLog("􀁢 Done processing")
                 addLog("􀅴 Moved file. Old Size: \(inputSizeMB)MB New Size: \(outputSizeMB)MB")
+                totalOriginalBytes += inputSize
+                totalOutputBytes += outputSize
 
                 let duration = fileEndTime.timeIntervalSince(fileStartTime)
                 addLog("􀅴 Completed in \(formatDuration(seconds: Int(duration)))")
@@ -923,6 +951,7 @@ class VideoProcessor: ObservableObject {
                     updateDockBadge(filesRemaining: filesRemaining)
                 }
             } else {
+                failedFileCount += 1
                 addLog("⏱ End time: \(getTimestampString())")
                 addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 addLog("􀁡 FAILED: \(fileInfo.name)")
@@ -1001,10 +1030,25 @@ class VideoProcessor: ObservableObject {
             }
         }
 
-        addLog("\n􀋚 All files processed!")
+        let wasCancelled = shouldCancelProcessing
+        let runEndedAt = Date()
+        let summary = ProcessingCompletionSummary(
+            mode: mode,
+            completedFileCount: completedPostProcessFiles.count,
+            failedFileCount: failedFileCount,
+            originalBytes: totalOriginalBytes,
+            outputBytes: totalOutputBytes,
+            startedAt: runStartedAt,
+            endedAt: runEndedAt
+        )
 
-        // Set dock badge to checkmark when done
-        setDockBadgeCheckmark()
+        if wasCancelled {
+            addLog("\nProcessing stopped.")
+            clearDockBadge()
+        } else {
+            addLog("\n􀋚 All files processed!")
+            setDockBadgeCheckmark()
+        }
 
         DispatchQueue.main.async {
             self.isProcessing = false
@@ -1013,9 +1057,12 @@ class VideoProcessor: ObservableObject {
             self.currentEncodedTimeSeconds = 0
             self.ffmpegProgressTail = ""
             self.currentFileProgressFraction = 0
+            if !wasCancelled {
+                self.completionSummary = summary
+            }
 
             // Send notification if app is not in focus
-            if !NSApplication.shared.isActive {
+            if !wasCancelled, !NSApplication.shared.isActive {
                 self.sendProcessingCompleteNotification()
             }
         }

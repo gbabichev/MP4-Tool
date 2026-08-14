@@ -200,40 +200,6 @@ struct MainContentView: View {
                     }
                 }
 
-                // Total processing time
-                if viewModel.processor.videoFiles.contains(where: { $0.status == .completed }) {
-                    let totalSeconds = viewModel.processor.videoFiles
-                        .filter { $0.status == .completed }
-                        .reduce(0) { $0 + $1.processingTimeSeconds }
-                    let totalHours = totalSeconds / 3600
-                    let remainingAfterHours = totalSeconds % 3600
-                    let totalMinutes = remainingAfterHours / 60
-                    let totalRemainingSeconds = remainingAfterHours % 60
-
-                    Divider()
-                        .padding(.vertical, 8)
-
-                    HStack {
-                        Text("Total Processing Time:")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if totalHours > 0 {
-                            Text("\(totalHours)h \(totalMinutes)m \(totalRemainingSeconds)s")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        } else {
-                            Text("\(totalMinutes)m \(totalRemainingSeconds)s")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
