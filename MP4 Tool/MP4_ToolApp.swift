@@ -52,10 +52,9 @@ struct MP4_ToolApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
+        Window("MP4 Tool", id: "main") {
             MainWindowRootView(
-                sharedViewModel: isCommandLineToolInstalled ? sharedCLIViewModel : nil,
-                registersCLIHandler: isCommandLineToolInstalled
+                viewModel: sharedCLIViewModel
             )
             .environmentObject(windowCommandRegistry)
         }
@@ -92,15 +91,6 @@ struct MP4_ToolApp: App {
             }
 
             CommandGroup(replacing: .newItem) {
-                Button(action: {
-                    openWindow(id: "main")
-                }) {
-                    Label("New Window", systemImage: "plus.rectangle.on.rectangle")
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                .disabled(isCommandLineToolInstalled)
-                .help(isCommandLineToolInstalled ? "New windows are disabled while the command line tool is installed so CLI actions target one shared queue." : "Open a new MP4 Tool window")
-
                 Button(action: {
                     windowCommandRegistry.activeActions?.openInputFolder()
                 }) {
@@ -229,21 +219,14 @@ struct MP4_ToolApp: App {
 }
 
 private struct MainWindowRootView: View {
-    let sharedViewModel: ContentViewModel?
-    let registersCLIHandler: Bool
+    @ObservedObject var viewModel: ContentViewModel
 
-    @StateObject private var localViewModel = ContentViewModel()
     @State private var windowID = UUID()
-
-    private var activeViewModel: ContentViewModel {
-        sharedViewModel ?? localViewModel
-    }
 
     var body: some View {
         ContentView(
-            viewModel: activeViewModel,
-            windowID: windowID,
-            registersCLIHandler: registersCLIHandler
+            viewModel: viewModel,
+            windowID: windowID
         )
     }
 }

@@ -39,7 +39,6 @@ struct ContentView: View {
     @EnvironmentObject private var windowCommandRegistry: WindowCommandRegistry
     @Environment(\.scenePhase) private var scenePhase
     private let windowID: UUID
-    private let registersCLIHandler: Bool
     @SceneStorage("selectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
     @SceneStorage("crfValue") private var crfValue: Double = 23
     @SceneStorage("selectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
@@ -79,10 +78,9 @@ struct ContentView: View {
     @AppStorage("selectedProcessingPresetID") private var selectedProcessingPresetIDRawValue = ""
     @State private var settingsRestoreIsComplete = false
 
-    init(viewModel: ContentViewModel, windowID: UUID, registersCLIHandler: Bool) {
+    init(viewModel: ContentViewModel, windowID: UUID) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
         self.windowID = windowID
-        self.registersCLIHandler = registersCLIHandler
     }
 
     private var selectedMode: ProcessingMode {
@@ -346,11 +344,6 @@ struct ContentView: View {
     }
 
     private func registerCLIHandler() {
-        guard registersCLIHandler else {
-            CLICommandCenter.shared.unregister()
-            return
-        }
-
         CLICommandCenter.shared.register(
             handler: MP4ToolCLIHandler(
                 addFiles: { paths, shouldStart in
@@ -838,10 +831,6 @@ struct ContentView: View {
             }
             .onChange(of: commandAvailability) { _, newValue in
                 windowCommandRegistry.updateAvailability(newValue, for: windowID)
-            }
-            .onChange(of: registersCLIHandler) { _, _ in
-                registerCLIHandler()
-                registerWindowCommands()
             }
             .onChange(of: scenePhase, initial: false) { _, newPhase in
                 guard newPhase == .active else { return }
