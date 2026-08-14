@@ -80,134 +80,16 @@ struct MainContentView: View {
                 handleDrop(providers: providers)
             }
 
-            // Status Section - Always visible
-            HStack {
-                Text("Status")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                Spacer()
+            if viewModel.processor.isProcessing {
+                ProcessingProgressCard(processor: viewModel.processor)
+                    .padding(.horizontal)
+                    .padding(.top, 18)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            } else {
+                idleStatusSection
+                    .padding(.horizontal)
+                    .padding(.top, 18)
             }
-            .padding(.horizontal)
-            .padding(.top, 24)
-
-            // FFmpeg Source Status
-            HStack(spacing: 8) {
-                if !viewModel.processor.ffmpegAvailable {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text("FFmpeg: Not Available")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                } else {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text(ffmpegSourceLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
-            VStack(spacing: 8) {
-                // Scan progress
-                if !viewModel.processor.scanProgress.isEmpty {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text(viewModel.processor.scanProgress)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                }
-
-                // Processing progress
-                if viewModel.processor.isProcessing && viewModel.processor.totalFiles > 0 {
-                    VStack(spacing: 8) {
-                        HStack {
-                            Text("File \(viewModel.processor.currentFileIndex)/\(viewModel.processor.totalFiles)")
-                                .font(.body)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
-                            if !viewModel.processor.currentFile.isEmpty {
-                                Text("•")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(viewModel.processor.currentFile)
-                                    .font(.body)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            Spacer()
-                        }
-                        .padding(.top, 4)
-
-                        HStack(spacing: 20) {
-                            HStack {
-                                Image(systemName: "clock")
-                                    .foregroundStyle(.secondary)
-                                Text(viewModel.formattedTime(viewModel.processor.elapsedTime))
-                                    .font(.caption)
-                            }
-
-                            HStack {
-                                Image(systemName: "doc")
-                                    .foregroundStyle(.secondary)
-                                Text("\(viewModel.processor.originalSize / (1024*1024))MB")
-                                    .font(.caption)
-                            }
-
-                            if viewModel.processor.newSize > 0 {
-                                Image(systemName: "arrow.right")
-                                    .foregroundStyle(.secondary)
-                                HStack {
-                                    Image(systemName: "doc.fill")
-                                        .foregroundStyle(.secondary)
-                                    Text("\(viewModel.processor.newSize / (1024*1024))MB")
-                                        .font(.caption)
-                                }
-                            }
-                        }
-
-                        HStack(spacing: 10) {
-                            ProgressView(value: viewModel.processor.currentFileProgressFraction, total: 1)
-                                .progressViewStyle(.linear)
-
-                            Text("\(Int((viewModel.processor.currentFileProgressFraction * 100).rounded()))%")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                                .frame(width: 40, alignment: .trailing)
-                        }
-
-                        // Encoding progress message
-                        Text(viewModel.processor.encodingProgress.isEmpty ? "Getting ready..." : viewModel.processor.encodingProgress)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                // Empty state when no activity
-                if viewModel.processor.scanProgress.isEmpty && !viewModel.processor.isProcessing {
-                    HStack {
-                        Spacer()
-                        Text("Ready! Add files & select an output folder to begin")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                }
-
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .background(viewModel.processor.processingHadError ? Color.red.opacity(0.15) : Color.secondary.opacity(0.05))
-            .cornerRadius(8)
-            .padding(.horizontal)
-            .padding(.top, 8)
 
             // File list - Fills available space
             VStack(alignment: .leading, spacing: 8) {
@@ -215,6 +97,18 @@ struct MainContentView: View {
                     Text("Files to Process (\(viewModel.processor.videoFiles.count))")
                         .font(.title2)
                         .fontWeight(.semibold)
+
+                    Button {
+                        chooseFilesToAdd()
+                    } label: {
+                        Label("Add Files", systemImage: "plus")
+                    }
+                    .controlSize(.small)
+                    .help(
+                        viewModel.processor.isProcessing
+                            ? "Add files to the active batch"
+                            : "Add files to process"
+                    )
 
                     Button {
                         viewModel.clearFilesToProcess()
@@ -368,6 +262,86 @@ struct MainContentView: View {
         .padding()
     }
 
+    private var idleStatusSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Status")
+                    .font(.title2.weight(.semibold))
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                Image(
+                    systemName: viewModel.processor.ffmpegAvailable
+                        ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(viewModel.processor.ffmpegAvailable ? .green : .orange)
+
+                Text(viewModel.processor.ffmpegAvailable ? ffmpegSourceLabel : "FFmpeg: Not Available")
+                    .foregroundStyle(
+                        viewModel.processor.ffmpegAvailable ? Color.secondary : Color.orange
+                    )
+
+                Spacer()
+
+                Text("Ready to process")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.secondary.opacity(0.06))
+            )
+        }
+    }
+
+    private func chooseFilesToAdd() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = false
+        panel.allowedContentTypes = ["mkv", "mp4", "avi", "mov", "m4v"].compactMap {
+            UTType(filenameExtension: $0)
+        }
+        panel.message = viewModel.processor.isProcessing
+            ? "Choose videos to add to the active batch"
+            : "Choose videos to process"
+        panel.prompt = "Add"
+
+        guard panel.runModal() == .OK else { return }
+        addURLsToQueue(panel.urls)
+    }
+
+    private func addURLsToQueue(_ urls: [URL]) {
+        let videoFormats = Set(["mkv", "mp4", "avi", "mov", "m4v"])
+
+        for url in urls {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+                continue
+            }
+
+            if isDirectory.boolValue {
+                guard let enumerator = FileManager.default.enumerator(
+                    at: url,
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) else {
+                    continue
+                }
+
+                for case let fileURL as URL in enumerator
+                where videoFormats.contains(fileURL.pathExtension.lowercased()) {
+                    viewModel.addVideoFile(url: fileURL)
+                }
+            } else if videoFormats.contains(url.pathExtension.lowercased()) {
+                viewModel.addVideoFile(url: url)
+            }
+        }
+    }
+
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first else { return false }
 
@@ -518,5 +492,249 @@ struct MainContentView: View {
         let fileURL = URL(fileURLWithPath: filePath)
         let parentURL = fileURL.deletingLastPathComponent()
         NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: parentURL.path)
+    }
+}
+
+private struct ProcessingProgressCard: View {
+    @ObservedObject var processor: VideoProcessor
+
+    private var isScanning: Bool {
+        processor.currentFile.isEmpty && !processor.scanProgress.isEmpty
+    }
+
+    private var title: String {
+        if isScanning { return "Preparing Batch" }
+        switch processor.activeMode {
+        case .remux:
+            return "Remuxing in Progress"
+        case .encodeH264, .encodeH265:
+            return "Encoding in Progress"
+        case nil:
+            return "Processing in Progress"
+        }
+    }
+
+    private var completedCount: Int {
+        processor.videoFiles.filter { $0.status == .completed }.count
+    }
+
+    private var failedCount: Int {
+        processor.videoFiles.filter { $0.status == .failed }.count
+    }
+
+    private var overallProgress: Double {
+        guard processor.totalFiles > 0 else { return 0 }
+        let finishedUnits = Double(completedCount + failedCount)
+        let currentUnits = processor.videoFiles.contains { $0.status == .processing }
+            ? processor.currentFileProgressFraction : 0
+        return min(max((finishedUnits + currentUnits) / Double(processor.totalFiles), 0), 1)
+    }
+
+    private var currentPercent: Int {
+        Int((min(max(processor.currentFileProgressFraction, 0), 1) * 100).rounded())
+    }
+
+    private var overallPercent: Int {
+        Int((overallProgress * 100).rounded())
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let eta = processor.processingETASnapshot()
+            let batchElapsed = processor.processingStartedAt.map {
+                max(context.date.timeIntervalSince($0), 0)
+            } ?? 0
+
+            VStack(spacing: 14) {
+                HStack(spacing: 10) {
+                    if isScanning {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "gearshape.2.fill")
+                            .font(.title2)
+                            .foregroundStyle(.tint)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.headline)
+
+                        Text(
+                            isScanning
+                                ? processor.scanProgress
+                                : "File \(processor.currentFileIndex) of \(processor.totalFiles)"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Text("\(overallPercent)%")
+                        .font(.title3.weight(.semibold))
+                        .monospacedDigit()
+                }
+
+                if isScanning {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                } else {
+                    VStack(spacing: 5) {
+                        HStack {
+                            Text("Overall progress")
+                            Spacer()
+                            Text("\(completedCount) completed")
+                            if failedCount > 0 {
+                                Text("• \(failedCount) failed")
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        ProgressView(value: overallProgress, total: 1)
+                            .progressViewStyle(.linear)
+                    }
+
+                    HStack(spacing: 10) {
+                        ProcessingMetric(
+                            icon: "film.stack",
+                            title: "Batch",
+                            value: "\(completedCount + failedCount) / \(processor.totalFiles)"
+                        )
+                        ProcessingMetric(
+                            icon: "clock",
+                            title: "Elapsed",
+                            value: formattedDuration(batchElapsed)
+                        )
+                        ProcessingMetric(
+                            icon: "hourglass",
+                            title: "Remaining",
+                            value: eta.totalSeconds.map { formattedDuration(TimeInterval($0)) }
+                                ?? "Calculating…"
+                        )
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Current File")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(processor.currentFile.isEmpty ? "Getting ready…" : processor.currentFile)
+                                    .font(.subheadline.weight(.medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+
+                            Spacer()
+
+                            Text("\(currentPercent)%")
+                                .font(.subheadline.weight(.semibold))
+                                .monospacedDigit()
+                        }
+
+                        ProgressView(value: processor.currentFileProgressFraction, total: 1)
+                            .progressViewStyle(.linear)
+
+                        HStack(spacing: 8) {
+                            Label(
+                                eta.currentFileSeconds.map {
+                                    "ETA \(formattedDuration(TimeInterval($0)))"
+                                } ?? "Estimating current file…",
+                                systemImage: "clock.arrow.circlepath"
+                            )
+
+                            Spacer()
+
+                            if processor.originalSize > 0 {
+                                Text(formattedBytes(processor.originalSize))
+                                Image(systemName: "arrow.right")
+                                Text(
+                                    processor.newSize > 0
+                                        ? formattedBytes(processor.newSize) : "Preparing…"
+                                )
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.secondary.opacity(0.06))
+                    )
+                }
+
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle")
+                    Text("Add more files below at any time; they’ll join this batch.")
+                    Spacer()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                if processor.processingHadError {
+                    Label("One or more files encountered an error. Processing will continue.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(NSColor.windowBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+            )
+            .shadow(color: .black.opacity(0.12), radius: 14, x: 0, y: 7)
+        }
+    }
+
+    private func formattedBytes(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func formattedDuration(_ interval: TimeInterval) -> String {
+        let totalSeconds = max(Int(interval.rounded()), 0)
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(minutes)m \(seconds)s" }
+        return "\(seconds)s"
+    }
+}
+
+private struct ProcessingMetric: View {
+    let icon: String
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundStyle(.tint)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 66)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.secondary.opacity(0.06))
+        )
     }
 }

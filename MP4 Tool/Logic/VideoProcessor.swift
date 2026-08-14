@@ -238,6 +238,8 @@ class VideoProcessor: ObservableObject {
     @Published var ffmpegMissingMessage = ""
     @Published var processingHadError = false
     @Published var completionSummary: ProcessingCompletionSummary?
+    @Published private(set) var processingStartedAt: Date?
+    @Published private(set) var activeMode: ProcessingMode?
 
     private var startTime: Date?
     private var currentInputDurationSeconds: TimeInterval?
@@ -250,7 +252,6 @@ class VideoProcessor: ObservableObject {
     private var currentProcess: Process?
 
     // Batch processing tracking
-    private var initialBatchCount: Int = 0
     private var pendingBatchFiles: [VideoFileInfo] = []
 
     private var ffmpegPath: String = ""
@@ -660,6 +661,8 @@ class VideoProcessor: ObservableObject {
 
         DispatchQueue.main.async {
             self.isProcessing = true
+            self.processingStartedAt = runStartedAt
+            self.activeMode = mode
             self.logText = ""
             self.currentFileIndex = 0
             self.encodingProgress = ""
@@ -670,7 +673,6 @@ class VideoProcessor: ObservableObject {
             self.shouldCancelProcessing = false
             self.processingHadError = false
             self.completionSummary = nil
-            self.initialBatchCount = self.videoFiles.count
             self.pendingBatchFiles = []
 
             // Reset all video file statuses to pending when starting a new batch
@@ -985,30 +987,17 @@ class VideoProcessor: ObservableObject {
                 }
             }
 
-            // Check if we just finished the initial batch and have pending files
-            if index == initialBatchCount - 1 && !pendingBatchFiles.isEmpty {
+            // Extend the active queue whenever we reach its current end. This also
+            // supports files added while an earlier on-demand batch is processing.
+            if index == filesToProcess.count - 1 && !pendingBatchFiles.isEmpty {
                 addLog("\n􀐱 Processing additional batch...")
 
-                // Batch 2 files are already in videoFiles, but need to be sorted among themselves
-                // and added to filesToProcess
-                let batch2Start = initialBatchCount
-                let batch2End = videoFiles.count
-
-                if batch2Start < batch2End {
-                    // Sort batch 2 files in videoFiles
-                    let batch2 = Array(videoFiles[batch2Start..<batch2End])
-                    let sortedBatch2 = batch2.sorted { $0.filePath < $1.filePath }
-
-                    DispatchQueue.main.async {
-                        self.videoFiles.replaceSubrange(batch2Start..<batch2End, with: sortedBatch2)
-                    }
-
-                    // Add sorted batch 2 files to filesToProcess
-                    for sortedFile in sortedBatch2 {
-                        filesToProcess.append((path: sortedFile.filePath, name: sortedFile.fileName))
+                let additionalFiles = pendingBatchFiles.sorted { $0.filePath < $1.filePath }
+                for additionalFile in additionalFiles {
+                    if !filesToProcess.contains(where: { $0.path == additionalFile.filePath }) {
+                        filesToProcess.append((path: additionalFile.filePath, name: additionalFile.fileName))
                     }
                 }
-
                 pendingBatchFiles.removeAll()
 
                 // Update total files count
@@ -1063,6 +1052,8 @@ class VideoProcessor: ObservableObject {
 
         DispatchQueue.main.async {
             self.isProcessing = false
+            self.processingStartedAt = nil
+            self.activeMode = nil
             self.shouldCancelProcessing = false
             self.currentInputDurationSeconds = nil
             self.currentEncodedTimeSeconds = 0
