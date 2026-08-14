@@ -721,7 +721,7 @@ struct ContentView: View {
                 restoreLastOutputFolderIfAvailable()
                 
                 // Request notification permissions
-                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
                     if let error = error {
                         print("Error requesting notification permission: \(error)")
                     }

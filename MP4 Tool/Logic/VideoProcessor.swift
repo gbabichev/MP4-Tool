@@ -597,19 +597,28 @@ class VideoProcessor: ObservableObject {
 
     private func updateDockBadge(filesRemaining: Int) {
         DispatchQueue.main.async {
-            NSApplication.shared.dockTile.badgeLabel = String(filesRemaining)
+            let dockTile = NSApplication.shared.dockTile
+            dockTile.contentView = nil
+            dockTile.badgeLabel = String(filesRemaining)
+            dockTile.display()
         }
     }
 
     private func setDockBadgeCheckmark() {
         DispatchQueue.main.async {
-            NSApplication.shared.dockTile.badgeLabel = "✓"
+            let dockTile = NSApplication.shared.dockTile
+            dockTile.contentView = nil
+            dockTile.badgeLabel = "✓"
+            dockTile.display()
         }
     }
 
-    private func clearDockBadge() {
+    func clearDockBadge() {
         DispatchQueue.main.async {
-            NSApplication.shared.dockTile.badgeLabel = ""
+            let dockTile = NSApplication.shared.dockTile
+            dockTile.contentView = nil
+            dockTile.badgeLabel = nil
+            dockTile.display()
         }
     }
 
@@ -1048,10 +1057,8 @@ class VideoProcessor: ObservableObject {
 
         if wasCancelled {
             addLog("\nProcessing stopped.")
-            clearDockBadge()
         } else {
             addLog("\n􀋚 All files processed!")
-            setDockBadgeCheckmark()
         }
 
         DispatchQueue.main.async {
@@ -1065,8 +1072,10 @@ class VideoProcessor: ObservableObject {
                 self.completionSummary = summary
             }
 
-            // Send notification if app is not in focus
-            if !wasCancelled, !NSApplication.shared.isActive {
+            if wasCancelled || NSApplication.shared.isActive {
+                self.clearDockBadge()
+            } else {
+                self.setDockBadgeCheckmark()
                 self.sendProcessingCompleteNotification()
             }
         }
@@ -2229,15 +2238,9 @@ class VideoProcessor: ObservableObject {
         content.title = "Processing Complete"
         content.body = "Your video files have been processed successfully."
         content.sound = .default
-        content.badge = NSNumber(value: 1)
 
         let request = UNNotificationRequest(identifier: "processingComplete", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
-
-        // Set app badge
-        DispatchQueue.main.async {
-            NSApplication.shared.dockTile.badgeLabel = "1"
-        }
     }
 
     func clearProcessingNotifications() {
@@ -2248,9 +2251,7 @@ class VideoProcessor: ObservableObject {
         }
 
         // Clear app badge
-        DispatchQueue.main.async {
-            NSApplication.shared.dockTile.badgeLabel = ""
-        }
+        clearDockBadge()
     }
 
     // Check for file conflicts for a specific file

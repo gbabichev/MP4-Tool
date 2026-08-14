@@ -229,10 +229,7 @@ class ContentViewModel: ObservableObject {
         processor.videoFiles = []
         processor.totalFiles = 0
         processor.processingHadError = false
-        // Clear dock badge when folders are cleared
-        DispatchQueue.main.async {
-            NSApplication.shared.dockTile.badgeLabel = ""
-        }
+        processor.clearDockBadge()
     }
 
     func clearFilesToProcess() {
