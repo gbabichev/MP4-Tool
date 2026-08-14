@@ -18,6 +18,8 @@ struct VideoStream: Codable {
     let codecName: String?
     let codecTagString: String?
     let sampleFormat: String?
+    let channels: Int?
+    let channelLayout: String?
     let tags: [String: String]?
     let width: Int?
     let height: Int?
@@ -28,6 +30,8 @@ struct VideoStream: Codable {
         case codecName = "codec_name"
         case codecTagString = "codec_tag_string"
         case sampleFormat = "sample_fmt"
+        case channels
+        case channelLayout = "channel_layout"
         case tags
         case width
         case height
@@ -1345,16 +1349,11 @@ class VideoProcessor: ObservableObject {
         }
 
         // Determine audio stream mappings
-        var audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly)
+        let audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly)
         if audioMappings.isEmpty {
-            if keepEnglishAudioOnly {
-                // If no English/undefined tracks found, fall back to keeping all tracks
-                addLog("􀇾 No English/undefined audio found. Trying all audio tracks.")
-                audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: false)
-            }
-
-            if audioMappings.isEmpty {
-                // No audio tracks at all - continue processing video-only
+            if keepEnglishAudioOnly, !audioStreams.streams.isEmpty {
+                addLog("􀇾 No English/undefined audio found. Processing without audio.")
+            } else {
                 addLog("􀇾 No audio tracks found. Processing as video-only file.")
             }
         }
@@ -1377,18 +1376,15 @@ class VideoProcessor: ObservableObject {
         }
 
         // Determine subtitle stream mappings
-        var subtitleMappings = getSubtitleMappings(
+        let subtitleMappings = getSubtitleMappings(
             subtitleStreams: subtitleStreams,
             keepEnglishOnly: keepEnglishSubtitlesOnly
         )
 
-        // If no English/undefined subtitles found and filter is enabled, fall back to all subtitles
-        if subtitleMappings.isEmpty && keepEnglishSubtitlesOnly {
-            addLog("􀇾 No English/undefined subtitles found. Processing all subtitles.")
-            subtitleMappings = getSubtitleMappings(
-                subtitleStreams: subtitleStreams,
-                keepEnglishOnly: false
-            )
+        if subtitleMappings.isEmpty,
+           keepEnglishSubtitlesOnly,
+           !subtitleStreams.streams.isEmpty {
+            addLog("􀇾 No English/undefined subtitles found. Processing without subtitles.")
         }
 
         // Build ffmpeg command
@@ -1501,7 +1497,10 @@ class VideoProcessor: ObservableObject {
         return seconds
     }
 
-    private func getAudioMappings(audioStreams: FFProbeOutput, keepEnglishOnly: Bool) -> [(index: Int, language: String?)] {
+    private func getAudioMappings(
+        audioStreams: FFProbeOutput,
+        keepEnglishOnly: Bool
+    ) -> [(index: Int, language: String?, title: String?, channelLayout: String?)] {
         let streams = audioStreams.streams
 
         if keepEnglishOnly {
@@ -1510,13 +1509,37 @@ class VideoProcessor: ObservableObject {
                 guard language == "eng" || language == "und" else {
                     return nil
                 }
-                return (index: stream.index, language: "eng")
+                return (
+                    index: stream.index,
+                    language: language,
+                    title: stream.tags?["title"],
+                    channelLayout: resolvedAudioChannelLayout(for: stream)
+                )
             }
         } else {
             return streams.map { stream in
                 let language = stream.tags?["language"]?.lowercased()
-                return (index: stream.index, language: language)
+                return (
+                    index: stream.index,
+                    language: language,
+                    title: stream.tags?["title"],
+                    channelLayout: resolvedAudioChannelLayout(for: stream)
+                )
             }
+        }
+    }
+
+    private func resolvedAudioChannelLayout(for stream: VideoStream) -> String? {
+        if let channelLayout = stream.channelLayout, !channelLayout.isEmpty {
+            return channelLayout
+        }
+
+        switch stream.channels {
+        case 1: return "mono"
+        case 2: return "stereo"
+        case 6: return "5.1"
+        case 8: return "7.1"
+        default: return nil
         }
     }
 
@@ -1578,7 +1601,7 @@ class VideoProcessor: ObservableObject {
                 let language = (stream.tags?["language"] ?? "und").lowercased()
                 return language == "eng" || language == "und"
             }
-            return englishStreams.isEmpty ? streams : englishStreams
+            return englishStreams
         }
 
         return streams
@@ -1668,7 +1691,7 @@ class VideoProcessor: ObservableObject {
                 guard normalizedLanguage == "eng" || normalizedLanguage == "und" else {
                     return nil
                 }
-                return (index: stream.index, language: "eng")
+                return (index: stream.index, language: normalizedLanguage)
             }
 
             return (index: stream.index, language: language)
@@ -1687,7 +1710,7 @@ class VideoProcessor: ObservableObject {
         videoCodec: String?,
         videoWidth: Int?,
         videoHeight: Int?,
-        audioMappings: [(index: Int, language: String?)],
+        audioMappings: [(index: Int, language: String?, title: String?, channelLayout: String?)],
         subtitleMappings: [(index: Int, language: String?)]
     ) -> [String] {
         var cmd: [String] = []
@@ -1710,7 +1733,7 @@ class VideoProcessor: ObservableObject {
             if !audioMappings.isEmpty {
                 if let insertIndex = cmd.firstIndex(of: "-map") {
                     if encodeAudio {
-                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
+                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k"], at: insertIndex)
                     } else {
                         cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
                     }
@@ -1748,7 +1771,7 @@ class VideoProcessor: ObservableObject {
             if !audioMappings.isEmpty {
                 if let insertIndex = cmd.firstIndex(of: "-map") {
                     if encodeAudio {
-                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k", "-channel_layout", "5.1"], at: insertIndex)
+                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k"], at: insertIndex)
                     } else {
                         cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
                     }
@@ -1797,6 +1820,26 @@ class VideoProcessor: ObservableObject {
             if let language = mapping.language {
                 cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "language=\(language)"])
             }
+            if let title = mapping.title, !title.isEmpty {
+                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title=\(title)"])
+                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name=\(title)"])
+            }
+            if encodeAudio,
+               mode != .remux,
+               let channelLayout = mapping.channelLayout {
+                cmd.append(
+                    contentsOf: [
+                        "-channel_layout:a:\(outputIndex)",
+                        channelLayout
+                    ]
+                )
+            }
+            cmd.append(
+                contentsOf: [
+                    "-disposition:a:\(outputIndex)",
+                    outputIndex == 0 ? "default" : "0"
+                ]
+            )
         }
 
         // Map subtitle tracks based on selected preference
