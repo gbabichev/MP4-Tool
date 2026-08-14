@@ -25,6 +25,62 @@ struct SettingsView: View {
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
     @Binding var isExpanded: Bool
+    @AppStorage("processingPresets") private var encodedPresets = ""
+    @AppStorage("selectedProcessingPresetID") private var selectedProcessingPresetIDRawValue = ""
+    @State private var isShowingSavePresetAlert = false
+    @State private var isShowingDeletePresetAlert = false
+    @State private var newPresetName = ""
+
+    private var userProcessingPresets: [ProcessingPreset] {
+        guard let data = encodedPresets.data(using: .utf8),
+              let presets = try? JSONDecoder().decode([ProcessingPreset].self, from: data) else {
+            return []
+        }
+        return presets.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private var processingPresets: [ProcessingPreset] {
+        ProcessingPreset.builtInPresets + userProcessingPresets
+    }
+
+    private var selectedProcessingPresetID: UUID? {
+        get { UUID(uuidString: selectedProcessingPresetIDRawValue) }
+        nonmutating set { selectedProcessingPresetIDRawValue = newValue?.uuidString ?? "" }
+    }
+
+    private var selectedProcessingPresetIDBinding: Binding<UUID?> {
+        Binding(
+            get: { selectedProcessingPresetID },
+            set: { selectedProcessingPresetID = $0 }
+        )
+    }
+
+    private var selectedProcessingPreset: ProcessingPreset? {
+        guard let selectedProcessingPresetID else { return nil }
+        return processingPresets.first { $0.id == selectedProcessingPresetID }
+    }
+
+    private var selectedPresetIsBuiltIn: Bool {
+        guard let selectedProcessingPresetID else { return false }
+        return ProcessingPreset.builtInPresets.contains { $0.id == selectedProcessingPresetID }
+    }
+
+    private var selectedPresetIsModified: Bool {
+        guard let selectedProcessingPreset else { return false }
+        return currentPreset(
+            id: selectedProcessingPreset.id,
+            name: selectedProcessingPreset.name
+        ) != selectedProcessingPreset
+    }
+
+    private var newPresetUsesReservedName: Bool {
+        let name = newPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ProcessingPreset.builtInPresets.contains {
+            $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -38,8 +94,11 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
 
             ScrollView {
-                GroupBox {
-                    VStack(spacing: 12) {
+                VStack(spacing: 12) {
+                    processingPresetsSection
+
+                    GroupBox {
+                        VStack(spacing: 12) {
                         SettingsRow("Mode", subtitle: "Choose encoding codec or remux without re-encoding") {
                             Picker("", selection: $selectedMode) {
                                 ForEach(ProcessingMode.allCases, id: \.self) { mode in
@@ -84,7 +143,7 @@ struct SettingsView: View {
                                 .disabled(isProcessing || !encodeVideo)
                             }
 
-                            SettingsRow("Preset", subtitle: "Slower = better compression. Default: fast") {
+                            SettingsRow("Encoder Preset", subtitle: "Slower = better compression. Default: fast") {
                                 Picker("", selection: $selectedPreset) {
                                     ForEach(PresetOption.allCases, id: \.self) { preset in
                                         Text(preset.description).tag(preset)
@@ -133,9 +192,11 @@ struct SettingsView: View {
                             passFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
                             isProcessing: isProcessing
                         )
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.trailing, 14)
                     }
-                    .padding(.vertical, 4)
-                    .padding(.trailing, 14)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -143,6 +204,215 @@ struct SettingsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            clearInvalidPresetSelection()
+        }
+        .onChange(of: encodedPresets) { _, _ in
+            clearInvalidPresetSelection()
+        }
+        .onChange(of: selectedProcessingPresetID) { _, presetID in
+            guard let presetID,
+                  let preset = processingPresets.first(where: { $0.id == presetID }) else {
+                return
+            }
+            apply(preset)
+        }
+        .alert("Save Processing Preset", isPresented: $isShowingSavePresetAlert) {
+            TextField("Preset Name", text: $newPresetName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                saveCurrentSettings()
+            }
+            .disabled(
+                newPresetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || newPresetUsesReservedName
+            )
+        } message: {
+            Text(
+                newPresetUsesReservedName
+                    ? "“\(newPresetName.trimmingCharacters(in: .whitespacesAndNewlines))” is a built-in preset name. Choose a different name."
+                    : "Save the current processing settings for future batches. An existing preset with the same name will be updated."
+            )
+        }
+        .alert("Delete Processing Preset?", isPresented: $isShowingDeletePresetAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteSelectedPreset()
+            }
+        } message: {
+            Text("This removes “\(selectedProcessingPreset?.name ?? "this preset")”.")
+        }
+    }
+
+    private var processingPresetsSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Picker("Processing Preset", selection: selectedProcessingPresetIDBinding) {
+                        Text(processingPresets.isEmpty ? "No Saved Presets" : "Choose a Preset")
+                            .tag(nil as UUID?)
+                        ForEach(processingPresets) { preset in
+                            Text(presetDisplayName(preset))
+                                .tag(Optional(preset.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(isProcessing || processingPresets.isEmpty)
+
+                    Button {
+                        newPresetName = ""
+                        isShowingSavePresetAlert = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .help("Save current settings as a new preset")
+                    .disabled(isProcessing)
+
+                    Button {
+                        updateSelectedPreset()
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    .help("Update selected preset with current settings")
+                    .disabled(isProcessing || selectedProcessingPreset == nil || selectedPresetIsBuiltIn)
+
+                    Button(role: .destructive) {
+                        isShowingDeletePresetAlert = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .help("Delete selected preset")
+                    .disabled(isProcessing || selectedProcessingPreset == nil || selectedPresetIsBuiltIn)
+                }
+                .controlSize(.small)
+
+                if selectedPresetIsModified {
+                    Label(
+                        selectedPresetIsBuiltIn
+                            ? "Modified — save as a new preset to keep these changes."
+                            : "Modified — update the preset to keep these changes.",
+                        systemImage: "pencil.circle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                } else {
+                    Text("Choose a preset to apply it, or save the current settings for later.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+        } label: {
+            Label("Processing Presets", systemImage: "slider.horizontal.3")
+                .font(.subheadline.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func currentPreset(id: UUID, name: String) -> ProcessingPreset {
+        ProcessingPreset(
+            id: id,
+            name: name,
+            modeRawValue: selectedMode.rawValue,
+            crfValue: crfValue,
+            resolutionRawValue: selectedResolution.rawValue,
+            encoderPresetRawValue: selectedPreset.rawValue,
+            encodeVideo: encodeVideo,
+            encodeAudio: encodeAudio,
+            createSubfolders: createSubfolders,
+            automaticRename: automaticRename,
+            deleteOriginal: deleteOriginal,
+            keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            postProcessScriptPath: postProcessScriptPath,
+            postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
+            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+        )
+    }
+
+    private func presetDisplayName(_ preset: ProcessingPreset) -> String {
+        var name = ProcessingPreset.builtInPresets.contains(where: { $0.id == preset.id })
+            ? "\(preset.name) (Built-in)"
+            : preset.name
+        if preset.id == selectedProcessingPresetID, selectedPresetIsModified {
+            name += " • Modified"
+        }
+        return name
+    }
+
+    private func clearInvalidPresetSelection() {
+        guard selectedProcessingPresetID != nil, selectedProcessingPreset == nil else { return }
+        selectedProcessingPresetID = nil
+    }
+
+    private func saveCurrentSettings() {
+        let name = newPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+
+        guard !newPresetUsesReservedName else { return }
+
+        var presets = userProcessingPresets
+        if let index = presets.firstIndex(where: {
+            $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }) {
+            let preset = currentPreset(id: presets[index].id, name: name)
+            presets[index] = preset
+            persist(presets)
+            selectedProcessingPresetID = preset.id
+        } else {
+            let preset = currentPreset(id: UUID(), name: name)
+            presets.append(preset)
+            persist(presets)
+            selectedProcessingPresetID = preset.id
+        }
+    }
+
+    private func updateSelectedPreset() {
+        guard let selectedProcessingPreset else { return }
+        guard !selectedPresetIsBuiltIn else { return }
+        var presets = userProcessingPresets
+        guard let index = presets.firstIndex(where: { $0.id == selectedProcessingPreset.id }) else {
+            return
+        }
+        presets[index] = currentPreset(id: selectedProcessingPreset.id, name: selectedProcessingPreset.name)
+        persist(presets)
+    }
+
+    private func deleteSelectedPreset() {
+        guard let selectedProcessingPresetID else { return }
+        guard !selectedPresetIsBuiltIn else { return }
+        let presets = userProcessingPresets.filter { $0.id != selectedProcessingPresetID }
+        persist(presets)
+        self.selectedProcessingPresetID = nil
+    }
+
+    private func persist(_ presets: [ProcessingPreset]) {
+        guard let data = try? JSONEncoder().encode(presets),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return
+        }
+        encodedPresets = encoded
+    }
+
+    private func apply(_ preset: ProcessingPreset) {
+        selectedMode = preset.mode
+        crfValue = min(max(preset.crfValue, 0), 50)
+        selectedResolution = preset.resolution
+        selectedPreset = preset.encoderPreset
+        encodeVideo = preset.encodeVideo
+        encodeAudio = preset.encodeAudio
+        createSubfolders = preset.createSubfolders
+        automaticRename = preset.automaticRename
+        deleteOriginal = preset.deleteOriginal
+        keepEnglishAudioOnly = preset.keepEnglishAudioOnly
+        keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
+        postProcessScriptPath = preset.postProcessScriptPath
+        postProcessScriptRunTiming = preset.postProcessScriptRunTiming
+        postProcessScriptPassFileNameAsFirstArgument =
+            preset.postProcessScriptRunTiming == .afterEachItem
+            && preset.postProcessScriptPassFileNameAsFirstArgument
     }
 }
 
