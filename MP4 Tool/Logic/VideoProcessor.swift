@@ -817,6 +817,8 @@ class VideoProcessor: ObservableObject {
                 if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == filePathForProcessing }) {
                     var updatedFile = self.videoFiles[fileIndex]
                     updatedFile.status = .processing
+                    updatedFile.hasConflict = false
+                    updatedFile.conflictReason = ""
                     updatedFile.processingStartTime = fileStartTime
                     updatedFile.processingEndTime = nil
                     self.videoFiles[fileIndex] = updatedFile

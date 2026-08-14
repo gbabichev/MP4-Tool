@@ -11,12 +11,6 @@ import UniformTypeIdentifiers
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
     @State private var selectedFileIDs: Set<UUID> = []
-    private static let localTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .medium
-        formatter.dateStyle = .none
-        return formatter
-    }()
 
     var ffmpegSourceLabel: String {
         if viewModel.processor.isUsingSystemFFmpeg {
@@ -145,114 +139,27 @@ struct MainContentView: View {
                         handleFileDrop(providers: providers)
                     }
                 } else {
-                    VStack(spacing: 8) {
-                        Table(viewModel.processor.videoFiles, selection: $selectedFileIDs) {
-                            TableColumn("Status") { file in
-                                cellWithContextMenu(for: file) {
-                                    statusIcon(for: file)
-                                        .frame(width: 24)
+                    List(selection: $selectedFileIDs) {
+                        ForEach(viewModel.processor.videoFiles) { file in
+                            queueRow(for: file)
+                                .tag(file.id)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .contextMenu {
+                                    contextMenuItems(for: file)
                                 }
-                            }
-                            .width(ideal: 15)
-
-                            TableColumn("Name") { file in
-                                cellWithContextMenu(for: file) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(file.fileName)
-                                            .font(.body)
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                            .foregroundStyle(file.status == .completed ? .green : .primary)
-
-                                        if file.hasConflict && !file.conflictReason.isEmpty {
-                                            Text(file.conflictReason)
-                                                .font(.caption)
-                                                .foregroundStyle(.orange)
-                                        }
-                                    }
-                                }
-                            }
-
-                            TableColumn("Type") { file in
-                                cellWithContextMenu(for: file) {
-                                    Text("[\(file.fileExtension)]")
-                                        .font(.body)
-                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                }
-                            }
-                            .width(ideal: 40)
-
-                            TableColumn("Original Size") { file in
-                                cellWithContextMenu(for: file) {
-                                    Text("\(file.fileSizeMB) MB")
-                                        .font(.body)
-                                        .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                        .monospacedDigit()
-                                }
-                            }
-                            .width(ideal: 50)
-
-                            TableColumn("New Size") { file in
-                                cellWithContextMenu(for: file) {
-                                    if file.status == .completed && file.newSizeMB > 0 {
-                                        Text("\(file.newSizeMB) MB")
-                                            .font(.body)
-                                            .foregroundStyle(.green)
-                                            .monospacedDigit()
-                                    } else {
-                                        Text("")
-                                    }
-                                }
-                            }
-                            .width(ideal: 50)
-
-                            TableColumn("Start Time") { file in
-                                cellWithContextMenu(for: file) {
-                                    if let start = file.processingStartTime {
-                                        Text(Self.localTimeFormatter.string(from: start))
-                                            .font(.body)
-                                            .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                            .monospacedDigit()
-                                    } else {
-                                        Text("")
-                                    }
-                                }
-                            }
-                            .width(ideal: 90)
-
-                            TableColumn("End Time") { file in
-                                cellWithContextMenu(for: file) {
-                                    if let end = file.processingEndTime {
-                                        Text(Self.localTimeFormatter.string(from: end))
-                                            .font(.body)
-                                            .foregroundStyle(file.status == .completed ? .green : .secondary)
-                                            .monospacedDigit()
-                                    } else {
-                                        Text("")
-                                    }
-                                }
-                            }
-                            .width(ideal: 90)
-
-                            TableColumn("Time") { file in
-                                cellWithContextMenu(for: file) {
-                                    if file.status == .completed && file.processingTimeSeconds > 0 {
-                                        let minutes = file.processingTimeSeconds / 60
-                                        let seconds = file.processingTimeSeconds % 60
-                                        Text("\(minutes)m \(seconds)s")
-                                            .font(.body)
-                                            .foregroundStyle(.green)
-                                            .monospacedDigit()
-                                    } else {
-                                        Text("")
-                                    }
-                                }
-                            }
-                            .width(ideal: 50)
                         }
-                        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                            handleFileDrop(providers: providers)
-                        }
+                    }
+                    .listStyle(.inset)
+                    .scrollContentBackground(.hidden)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.secondary.opacity(0.04))
+                    )
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        handleFileDrop(providers: providers)
                     }
                 }
             }
@@ -403,7 +310,7 @@ struct MainContentView: View {
 
     private func statusIcon(for file: VideoFileInfo) -> some View {
         Group {
-            if file.hasConflict {
+            if file.status == .pending && file.hasConflict {
                 Image(systemName: "exclamationmark.circle.fill")
                     .foregroundStyle(.orange)
                     .help(file.conflictReason)
@@ -426,6 +333,111 @@ struct MainContentView: View {
         }
     }
 
+    private func queueRow(for file: VideoFileInfo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                statusIcon(for: file)
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(file.fileName)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 5) {
+                        Text(file.fileExtension)
+                        Text("•")
+                        Text("\(file.fileSizeMB) MB")
+                            .monospacedDigit()
+
+                        if file.status == .completed && file.newSizeMB > 0 {
+                            Text("→")
+                            Text("\(file.newSizeMB) MB")
+                                .monospacedDigit()
+                        }
+
+                        if file.status == .completed && file.processingTimeSeconds > 0 {
+                            Text("•")
+                            Text(formattedProcessingDuration(file.processingTimeSeconds))
+                                .monospacedDigit()
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 12)
+
+                Text(queueStatusTitle(for: file))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(queueStatusColor(for: file))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(queueStatusColor(for: file).opacity(0.12))
+                    )
+            }
+
+            if file.status == .pending && file.hasConflict && !file.conflictReason.isEmpty {
+                Label(file.conflictReason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(.leading, 36)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(queueRowBackground(for: file))
+        )
+    }
+
+    private func queueStatusTitle(for file: VideoFileInfo) -> String {
+        if file.status == .pending && file.hasConflict { return "Needs Attention" }
+        switch file.status {
+        case .pending: return "Queued"
+        case .processing:
+            let percent = Int((viewModel.processor.currentFileProgressFraction * 100).rounded())
+            return "Processing \(percent)%"
+        case .completed: return "Completed"
+        case .failed: return "Failed"
+        }
+    }
+
+    private func queueStatusColor(for file: VideoFileInfo) -> Color {
+        if file.status == .pending && file.hasConflict { return .orange }
+        switch file.status {
+        case .pending: return .secondary
+        case .processing: return .accentColor
+        case .completed: return .green
+        case .failed: return .red
+        }
+    }
+
+    private func queueRowBackground(for file: VideoFileInfo) -> Color {
+        switch file.status {
+        case .processing:
+            return Color.accentColor.opacity(0.08)
+        case .failed:
+            return Color.red.opacity(0.06)
+        default:
+            return Color.primary.opacity(0.035)
+        }
+    }
+
+    private func formattedProcessingDuration(_ totalSeconds: Int) -> String {
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(minutes)m \(seconds)s" }
+        return "\(seconds)s"
+    }
+
     @ViewBuilder
     private func contextMenuItems(for file: VideoFileInfo) -> some View {
         Button(action: {
@@ -445,18 +457,7 @@ struct MainContentView: View {
                 Label("Remove from List", systemImage: "trash")
             }
         }
-    }
-
-    private func cellWithContextMenu<Content: View>(
-        for file: VideoFileInfo,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .contextMenu {
-                contextMenuItems(for: file)
-            }
+        .disabled(file.status == .processing)
     }
 
     private func removeSelectedFiles() {
