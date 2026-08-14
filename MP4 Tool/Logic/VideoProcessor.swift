@@ -10,6 +10,7 @@ import Combine
 import UserNotifications
 import AppKit
 import AVFoundation
+import SwiftUI
 
 struct VideoStream: Codable {
     let index: Int
@@ -197,6 +198,8 @@ private final class ThreadSafeDataBuffer: @unchecked Sendable {
 }
 
 class VideoProcessor: ObservableObject {
+    @AppStorage("useSystemFFmpeg") private var useSystemFFmpeg = false
+
     @Published var isProcessing = false
     @Published var currentFile = ""
     @Published var totalFiles = 0
@@ -291,13 +294,19 @@ class VideoProcessor: ObservableObject {
             addLog("Multiple FFmpeg versions available - use Tools > Toggle FFmpeg Source to switch")
         }
 
-        // Default to bundled if available, otherwise try system
+        // Restore the preferred source when available, otherwise use the available fallback.
         var tempFfmpegPath = ""
         var tempFfprobePath = ""
         var foundFfmpeg = false
         var foundFfprobe = false
 
-        if self.hasBundledFFmpeg {
+        if useSystemFFmpeg, hasSystemFfmpeg {
+            tempFfmpegPath = systemFfmpeg ?? ""
+            tempFfprobePath = systemFfprobe ?? ""
+            foundFfmpeg = !tempFfmpegPath.isEmpty
+            foundFfprobe = !tempFfprobePath.isEmpty
+            self.isUsingSystemFFmpeg = true
+        } else if self.hasBundledFFmpeg {
             tempFfmpegPath = bundledFfmpeg
             tempFfprobePath = bundledFfprobe
             foundFfmpeg = true
@@ -406,6 +415,7 @@ class VideoProcessor: ObservableObject {
                 self.ffprobePath = systemFfprobe
                 self.ffmpegAvailable = true
                 self.isUsingSystemFFmpeg = true
+                self.useSystemFFmpeg = true
                 addLog("✓ Switched to system FFmpeg at: \(systemFfmpeg)")
             } else {
                 self.ffmpegAvailable = false
@@ -418,6 +428,7 @@ class VideoProcessor: ObservableObject {
             self.ffprobePath = bundledFfprobePath
             self.ffmpegAvailable = true
             self.isUsingSystemFFmpeg = false
+            self.useSystemFFmpeg = false
             addLog("✓ Switched to bundled FFmpeg")
         }
     }
