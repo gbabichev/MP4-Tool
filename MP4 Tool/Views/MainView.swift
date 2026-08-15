@@ -64,9 +64,11 @@ struct MainContentView: View {
     private var queueSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Queue (\(viewModel.processor.videoFiles.count))")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Label(
+                    "Queue (\(viewModel.processor.videoFiles.count))",
+                    systemImage: "list.bullet"
+                )
+                .font(.subheadline.weight(.semibold))
 
                 Button {
                     chooseFilesToAdd()
@@ -93,8 +95,8 @@ struct MainContentView: View {
 
                 Spacer()
             }
-            .padding(.horizontal)
-            .padding(.top, 24)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
 
             if viewModel.processor.videoFiles.isEmpty {
                 // Empty state with drop zone
@@ -109,8 +111,8 @@ struct MainContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.secondary.opacity(0.05))
                 .cornerRadius(8)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                     handleFileDrop(providers: providers)
                 }
@@ -132,13 +134,17 @@ struct MainContentView: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.secondary.opacity(0.04))
                 )
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                     handleFileDrop(providers: providers)
                 }
             }
         }
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.secondary.opacity(0.06))
+        )
     }
 
     private func chooseFilesToAdd() {

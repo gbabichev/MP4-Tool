@@ -53,6 +53,8 @@ struct ContentView: View {
     @AppStorage("didAdoptCompactProcessingSetup") private var didAdoptCompactProcessingSetup = false
     @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    @State private var isShowingLogCopyConfirmation = false
+    @State private var logCopyConfirmationTask: Task<Void, Never>?
 
     init(viewModel: ContentViewModel, windowID: UUID) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -217,6 +219,29 @@ struct ContentView: View {
     private func clearCompletionNotificationsIfPossible() {
         guard !viewModel.processor.isProcessing else { return }
         viewModel.processor.clearProcessingNotifications()
+    }
+
+    private func copyLogToClipboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(viewModel.processor.logText, forType: .string)
+
+        logCopyConfirmationTask?.cancel()
+        withAnimation(.easeOut(duration: 0.15)) {
+            isShowingLogCopyConfirmation = true
+        }
+
+        logCopyConfirmationTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(1.5))
+            } catch {
+                return
+            }
+
+            withAnimation(.easeIn(duration: 0.2)) {
+                isShowingLogCopyConfirmation = false
+            }
+        }
     }
 
     private func restoreLastOutputFolderIfAvailable() {
@@ -545,23 +570,15 @@ struct ContentView: View {
 
                 MainContentView(viewModel: viewModel)
             }
+            .background(Color(nsColor: .windowBackgroundColor))
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: 800, minHeight: 500)
         .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
         .inspector(isPresented: $isLogExpanded) {
             LogInspectorView(
                 logText: viewModel.processor.logText,
-                onCopy: {
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.clearContents()
-                    pasteboard.setString(viewModel.processor.logText, forType: .string)
-                },
-                onExport: {
-                    viewModel.exportLogToFile()
-                },
-                onClear: {
-                    viewModel.processor.logText = ""
-                }
+                isShowingCopyConfirmation: isShowingLogCopyConfirmation
             )
             .inspectorColumnWidth(min: 280, ideal: 400, max: 700)
         }
@@ -608,6 +625,29 @@ struct ContentView: View {
                     }
                     .help(isLogExpanded ? "Hide log inspector" : "Show log inspector")
                 }
+
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if isLogExpanded && !viewModel.processor.logText.isEmpty {
+                        Button(action: copyLogToClipboard) {
+                            Label("Copy Log", systemImage: "doc.on.doc")
+                        }
+                        .help("Copy log to clipboard")
+
+                        Button {
+                            viewModel.exportLogToFile()
+                        } label: {
+                            Label("Export Log", systemImage: "square.and.arrow.up")
+                        }
+                        .help("Export log")
+
+                        Button {
+                            viewModel.processor.logText = ""
+                        } label: {
+                            Label("Clear Log", systemImage: "trash")
+                        }
+                        .help("Clear log")
+                    }
+                }
                 
                 ToolbarItem(placement: .primaryAction) {
                     if viewModel.processor.isProcessing {
@@ -645,6 +685,9 @@ struct ContentView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .windowToolbar)
+            .onDisappear {
+                logCopyConfirmationTask?.cancel()
+            }
             .overlay {
                 if viewModel.showingTutorial {
                     TutorialView(isPresented: $viewModel.showingTutorial)
@@ -1092,45 +1135,10 @@ private struct CompactProcessingSetupView: View {
 
 private struct LogInspectorView: View {
     let logText: String
-    let onCopy: () -> Void
-    let onExport: () -> Void
-    let onClear: () -> Void
-    @State private var isShowingCopyConfirmation = false
-    @State private var copyConfirmationTask: Task<Void, Never>?
+    let isShowingCopyConfirmation: Bool
     
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Label("Log", systemImage: "terminal")
-                    .font(.headline)
-
-                Spacer()
-
-                if !logText.isEmpty {
-                    Button(action: copyLog) {
-                        Label("Copy Log", systemImage: "doc.on.doc")
-                    }
-                    .labelStyle(.iconOnly)
-                    .help("Copy log to clipboard")
-
-                    Button(action: onExport) {
-                        Label("Export Log", systemImage: "square.and.arrow.up")
-                    }
-                    .labelStyle(.iconOnly)
-                    .help("Export log")
-
-                    Button(action: onClear) {
-                        Label("Clear Log", systemImage: "trash")
-                    }
-                    .labelStyle(.iconOnly)
-                    .help("Clear log")
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            Divider()
-
+        Group {
             if logText.isEmpty {
                 ContentUnavailableView(
                     "No Log Output",
@@ -1143,6 +1151,7 @@ private struct LogInspectorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
         .overlay(alignment: .bottom) {
             if isShowingCopyConfirmation {
                 Label("Copied to Clipboard", systemImage: "checkmark.circle.fill")
@@ -1154,30 +1163,6 @@ private struct LogInspectorView: View {
                     .padding(.bottom, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .allowsHitTesting(false)
-            }
-        }
-        .onDisappear {
-            copyConfirmationTask?.cancel()
-        }
-    }
-
-    private func copyLog() {
-        onCopy()
-        copyConfirmationTask?.cancel()
-
-        withAnimation(.easeOut(duration: 0.15)) {
-            isShowingCopyConfirmation = true
-        }
-
-        copyConfirmationTask = Task { @MainActor in
-            do {
-                try await Task.sleep(nanoseconds: 1_500_000_000)
-            } catch {
-                return
-            }
-
-            withAnimation(.easeIn(duration: 0.2)) {
-                isShowingCopyConfirmation = false
             }
         }
     }
@@ -1224,6 +1209,7 @@ struct ExpandedSettingsPanel: View {
             )
             .frame(width: 400)
         }
+        .background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
     }
 }
 
