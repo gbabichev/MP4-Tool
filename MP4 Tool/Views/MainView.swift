@@ -33,27 +33,16 @@ struct MainContentView: View {
     }
 
     var body: some View {
-        Group {
-            if viewModel.processor.isProcessing {
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ProcessingProgressCard(processor: viewModel.processor)
-                            .padding(.horizontal)
-                            .padding(.top, 18)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-
-                        queueSection
-                            .frame(height: processingQueueHeight)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-            } else {
-                queueSection
-                    .frame(maxHeight: .infinity)
-            }
+        if viewModel.processor.isProcessing {
+            queueSection
+                .frame(height: processingQueueHeight)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding()
+        } else {
+            queueSection
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 
     private var processingQueueHeight: CGFloat {
@@ -434,7 +423,7 @@ struct MainContentView: View {
     }
 }
 
-private struct ProcessingProgressCard: View {
+struct ProcessingProgressCard: View {
     @ObservedObject var processor: VideoProcessor
 
     private var isScanning: Bool {
@@ -479,6 +468,11 @@ private struct ProcessingProgressCard: View {
 
     private var overallPercent: Int {
         Int((overallProgress * 100).rounded())
+    }
+
+    private var showsFramePreview: Bool {
+        processor.framePreviewsEnabled
+            && (processor.activeMode == .encodeH264 || processor.activeMode == .encodeH265)
     }
 
     var body: some View {
@@ -560,49 +554,55 @@ private struct ProcessingProgressCard: View {
                         )
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Current File")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(processor.currentFile.isEmpty ? "Getting ready…" : processor.currentFile)
-                                    .font(.subheadline.weight(.medium))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-
-                            Spacer()
-
-                            Text("\(currentPercent)%")
-                                .font(.subheadline.weight(.semibold))
-                                .monospacedDigit()
+                    HStack(alignment: .center, spacing: 12) {
+                        if showsFramePreview {
+                            framePreview
                         }
 
-                        ProgressView(value: processor.currentFileProgressFraction, total: 1)
-                            .progressViewStyle(.linear)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Current File")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(processor.currentFile.isEmpty ? "Getting ready…" : processor.currentFile)
+                                        .font(.subheadline.weight(.medium))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
 
-                        HStack(spacing: 8) {
-                            Label(
-                                eta.currentFileSeconds.map {
-                                    "ETA \(formattedDuration(TimeInterval($0)))"
-                                } ?? "Estimating current file…",
-                                systemImage: "clock.arrow.circlepath"
-                            )
+                                Spacer()
 
-                            Spacer()
+                                Text("\(currentPercent)%")
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                            }
 
-                            if processor.originalSize > 0 {
-                                Text(formattedBytes(processor.originalSize))
-                                Image(systemName: "arrow.right")
-                                Text(
-                                    processor.newSize > 0
-                                        ? formattedBytes(processor.newSize) : "Preparing…"
+                            ProgressView(value: processor.currentFileProgressFraction, total: 1)
+                                .progressViewStyle(.linear)
+
+                            HStack(spacing: 8) {
+                                Label(
+                                    eta.currentFileSeconds.map {
+                                        "ETA \(formattedDuration(TimeInterval($0)))"
+                                    } ?? "Estimating current file…",
+                                    systemImage: "clock.arrow.circlepath"
                                 )
+
+                                Spacer()
+
+                                if processor.originalSize > 0 {
+                                    Text(formattedBytes(processor.originalSize))
+                                    Image(systemName: "arrow.right")
+                                    Text(
+                                        processor.newSize > 0
+                                            ? formattedBytes(processor.newSize) : "Preparing…"
+                                    )
+                                }
                             }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     }
                     .padding(12)
                     .background(
@@ -637,6 +637,35 @@ private struct ProcessingProgressCard: View {
             )
             .shadow(color: .black.opacity(0.12), radius: 14, x: 0, y: 7)
         }
+    }
+
+    @ViewBuilder
+    private var framePreview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.78))
+
+            if let preview = processor.currentFramePreview {
+                Image(nsImage: preview)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                VStack(spacing: 5) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Preview")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: 128, height: 72)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .accessibilityLabel("Current video frame preview")
     }
 
     private func formattedBytes(_ bytes: Int64) -> String {

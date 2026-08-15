@@ -53,6 +53,8 @@ struct ContentView: View {
     @AppStorage("didAdoptCompactProcessingSetup") private var didAdoptCompactProcessingSetup = false
     @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    @AppStorage("processingNotificationsEnabled") private var processingNotificationsEnabled = true
+    @AppStorage("framePreviewsEnabled") private var framePreviewsEnabled = true
     @State private var isShowingLogCopyConfirmation = false
     @State private var logCopyConfirmationTask: Task<Void, Never>?
 
@@ -219,6 +221,14 @@ struct ContentView: View {
     private func clearCompletionNotificationsIfPossible() {
         guard !viewModel.processor.isProcessing else { return }
         viewModel.processor.clearProcessingNotifications()
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, error in
+            if let error {
+                print("Error requesting notification permission: \(error)")
+            }
+        }
     }
 
     private func copyLogToClipboard() {
@@ -531,49 +541,19 @@ struct ContentView: View {
                 Divider()
             }
 
-            VStack(spacing: 0) {
-                CompactProcessingSetupView(
-                    selectedMode: selectedModeBinding,
-                    crfValue: $crfValue,
-                    selectedResolution: selectedResolutionBinding,
-                    encoderPreset: selectedPresetBinding,
-                    encodeVideo: $encodeVideo,
-                    encodeAudio: $encodeAudio,
-                    createSubfolders: $createSubfolders,
-                    automaticRename: $automaticRename,
-                    deleteOriginal: $deleteOriginal,
-                    keepEnglishAudioOnly: $keepEnglishAudioOnly,
-                    keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
-                    postProcessScriptPath: $postProcessScriptPath,
-                    postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
-                    postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
-                    outputFolderPath: viewModel.outputFolderPath,
-                    ffmpegAvailable: viewModel.processor.ffmpegAvailable,
-                    hasBundledFFmpeg: viewModel.processor.hasBundledFFmpeg,
-                    hasSystemFFmpeg: viewModel.processor.hasSystemFFmpeg,
-                    isUsingSystemFFmpeg: viewModel.processor.isUsingSystemFFmpeg,
-                    isProcessing: viewModel.processor.isProcessing,
-                    isSettingsExpanded: isSettingsExpandedBinding,
-                    onSelectFFmpegSource: { useSystem in
-                        viewModel.processor.toggleFFmpegSource(useSystem: useSystem)
-                    },
-                    onChooseOutputFolder: {
-                        viewModel.selectFolder(isInput: false)
-                    },
-                    onOpenOutputFolder: {
-                        viewModel.openOutputFolderInFinder()
-                    },
-                    onSetOutputFolder: { path in
-                        viewModel.setOutputFolder(path: path)
-                    }
-                )
-
-                MainContentView(viewModel: viewModel)
+            GeometryReader { geometry in
+                ScrollView(.vertical) {
+                    centerContent
+                        .frame(
+                            minHeight: geometry.size.height,
+                            alignment: .top
+                        )
+                }
             }
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .frame(minWidth: 800, minHeight: 500)
+        .frame(minWidth: 600, minHeight: 500)
         .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
         .inspector(isPresented: $isLogExpanded) {
             LogInspectorView(
@@ -582,6 +562,58 @@ struct ContentView: View {
             )
             .inspectorColumnWidth(min: 280, ideal: 400, max: 700)
         }
+    }
+
+    private var centerContent: some View {
+        VStack(spacing: 0) {
+            if viewModel.processor.isProcessing {
+                ProcessingProgressCard(processor: viewModel.processor)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            CompactProcessingSetupView(
+                selectedMode: selectedModeBinding,
+                crfValue: $crfValue,
+                selectedResolution: selectedResolutionBinding,
+                encoderPreset: selectedPresetBinding,
+                encodeVideo: $encodeVideo,
+                encodeAudio: $encodeAudio,
+                createSubfolders: $createSubfolders,
+                automaticRename: $automaticRename,
+                deleteOriginal: $deleteOriginal,
+                keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                postProcessScriptPath: $postProcessScriptPath,
+                postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
+                postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+                outputFolderPath: viewModel.outputFolderPath,
+                ffmpegAvailable: viewModel.processor.ffmpegAvailable,
+                hasBundledFFmpeg: viewModel.processor.hasBundledFFmpeg,
+                hasSystemFFmpeg: viewModel.processor.hasSystemFFmpeg,
+                isUsingSystemFFmpeg: viewModel.processor.isUsingSystemFFmpeg,
+                isProcessing: viewModel.processor.isProcessing,
+                notificationsEnabled: $processingNotificationsEnabled,
+                framePreviewsEnabled: $framePreviewsEnabled,
+                isSettingsExpanded: isSettingsExpandedBinding,
+                onSelectFFmpegSource: { useSystem in
+                    viewModel.processor.toggleFFmpegSource(useSystem: useSystem)
+                },
+                onChooseOutputFolder: {
+                    viewModel.selectFolder(isInput: false)
+                },
+                onOpenOutputFolder: {
+                    viewModel.openOutputFolderInFinder()
+                },
+                onSetOutputFolder: { path in
+                    viewModel.setOutputFolder(path: path)
+                }
+            )
+
+            MainContentView(viewModel: viewModel)
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
     }
     
     var body: some View {
@@ -684,7 +716,6 @@ struct ContentView: View {
                     }
                 }
             }
-            .toolbarBackground(.hidden, for: .windowToolbar)
             .onDisappear {
                 logCopyConfirmationTask?.cancel()
             }
@@ -746,19 +777,26 @@ struct ContentView: View {
                 if sceneIsSettingsExpanded == nil {
                     sceneIsSettingsExpanded = defaultIsSettingsExpanded
                 }
-
                 restoreLastOutputFolderIfAvailable()
                 
-                // Request notification permissions
-                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-                    if let error = error {
-                        print("Error requesting notification permission: \(error)")
-                    }
+                viewModel.processor.setNotificationsEnabled(processingNotificationsEnabled)
+                viewModel.processor.setFramePreviewsEnabled(framePreviewsEnabled)
+                if processingNotificationsEnabled {
+                    requestNotificationPermission()
                 }
 
                 clearCompletionNotificationsIfPossible()
                 registerCLIHandler()
                 registerWindowCommands()
+            }
+            .onChange(of: processingNotificationsEnabled) { _, enabled in
+                viewModel.processor.setNotificationsEnabled(enabled)
+                if enabled {
+                    requestNotificationPermission()
+                }
+            }
+            .onChange(of: framePreviewsEnabled) { _, enabled in
+                viewModel.processor.setFramePreviewsEnabled(enabled)
             }
             .task {
                 var candidateSnapshot: ProcessingSettingsSnapshot?
@@ -833,6 +871,8 @@ private struct CompactProcessingSetupView: View {
     let hasSystemFFmpeg: Bool
     let isUsingSystemFFmpeg: Bool
     let isProcessing: Bool
+    @Binding var notificationsEnabled: Bool
+    @Binding var framePreviewsEnabled: Bool
     @Binding var isSettingsExpanded: Bool
     let onSelectFFmpegSource: (Bool) -> Void
     let onChooseOutputFolder: () -> Void
@@ -961,80 +1001,105 @@ private struct CompactProcessingSetupView: View {
 
             Divider()
 
-            HStack(spacing: 10) {
-                Image(systemName: ffmpegAvailable ? "terminal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(ffmpegAvailable ? Color.accentColor : Color.orange)
-                    .frame(width: 20)
+            AdaptiveProcessingSetupPair {
+                HStack(spacing: 10) {
+                    Image(systemName: ffmpegAvailable ? "terminal.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(ffmpegAvailable ? Color.accentColor : Color.orange)
+                        .frame(width: 20)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("FFmpeg")
-                        .font(.caption.weight(.medium))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("FFmpeg")
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
 
-                    Text(ffmpegSourceDescription)
-                        .font(.caption)
-                        .foregroundStyle(ffmpegAvailable ? Color.secondary : Color.orange)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 10)
-
-                if ffmpegAvailable {
-                    Picker("FFmpeg Source", selection: ffmpegSourceBinding) {
-                        if hasBundledFFmpeg {
-                            Text("Bundled").tag(false)
-                        }
-                        if hasSystemFFmpeg {
-                            Text("System").tag(true)
-                        }
+                        Text(ffmpegSourceDescription)
+                            .font(.caption2)
+                            .foregroundStyle(ffmpegAvailable ? Color.secondary : Color.orange)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: 130)
-                    .disabled(isProcessing || availableFFmpegSourceCount < 2)
-                    .help(
-                        availableFFmpegSourceCount < 2
-                            ? "Only one FFmpeg source is available"
-                            : "Choose which FFmpeg installation to use"
-                    )
-                } else {
-                    Text("Not Available")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.orange)
+                    .layoutPriority(1)
+
+                    Spacer(minLength: 8)
+
+                    if ffmpegAvailable {
+                        Picker("FFmpeg Source", selection: ffmpegSourceBinding) {
+                            if hasBundledFFmpeg {
+                                Text("Bundled").tag(false)
+                            }
+                            if hasSystemFFmpeg {
+                                Text("System").tag(true)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 105)
+                        .disabled(isProcessing || availableFFmpegSourceCount < 2)
+                        .help(
+                            availableFFmpegSourceCount < 2
+                                ? "Only one FFmpeg source is available"
+                                : "Choose which FFmpeg installation to use"
+                        )
+                    } else {
+                        Text("Not Available")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.orange)
+                    }
                 }
+                .frame(maxWidth: .infinity)
+            } trailing: {
+                HStack(spacing: 10) {
+                    Image(systemName: outputFolderPath.isEmpty ? "folder.badge.plus" : "folder.fill")
+                        .foregroundStyle(
+                            outputFolderPath.isEmpty ? Color.secondary : Color.accentColor
+                        )
+                        .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Output Folder")
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
+
+                        Text(outputFolderPath.isEmpty ? "Choose or drop an output folder here" : outputFolderPath)
+                            .font(.caption2)
+                            .foregroundStyle(outputFolderPath.isEmpty ? .tertiary : .secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .layoutPriority(1)
+
+                    Spacer(minLength: 8)
+
+                    Button("Choose…", action: onChooseOutputFolder)
+                        .controlSize(.small)
+                        .disabled(isProcessing)
+
+                    Button("Open", action: onOpenOutputFolder)
+                        .controlSize(.small)
+                        .disabled(outputFolderPath.isEmpty)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onDrop(of: [.fileURL], isTargeted: nil, perform: handleOutputFolderDrop)
             }
 
             Divider()
 
-            HStack(spacing: 10) {
-                Image(systemName: outputFolderPath.isEmpty ? "folder.badge.plus" : "folder.fill")
-                    .foregroundStyle(
-                        outputFolderPath.isEmpty ? Color.secondary : Color.accentColor
-                    )
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Output Folder")
-                        .font(.caption.weight(.medium))
-
-                    Text(outputFolderPath.isEmpty ? "Choose or drop an output folder here" : outputFolderPath)
-                        .font(.caption)
-                        .foregroundStyle(outputFolderPath.isEmpty ? .tertiary : .secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                Spacer(minLength: 10)
-
-                Button("Choose…", action: onChooseOutputFolder)
-                    .controlSize(.small)
-                    .disabled(isProcessing)
-
-                Button("Open", action: onOpenOutputFolder)
-                    .controlSize(.small)
-                    .disabled(outputFolderPath.isEmpty)
+            AdaptiveProcessingSetupPair(horizontalMinimumWidth: 620) {
+                ProcessingSetupToggle(
+                    title: "Enable Notifications",
+                    subtitle: "Notify when processing finishes in the background",
+                    systemImage: "bell.fill",
+                    isOn: $notificationsEnabled
+                )
+            } trailing: {
+                ProcessingSetupToggle(
+                    title: "Enable Previews",
+                    subtitle: "Refresh the current frame while encoding",
+                    systemImage: "photo.fill",
+                    isOn: $framePreviewsEnabled
+                )
             }
-            .contentShape(Rectangle())
-            .onDrop(of: [.fileURL], isTargeted: nil, perform: handleOutputFolderDrop)
         }
         .padding(12)
         .background(
@@ -1130,6 +1195,77 @@ private struct CompactProcessingSetupView: View {
         postProcessScriptPassFileNameAsFirstArgument =
             preset.postProcessScriptRunTiming == .afterEachItem
             && preset.postProcessScriptPassFileNameAsFirstArgument
+    }
+}
+
+private struct AdaptiveProcessingSetupPair<Leading: View, Trailing: View>: View {
+    let horizontalMinimumWidth: CGFloat
+    private let leading: () -> Leading
+    private let trailing: () -> Trailing
+
+    init(
+        horizontalMinimumWidth: CGFloat = 720,
+        @ViewBuilder leading: @escaping () -> Leading,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.horizontalMinimumWidth = horizontalMinimumWidth
+        self.leading = leading
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                leading()
+                Divider()
+                    .frame(height: 34)
+                trailing()
+            }
+            .frame(minWidth: horizontalMinimumWidth)
+
+            VStack(spacing: 9) {
+                leading()
+                Divider()
+                trailing()
+            }
+        }
+    }
+}
+
+private struct ProcessingSetupToggle: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .allowsTightening(true)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 8)
+
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

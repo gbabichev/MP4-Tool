@@ -253,6 +253,11 @@ class VideoProcessor: ObservableObject {
     @Published var completionSummary: ProcessingCompletionSummary?
     @Published private(set) var processingStartedAt: Date?
     @Published private(set) var activeMode: ProcessingMode?
+    @Published private(set) var currentFramePreview: NSImage?
+    @Published private(set) var notificationsEnabled =
+        UserDefaults.standard.object(forKey: "processingNotificationsEnabled") as? Bool ?? true
+    @Published private(set) var framePreviewsEnabled =
+        UserDefaults.standard.object(forKey: "framePreviewsEnabled") as? Bool ?? true
 
     private var startTime: Date?
     private var currentInputDurationSeconds: TimeInterval?
@@ -267,6 +272,10 @@ class VideoProcessor: ObservableObject {
     private nonisolated(unsafe) var shouldCancelProcessing = false
     private var encodingTimer: Timer?
     private var currentProcess: Process?
+    private var framePreviewTask: Task<Void, Never>?
+    private var framePreviewProcess: Process?
+    private var framePreviewToken = UUID()
+    private var activeFramePreviewInputFile: String?
 
     // Batch processing tracking
     private var pendingBatchFiles: [VideoFileInfo] = []
@@ -475,6 +484,30 @@ class VideoProcessor: ObservableObject {
             self.isUsingSystemFFmpeg = false
             self.useSystemFFmpeg = false
             addLog("✓ Switched to bundled FFmpeg")
+        }
+    }
+
+    func setNotificationsEnabled(_ enabled: Bool) {
+        notificationsEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "processingNotificationsEnabled")
+        if !enabled {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(
+                withIdentifiers: ["processingComplete"]
+            )
+        }
+    }
+
+    func setFramePreviewsEnabled(_ enabled: Bool) {
+        framePreviewsEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "framePreviewsEnabled")
+
+        if enabled,
+           isProcessing,
+           activeMode != .remux,
+           let activeFramePreviewInputFile {
+            startFramePreviewUpdates(inputFile: activeFramePreviewInputFile)
+        } else if !enabled {
+            stopFramePreviewUpdates(clearPreview: true)
         }
     }
 
@@ -821,6 +854,7 @@ class VideoProcessor: ObservableObject {
         var totalOutputBytes: Int64 = 0
         var failedFileCount = 0
         var skippedFileCount = 0
+        stopFramePreviewUpdates(clearPreview: true)
 
         // Gather the diagnostic header before replacing the launch-time log so the
         // inspector never passes through an empty state at the start of a run.
@@ -889,6 +923,8 @@ class VideoProcessor: ObservableObject {
         addLog("􀈑 Delete Original: \(deleteOriginal)")
         addLog("􀀁 Keep English Audio Only: \(keepEnglishAudioOnly)")
         addLog("􀀃 Keep English Subtitles Only: \(keepEnglishSubtitlesOnly)")
+        addLog("Enable Notifications: \(notificationsEnabled)")
+        addLog("Enable Previews: \(framePreviewsEnabled)")
 
         let activePostProcessScriptPath = validatedPostProcessScriptPath(postProcessScriptPath)
         if let activePostProcessScriptPath {
@@ -996,6 +1032,8 @@ class VideoProcessor: ObservableObject {
             let filePathForProcessing = fileInfo.path
             let currentIndex = index
             let fileStartTime = Date()
+            activeFramePreviewInputFile = nil
+            stopFramePreviewUpdates(clearPreview: true)
             DispatchQueue.main.async {
                 self.currentFileIndex = currentIndex + 1
                 self.currentFile = fileInfo.name
@@ -1298,7 +1336,7 @@ class VideoProcessor: ObservableObject {
                 self.completionSummary = summary
             }
 
-            if wasCancelled || NSApplication.shared.isActive {
+            if wasCancelled || NSApplication.shared.isActive || !self.notificationsEnabled {
                 self.clearDockBadge()
             } else {
                 self.setDockBadgeCheckmark()
@@ -1686,6 +1724,13 @@ class VideoProcessor: ObservableObject {
         addLog("  \(commandString)")
         if mode == .encodeH265 || mode == .encodeH264 {
             addLog("􀐱 Encoding started - this may take a while...")
+            activeFramePreviewInputFile = inputFile
+            if framePreviewsEnabled {
+                startFramePreviewUpdates(inputFile: inputFile)
+            }
+        } else {
+            activeFramePreviewInputFile = nil
+            stopFramePreviewUpdates(clearPreview: true)
         }
 
         // Start timer and file size monitoring
@@ -1711,6 +1756,8 @@ class VideoProcessor: ObservableObject {
 
         // Run ffmpeg (now async, won't block)
         let (success, ffmpegError) = await runCommand(arguments: cmd)
+        stopFramePreviewUpdates(clearPreview: false)
+        activeFramePreviewInputFile = nil
 
         // Stop timer
         DispatchQueue.main.async {
@@ -2279,6 +2326,154 @@ class VideoProcessor: ObservableObject {
         encodingProgress = ""
     }
 
+    private func startFramePreviewUpdates(inputFile: String) {
+        stopFramePreviewUpdates(clearPreview: true)
+
+        let token = UUID()
+        framePreviewToken = token
+        framePreviewTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var lastPreviewTime: TimeInterval?
+
+            while !Task.isCancelled, self.framePreviewToken == token {
+                let duration = self.currentInputDurationSeconds ?? 0
+                let initialTime = duration > 0 ? min(max(duration * 0.05, 1), 30) : 1
+                let previewTime = self.currentEncodedTimeSeconds > 1
+                    ? self.currentEncodedTimeSeconds
+                    : initialTime
+
+                if lastPreviewTime == nil || abs(previewTime - (lastPreviewTime ?? 0)) >= 2 {
+                    if let data = await self.extractFramePreview(
+                        inputFile: inputFile,
+                        timestamp: previewTime,
+                        token: token
+                    ),
+                       !Task.isCancelled,
+                       self.framePreviewToken == token,
+                       let image = NSImage(data: data) {
+                        self.currentFramePreview = image
+                        lastPreviewTime = previewTime
+                    }
+                }
+
+                do {
+                    try await Task.sleep(for: .seconds(15))
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+
+    private func stopFramePreviewUpdates(clearPreview: Bool) {
+        framePreviewToken = UUID()
+        framePreviewTask?.cancel()
+        framePreviewTask = nil
+
+        if let process = framePreviewProcess, process.isRunning {
+            process.terminate()
+        }
+        framePreviewProcess = nil
+
+        if clearPreview {
+            currentFramePreview = nil
+        }
+    }
+
+    private func extractFramePreview(
+        inputFile: String,
+        timestamp: TimeInterval,
+        token: UUID
+    ) async -> Data? {
+        let executable = ffmpegPath
+        let arguments = [
+            "-ss", String(format: "%.3f", max(timestamp, 0)),
+            "-i", inputFile,
+            "-map", "0:v:0",
+            "-frames:v", "1",
+            "-vf", "scale=320:180:force_original_aspect_ratio=decrease",
+            "-an", "-sn",
+            "-threads", "1",
+            "-q:v", "5",
+            "-loglevel", "error",
+            "-f", "image2pipe",
+            "-vcodec", "mjpeg",
+            "pipe:1"
+        ]
+
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: executable)
+                process.arguments = arguments
+
+                let outputPipe = Pipe()
+                let errorPipe = Pipe()
+                process.standardOutput = outputPipe
+                process.standardError = errorPipe
+
+                let outputBuffer = ThreadSafeDataBuffer(maxBytes: nil)
+                let errorBuffer = ThreadSafeDataBuffer()
+                outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    guard !data.isEmpty else { return }
+                    outputBuffer.append(data)
+                }
+                errorPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    guard !data.isEmpty else { return }
+                    errorBuffer.append(data)
+                }
+
+                DispatchQueue.main.async {
+                    guard self.framePreviewToken == token else {
+                        process.terminate()
+                        return
+                    }
+                    self.framePreviewProcess = process
+                }
+
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+                    let remainingOutput = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    if !remainingOutput.isEmpty {
+                        outputBuffer.append(remainingOutput)
+                    }
+
+                    let previewData = outputBuffer.snapshot()
+                    DispatchQueue.main.async {
+                        if self.framePreviewProcess === process {
+                            self.framePreviewProcess = nil
+                        }
+                    }
+                    continuation.resume(
+                        returning: process.terminationStatus == 0 && !previewData.isEmpty
+                            ? previewData
+                            : nil
+                    )
+                } catch {
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+                    DispatchQueue.main.async {
+                        if self.framePreviewProcess === process {
+                            self.framePreviewProcess = nil
+                        }
+                    }
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
     private func runCommandWithOutput(path: String, arguments: [String]) async -> String? {
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -2380,6 +2575,8 @@ class VideoProcessor: ObservableObject {
     func cancelScan() {
         shouldCancelScan = true
         shouldCancelProcessing = true
+        activeFramePreviewInputFile = nil
+        stopFramePreviewUpdates(clearPreview: true)
 
         // Terminate current process if one is running
         if let process = currentProcess, process.isRunning {
