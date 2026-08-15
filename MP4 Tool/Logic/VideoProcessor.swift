@@ -145,7 +145,14 @@ enum ProcessingStatus {
     case pending
     case processing
     case completed
+    case skipped
     case failed
+}
+
+private enum ConversionOutcome {
+    case success
+    case skipped(reason: String)
+    case failed(reason: String)
 }
 
 struct VideoFileInfo: Identifiable {
@@ -166,6 +173,7 @@ struct VideoFileInfo: Identifiable {
 struct ProcessingCompletionSummary: Equatable {
     let mode: ProcessingMode
     let completedFileCount: Int
+    let skippedFileCount: Int
     let failedFileCount: Int
     let originalBytes: Int64
     let outputBytes: Int64
@@ -659,6 +667,7 @@ class VideoProcessor: ObservableObject {
         var totalOriginalBytes: Int64 = 0
         var totalOutputBytes: Int64 = 0
         var failedFileCount = 0
+        var skippedFileCount = 0
 
         DispatchQueue.main.async {
             self.isProcessing = true
@@ -854,7 +863,7 @@ class VideoProcessor: ObservableObject {
             let tempOutputFile = NSTemporaryDirectory() + UUID().uuidString + ".mp4"
 
             // Process the video
-            let (conversionSuccess, errorReason) = await convertToMP4(
+            let conversionOutcome = await convertToMP4(
                 inputFile: inputFilePath,
                 tempFile: tempOutputFile,
                 mode: mode,
@@ -868,7 +877,7 @@ class VideoProcessor: ObservableObject {
             )
             let fileEndTime = Date()
 
-            if conversionSuccess {
+            if case .success = conversionOutcome {
                 // Get file sizes
                 let inputSize = (try? FileManager.default.attributesOfItem(atPath: inputFilePath))?[.size] as? Int64 ?? 0
                 let outputSize = (try? FileManager.default.attributesOfItem(atPath: tempOutputFile))?[.size] as? Int64 ?? 0
@@ -968,7 +977,32 @@ class VideoProcessor: ObservableObject {
                 if filesRemaining > 0 {
                     updateDockBadge(filesRemaining: filesRemaining)
                 }
-            } else {
+            } else if case .skipped(let reason) = conversionOutcome {
+                skippedFileCount += 1
+                addLog("⏱ End time: \(getTimestampString())")
+                addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                addLog("􀇾 SKIPPED: \(fileInfo.name)")
+                addLog("Reason: \(reason)")
+                addLog("No FFmpeg encode was started.")
+                addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                try? FileManager.default.removeItem(atPath: tempOutputFile)
+
+                let skippedFilePath = fileInfo.path
+                DispatchQueue.main.async {
+                    if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == skippedFilePath }) {
+                        var updatedFile = self.videoFiles[fileIndex]
+                        updatedFile.status = .skipped
+                        updatedFile.processingEndTime = fileEndTime
+                        updatedFile.processingTimeSeconds = Int(fileEndTime.timeIntervalSince(fileStartTime))
+                        self.videoFiles[fileIndex] = updatedFile
+                    }
+                }
+
+                let filesRemaining = filesToProcess.count - (index + 1)
+                if filesRemaining > 0 {
+                    updateDockBadge(filesRemaining: filesRemaining)
+                }
+            } else if case .failed(let errorReason) = conversionOutcome {
                 failedFileCount += 1
                 addLog("⏱ End time: \(getTimestampString())")
                 addLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -1040,6 +1074,7 @@ class VideoProcessor: ObservableObject {
         let summary = ProcessingCompletionSummary(
             mode: mode,
             completedFileCount: completedPostProcessFiles.count,
+            skippedFileCount: skippedFileCount,
             failedFileCount: failedFileCount,
             originalBytes: totalOriginalBytes,
             outputBytes: totalOutputBytes,
@@ -1342,23 +1377,27 @@ class VideoProcessor: ObservableObject {
         encodeAudio: Bool = true,
         keepEnglishAudioOnly: Bool,
         keepEnglishSubtitlesOnly: Bool
-    ) async -> (success: Bool, errorReason: String) {
+    ) async -> ConversionOutcome {
         // Probe streams
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
               let videoStreams = await probeStreams(inputFile: inputFile, selectStreams: nil),
               let subtitleStreams = await probeStreams(inputFile: inputFile, selectStreams: "s") else {
             addLog("􀁡 Failed to probe streams (ffprobe couldn't analyze the file)")
-            return (false, "Failed to probe streams")
+            return .failed(reason: "Failed to probe streams")
         }
 
         // Determine audio stream mappings
         let audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly)
+        if keepEnglishAudioOnly, encodeAudio, audioMappings.isEmpty {
+            let reason = audioStreams.streams.isEmpty
+                ? "No audio tracks were found"
+                : "No English or undefined-language audio tracks were found"
+            addLog("􀇾 \(reason). Skipping before encode.")
+            return .skipped(reason: reason)
+        }
+
         if audioMappings.isEmpty {
-            if keepEnglishAudioOnly, !audioStreams.streams.isEmpty {
-                addLog("􀇾 No English/undefined audio found. Processing without audio.")
-            } else {
-                addLog("􀇾 No audio tracks found. Processing as video-only file.")
-            }
+            addLog("􀇾 No audio tracks found. Processing as video-only file.")
         }
 
         // Get video codec
@@ -1375,7 +1414,7 @@ class VideoProcessor: ObservableObject {
             keepEnglishOnly: keepEnglishAudioOnly
            ) {
             addLog("􀁡 \(compatibilityIssue). Please use encode mode.")
-            return (false, "\(compatibilityIssue) - use encode mode instead")
+            return .failed(reason: "\(compatibilityIssue) - use encode mode instead")
         }
 
         // Determine subtitle stream mappings
@@ -1447,9 +1486,9 @@ class VideoProcessor: ObservableObject {
         }
 
         if success {
-            return (true, "")
+            return .success
         } else {
-            return (false, ffmpegError)
+            return .failed(reason: ffmpegError)
         }
     }
 

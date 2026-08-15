@@ -16,7 +16,7 @@ struct ProcessingCompletionOverlayView: View {
   }
 
   private var actionTitle: String {
-    if summary.failedFileCount > 0 {
+    if summary.failedFileCount > 0 || summary.skippedFileCount > 0 {
       return "Processing Complete"
     }
     return isRemux ? "Remux Complete" : "Encoding Complete"
@@ -41,11 +41,28 @@ struct ProcessingCompletionOverlayView: View {
   }
 
   private var completionMessage: String {
-    guard summary.failedFileCount > 0 else {
+    guard summary.failedFileCount > 0 || summary.skippedFileCount > 0 else {
       return "Your batch finished successfully."
     }
-    let noun = summary.failedFileCount == 1 ? "file" : "files"
-    return "\(summary.failedFileCount) \(noun) could not be processed."
+    var results: [String] = []
+    if summary.skippedFileCount > 0 {
+      results.append("\(summary.skippedFileCount) skipped")
+    }
+    if summary.failedFileCount > 0 {
+      results.append("\(summary.failedFileCount) failed")
+    }
+    return "Batch finished with \(results.joined(separator: " and "))."
+  }
+
+  private var completionCountDetail: String? {
+    var results: [String] = []
+    if summary.skippedFileCount > 0 {
+      results.append("\(summary.skippedFileCount) skipped")
+    }
+    if summary.failedFileCount > 0 {
+      results.append("\(summary.failedFileCount) failed")
+    }
+    return results.isEmpty ? nil : results.joined(separator: " • ")
   }
 
   var body: some View {
@@ -58,11 +75,13 @@ struct ProcessingCompletionOverlayView: View {
           VStack(spacing: 20) {
             VStack(spacing: 8) {
               Image(
-                systemName: summary.failedFileCount > 0
+                systemName: summary.failedFileCount > 0 || summary.skippedFileCount > 0
                   ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
               )
                 .font(.system(size: 46))
-                .foregroundStyle(summary.failedFileCount > 0 ? .orange : .green)
+                .foregroundStyle(
+                  summary.failedFileCount > 0 || summary.skippedFileCount > 0 ? .orange : .green
+                )
 
               Text(actionTitle)
                 .font(.title.weight(.semibold))
@@ -77,8 +96,7 @@ struct ProcessingCompletionOverlayView: View {
                 icon: isRemux ? "arrow.left.arrow.right.circle" : "film.stack",
                 title: fileMetricTitle,
                 value: "\(summary.completedFileCount)",
-                detail: summary.failedFileCount > 0
-                  ? "\(summary.failedFileCount) failed" : nil
+                detail: completionCountDetail
               )
               CompletionMetric(
                 icon: summary.savedBytes < 0 ? "arrow.up.right" : "arrow.down.right",

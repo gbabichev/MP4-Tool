@@ -229,6 +229,9 @@ struct MainContentView: View {
                 case .completed:
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                case .skipped:
+                    Image(systemName: "forward.end.circle.fill")
+                        .foregroundStyle(.orange)
                 case .failed:
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.red)
@@ -289,6 +292,11 @@ struct MainContentView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .padding(.leading, 36)
+            } else if file.status == .skipped {
+                Label("No retained English audio tracks", systemImage: "speaker.slash.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(.leading, 36)
             }
         }
         .padding(.horizontal, 10)
@@ -308,6 +316,7 @@ struct MainContentView: View {
             let percent = Int((viewModel.processor.currentFileProgressFraction * 100).rounded())
             return "Processing \(percent)%"
         case .completed: return "Completed"
+        case .skipped: return "Skipped"
         case .failed: return "Failed"
         }
     }
@@ -318,6 +327,7 @@ struct MainContentView: View {
         case .pending: return .secondary
         case .processing: return .accentColor
         case .completed: return .green
+        case .skipped: return .orange
         case .failed: return .red
         }
     }
@@ -328,6 +338,8 @@ struct MainContentView: View {
             return Color.accentColor.opacity(0.08)
         case .failed:
             return Color.red.opacity(0.06)
+        case .skipped:
+            return Color.orange.opacity(0.06)
         default:
             return Color.primary.opacity(0.035)
         }
@@ -427,9 +439,13 @@ private struct ProcessingProgressCard: View {
         processor.videoFiles.filter { $0.status == .failed }.count
     }
 
+    private var skippedCount: Int {
+        processor.videoFiles.filter { $0.status == .skipped }.count
+    }
+
     private var overallProgress: Double {
         guard processor.totalFiles > 0 else { return 0 }
-        let finishedUnits = Double(completedCount + failedCount)
+        let finishedUnits = Double(completedCount + skippedCount + failedCount)
         let currentUnits = processor.videoFiles.contains { $0.status == .processing }
             ? processor.currentFileProgressFraction : 0
         return min(max((finishedUnits + currentUnits) / Double(processor.totalFiles), 0), 1)
