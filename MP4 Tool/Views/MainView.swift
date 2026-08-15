@@ -10,7 +10,17 @@ import UniformTypeIdentifiers
 
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
-    @State private var selectedFileIDs: Set<UUID> = []
+
+    private var selectedFileIDs: Set<UUID> {
+        viewModel.selectedFileIDs
+    }
+
+    private var selectedFileIDsBinding: Binding<Set<UUID>> {
+        Binding(
+            get: { viewModel.selectedFileIDs },
+            set: { viewModel.selectedFileIDs = $0 }
+        )
+    }
 
     var ffmpegSourceLabel: String {
         if viewModel.processor.isUsingSystemFFmpeg {
@@ -88,7 +98,7 @@ struct MainContentView: View {
             // File list - Fills available space
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Files to Process (\(viewModel.processor.videoFiles.count))")
+                    Text("Queue (\(viewModel.processor.videoFiles.count))")
                         .font(.title2)
                         .fontWeight(.semibold)
 
@@ -101,19 +111,19 @@ struct MainContentView: View {
                     .help(
                         viewModel.processor.isProcessing
                             ? "Add files to the active batch"
-                            : "Add files to process"
+                            : "Add files to the queue"
                     )
 
                     Button {
                         viewModel.clearFilesToProcess()
-                        selectedFileIDs.removeAll()
+                        viewModel.selectedFileIDs.removeAll()
                     } label: {
                         Image(systemName: "trash")
                     }
                     .controlSize(.small)
                     .buttonStyle(.borderless)
                     .disabled(viewModel.processor.isProcessing || viewModel.processor.videoFiles.isEmpty)
-                    .help("Clear files to process")
+                    .help("Clear queue")
 
                     Spacer()
                 }
@@ -139,7 +149,7 @@ struct MainContentView: View {
                         handleFileDrop(providers: providers)
                     }
                 } else {
-                    List(selection: $selectedFileIDs) {
+                    List(selection: selectedFileIDsBinding) {
                         ForEach(viewModel.processor.videoFiles) { file in
                             queueRow(for: file)
                                 .tag(file.id)
@@ -471,7 +481,7 @@ struct MainContentView: View {
             viewModel.removeFile(at: index)
         }
 
-        selectedFileIDs.removeAll()
+        viewModel.selectedFileIDs.removeAll()
     }
 
     private func removeFile(filePath: String) {
@@ -484,7 +494,7 @@ struct MainContentView: View {
             } else {
                 // Otherwise, just remove this one file
                 viewModel.removeFile(at: index)
-                selectedFileIDs.remove(fileID)
+                viewModel.selectedFileIDs.remove(fileID)
             }
         }
     }

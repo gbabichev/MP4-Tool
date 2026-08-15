@@ -59,7 +59,7 @@ struct TutorialView: View {
                             Text("Input Folder").bold() +
                             Text(" to scan all videos\n") +
                             Text("• Drag individual files into ") +
-                            Text("Files to Process").bold() +
+                            Text("Queue").bold() +
                             Text("\n• Or use toolbar buttons and keyboard shortcuts ⌘O and ⌘⇧O")
                         }
 

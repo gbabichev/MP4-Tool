@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 import AppKit
 import UserNotifications
 
-private struct DefaultsSnapshot: Equatable {
+private struct ProcessingSettingsSnapshot: Equatable {
     let selectedModeRaw: String
     let crfValue: Double
     let selectedResolutionRaw: String
@@ -25,12 +25,6 @@ private struct DefaultsSnapshot: Equatable {
     let postProcessScriptPath: String
     let postProcessScriptRunTimingRaw: String
     let postProcessScriptPassFileNameAsFirstArgument: Bool
-    let isLogExpanded: Bool
-}
-
-private struct DefaultsPersistenceRequest: Equatable {
-    let snapshot: DefaultsSnapshot
-    let settingsAreInitialized: Bool
 }
 
 struct ContentView: View {
@@ -39,44 +33,26 @@ struct ContentView: View {
     @EnvironmentObject private var windowCommandRegistry: WindowCommandRegistry
     @Environment(\.scenePhase) private var scenePhase
     private let windowID: UUID
-    @SceneStorage("selectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
-    @SceneStorage("crfValue") private var crfValue: Double = 23
-    @SceneStorage("selectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
-    @SceneStorage("selectedPreset") private var selectedPresetRaw: String = PresetOption.fast.rawValue
-    @SceneStorage("encodeVideo") private var encodeVideo: Bool = true
-    @SceneStorage("encodeAudio") private var encodeAudio: Bool = true
-    @SceneStorage("createSubfolders") private var createSubfolders: Bool = false
-    @SceneStorage("automaticRename") private var automaticRename: Bool = false
-    @SceneStorage("deleteOriginal") private var deleteOriginal: Bool = false
-    @SceneStorage("keepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
-    @SceneStorage("keepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
-    @SceneStorage("postProcessScriptPath") private var postProcessScriptPath: String = ""
-    @SceneStorage("postProcessScriptRunTiming") private var postProcessScriptRunTimingRaw: String = PostProcessScriptRunTiming.afterEachItem.rawValue
-    @SceneStorage("postProcessScriptPassFileNameAsFirstArgument") private var postProcessScriptPassFileNameAsFirstArgument: Bool = false
-    @SceneStorage("isLogExpanded") private var isLogExpanded = true
+    @AppStorage("defaultSelectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
+    @AppStorage("defaultCrfValue") private var crfValue: Double = 23
+    @AppStorage("defaultSelectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
+    @AppStorage("defaultSelectedPreset") private var selectedPresetRaw: String = PresetOption.fast.rawValue
+    @AppStorage("defaultEncodeVideo") private var encodeVideo: Bool = true
+    @AppStorage("defaultEncodeAudio") private var encodeAudio: Bool = true
+    @AppStorage("defaultCreateSubfolders") private var createSubfolders: Bool = false
+    @AppStorage("defaultAutomaticRename") private var automaticRename: Bool = false
+    @AppStorage("defaultDeleteOriginal") private var deleteOriginal: Bool = false
+    @AppStorage("defaultKeepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
+    @AppStorage("defaultKeepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
+    @AppStorage("defaultPostProcessScriptPath") private var postProcessScriptPath: String = ""
+    @AppStorage("defaultPostProcessScriptRunTiming") private var postProcessScriptRunTimingRaw: String = PostProcessScriptRunTiming.afterEachItem.rawValue
+    @AppStorage("defaultPostProcessScriptPassFileNameAsFirstArgument") private var postProcessScriptPassFileNameAsFirstArgument: Bool = false
+    @AppStorage("defaultIsLogExpanded") private var isLogExpanded = true
     @SceneStorage("isSettingsExpanded") private var sceneIsSettingsExpanded: Bool?
-    @SceneStorage("didInitializeWindowDefaults") private var didInitializeWindowDefaults = false
-    @AppStorage("defaultSelectedMode") private var defaultSelectedModeRaw: String = ProcessingMode.encodeH265.rawValue
-    @AppStorage("defaultCrfValue") private var defaultCrfValue: Double = 23
-    @AppStorage("defaultSelectedResolution") private var defaultSelectedResolutionRaw: String = ResolutionOption.default.rawValue
-    @AppStorage("defaultSelectedPreset") private var defaultSelectedPresetRaw: String = PresetOption.fast.rawValue
-    @AppStorage("defaultEncodeVideo") private var defaultEncodeVideo: Bool = true
-    @AppStorage("defaultEncodeAudio") private var defaultEncodeAudio: Bool = true
-    @AppStorage("defaultCreateSubfolders") private var defaultCreateSubfolders: Bool = false
-    @AppStorage("defaultAutomaticRename") private var defaultAutomaticRename: Bool = false
-    @AppStorage("defaultDeleteOriginal") private var defaultDeleteOriginal: Bool = false
-    @AppStorage("defaultKeepEnglishAudioOnly") private var defaultKeepEnglishAudioOnly: Bool = true
-    @AppStorage("defaultKeepEnglishSubtitlesOnly") private var defaultKeepEnglishSubtitlesOnly: Bool = true
-    @AppStorage("defaultPostProcessScriptPath") private var defaultPostProcessScriptPath: String = ""
-    @AppStorage("defaultPostProcessScriptRunTiming") private var defaultPostProcessScriptRunTimingRaw: String = PostProcessScriptRunTiming.afterEachItem.rawValue
-    @AppStorage("defaultPostProcessScriptPassFileNameAsFirstArgument") private var defaultPostProcessScriptPassFileNameAsFirstArgument: Bool = false
-    @AppStorage("defaultIsLogExpanded") private var defaultIsLogExpanded = true
-    @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = true
+    @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = false
+    @AppStorage("didAdoptCompactProcessingSetup") private var didAdoptCompactProcessingSetup = false
     @AppStorage("lastOutputFolderPath") private var lastOutputFolderPath: String = ""
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
-    @AppStorage("processingPresets") private var encodedProcessingPresets = ""
-    @AppStorage("selectedProcessingPresetID") private var selectedProcessingPresetIDRawValue = ""
-    @State private var settingsRestoreIsComplete = false
 
     init(viewModel: ContentViewModel, windowID: UUID) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -144,7 +120,8 @@ struct ContentView: View {
     private static let cliVideoExtensions: Set<String> = ["mkv", "mp4", "avi", "mov", "m4v"]
 
     private var isSettingsExpanded: Bool {
-        sceneIsSettingsExpanded ?? defaultIsSettingsExpanded
+        guard didAdoptCompactProcessingSetup else { return false }
+        return sceneIsSettingsExpanded ?? defaultIsSettingsExpanded
     }
 
     private var isSettingsExpandedBinding: Binding<Bool> {
@@ -182,8 +159,8 @@ struct ContentView: View {
         )
     }
 
-    private var defaultsSnapshot: DefaultsSnapshot {
-        DefaultsSnapshot(
+    private var processingSettingsSnapshot: ProcessingSettingsSnapshot {
+        ProcessingSettingsSnapshot(
             selectedModeRaw: selectedModeRaw,
             crfValue: crfValue,
             selectedResolutionRaw: selectedResolutionRaw,
@@ -197,79 +174,13 @@ struct ContentView: View {
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRaw: postProcessScriptRunTimingRaw,
-            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
-            isLogExpanded: isLogExpanded
+            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
         )
     }
 
-    private var defaultsPersistenceRequest: DefaultsPersistenceRequest {
-        DefaultsPersistenceRequest(
-            snapshot: defaultsSnapshot,
-            settingsAreInitialized: settingsRestoreIsComplete
-        )
-    }
-
-    private func persistWindowDefaults(_ snapshot: DefaultsSnapshot) {
-        defaultSelectedModeRaw = snapshot.selectedModeRaw
-        defaultCrfValue = snapshot.crfValue
-        defaultSelectedResolutionRaw = snapshot.selectedResolutionRaw
-        defaultSelectedPresetRaw = snapshot.selectedPresetRaw
-        defaultEncodeVideo = snapshot.encodeVideo
-        defaultEncodeAudio = snapshot.encodeAudio
-        defaultCreateSubfolders = snapshot.createSubfolders
-        defaultAutomaticRename = snapshot.automaticRename
-        defaultDeleteOriginal = snapshot.deleteOriginal
-        defaultKeepEnglishAudioOnly = snapshot.keepEnglishAudioOnly
-        defaultKeepEnglishSubtitlesOnly = snapshot.keepEnglishSubtitlesOnly
-        defaultPostProcessScriptPath = snapshot.postProcessScriptPath
-        defaultPostProcessScriptRunTimingRaw = snapshot.postProcessScriptRunTimingRaw
-        defaultPostProcessScriptPassFileNameAsFirstArgument = snapshot.postProcessScriptPassFileNameAsFirstArgument
-        defaultIsLogExpanded = snapshot.isLogExpanded
+    private func refreshSettingsConsumers() {
         registerCLIHandler()
         registerWindowCommands()
-    }
-
-    private func clearPostProcessFileNameArgumentIfNeeded() {
-        let timing = PostProcessScriptRunTiming(rawValue: postProcessScriptRunTimingRaw) ?? .afterEachItem
-        guard timing != .afterEachItem else { return }
-        postProcessScriptPassFileNameAsFirstArgument = false
-    }
-
-    private func restoreSelectedProcessingPresetIfAvailable() {
-        guard let selectedID = UUID(uuidString: selectedProcessingPresetIDRawValue) else {
-            return
-        }
-
-        let userPresets: [ProcessingPreset]
-        if let data = encodedProcessingPresets.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([ProcessingPreset].self, from: data) {
-            userPresets = decoded
-        } else {
-            userPresets = []
-        }
-
-        guard let preset = (ProcessingPreset.builtInPresets + userPresets)
-            .first(where: { $0.id == selectedID }) else {
-            selectedProcessingPresetIDRawValue = ""
-            return
-        }
-
-        selectedModeRaw = preset.mode.rawValue
-        crfValue = min(max(preset.crfValue, 0), 50)
-        selectedResolutionRaw = preset.resolution.rawValue
-        selectedPresetRaw = preset.encoderPreset.rawValue
-        encodeVideo = preset.encodeVideo
-        encodeAudio = preset.encodeAudio
-        createSubfolders = preset.createSubfolders
-        automaticRename = preset.automaticRename
-        deleteOriginal = preset.deleteOriginal
-        keepEnglishAudioOnly = preset.keepEnglishAudioOnly
-        keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
-        postProcessScriptPath = preset.postProcessScriptPath
-        postProcessScriptRunTimingRaw = preset.postProcessScriptRunTiming.rawValue
-        postProcessScriptPassFileNameAsFirstArgument =
-            preset.postProcessScriptRunTiming == .afterEachItem
-            && preset.postProcessScriptPassFileNameAsFirstArgument
     }
 
     private func enqueueQueuedOffsetFailures(_ notification: Notification) {
@@ -592,7 +503,6 @@ struct ContentView: View {
                     postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
                     postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
                     isProcessing: viewModel.processor.isProcessing,
-                    settingsAreInitialized: settingsRestoreIsComplete,
                     isExpanded: isSettingsExpandedBinding
                 )
 
@@ -601,7 +511,28 @@ struct ContentView: View {
             }
 
             // Main Content - Right Side
-            MainContentView(viewModel: viewModel)
+            VStack(spacing: 0) {
+                CompactProcessingSetupView(
+                    selectedMode: selectedModeBinding,
+                    crfValue: $crfValue,
+                    selectedResolution: selectedResolutionBinding,
+                    encoderPreset: selectedPresetBinding,
+                    encodeVideo: $encodeVideo,
+                    encodeAudio: $encodeAudio,
+                    createSubfolders: $createSubfolders,
+                    automaticRename: $automaticRename,
+                    deleteOriginal: $deleteOriginal,
+                    keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                    keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                    postProcessScriptPath: $postProcessScriptPath,
+                    postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
+                    postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+                    isProcessing: viewModel.processor.isProcessing,
+                    isSettingsExpanded: isSettingsExpandedBinding
+                )
+
+                MainContentView(viewModel: viewModel)
+            }
         }
         .frame(minWidth: 800, minHeight: 360)
         .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
@@ -670,10 +601,6 @@ struct ContentView: View {
                     .help("Clear input and output folders")
                 }
                 
-                
-                ToolbarItem(placement: .status){
-                    Spacer()
-                }
                 
                 ToolbarItem(placement: .primaryAction) {
                     if viewModel.processor.isProcessing {
@@ -756,7 +683,11 @@ struct ContentView: View {
                 clearCompletionNotificationsIfPossible()
             }
             .onAppear {
-                settingsRestoreIsComplete = false
+                if !didAdoptCompactProcessingSetup {
+                    sceneIsSettingsExpanded = false
+                    defaultIsSettingsExpanded = false
+                    didAdoptCompactProcessingSetup = true
+                }
 
                 if !hasSeenTutorial {
                     viewModel.showingTutorial = true
@@ -765,29 +696,6 @@ struct ContentView: View {
                 if sceneIsSettingsExpanded == nil {
                     sceneIsSettingsExpanded = defaultIsSettingsExpanded
                 }
-
-                if !didInitializeWindowDefaults {
-                    selectedModeRaw = defaultSelectedModeRaw
-                    crfValue = defaultCrfValue
-                    selectedResolutionRaw = defaultSelectedResolutionRaw
-                    selectedPresetRaw = defaultSelectedPresetRaw
-                    encodeVideo = defaultEncodeVideo
-                    encodeAudio = defaultEncodeAudio
-                    createSubfolders = defaultCreateSubfolders
-                    automaticRename = defaultAutomaticRename
-                    deleteOriginal = defaultDeleteOriginal
-                    keepEnglishAudioOnly = defaultKeepEnglishAudioOnly
-                    keepEnglishSubtitlesOnly = defaultKeepEnglishSubtitlesOnly
-                    postProcessScriptPath = defaultPostProcessScriptPath
-                    postProcessScriptRunTimingRaw = defaultPostProcessScriptRunTimingRaw
-                    postProcessScriptPassFileNameAsFirstArgument = defaultPostProcessScriptPassFileNameAsFirstArgument
-                    clearPostProcessFileNameArgumentIfNeeded()
-                    isLogExpanded = defaultIsLogExpanded
-                    didInitializeWindowDefaults = true
-                }
-
-                restoreSelectedProcessingPresetIfAvailable()
-                settingsRestoreIsComplete = true
 
                 restoreLastOutputFolderIfAvailable()
                 
@@ -803,8 +711,8 @@ struct ContentView: View {
                 registerWindowCommands()
             }
             .task {
-                var candidateRequest: DefaultsPersistenceRequest?
-                var persistedSnapshot: DefaultsSnapshot?
+                var candidateSnapshot: ProcessingSettingsSnapshot?
+                var registeredSnapshot: ProcessingSettingsSnapshot?
 
                 while !Task.isCancelled {
                     do {
@@ -813,20 +721,15 @@ struct ContentView: View {
                         return
                     }
 
-                    let request = defaultsPersistenceRequest
-                    guard request.settingsAreInitialized else {
-                        candidateRequest = nil
+                    let snapshot = processingSettingsSnapshot
+                    guard candidateSnapshot == snapshot else {
+                        candidateSnapshot = snapshot
                         continue
                     }
 
-                    guard candidateRequest == request else {
-                        candidateRequest = request
-                        continue
-                    }
-
-                    guard persistedSnapshot != request.snapshot else { continue }
-                    persistWindowDefaults(request.snapshot)
-                    persistedSnapshot = request.snapshot
+                    guard registeredSnapshot != snapshot else { continue }
+                    refreshSettingsConsumers()
+                    registeredSnapshot = snapshot
                 }
             }
             .onChange(of: commandAvailability) { _, newValue in
@@ -841,7 +744,6 @@ struct ContentView: View {
                 lastOutputFolderPath = newValue
             }
             .onDisappear {
-                settingsRestoreIsComplete = false
                 windowCommandRegistry.unregister(windowID: windowID)
             }
             .fileExporter(
@@ -857,6 +759,201 @@ struct ContentView: View {
                     viewModel.processor.addLog("􀁡 Failed to export log: \(error.localizedDescription)")
                 }
             }
+    }
+}
+
+private struct CompactProcessingSetupView: View {
+    @Binding var selectedMode: ProcessingMode
+    @Binding var crfValue: Double
+    @Binding var selectedResolution: ResolutionOption
+    @Binding var encoderPreset: PresetOption
+    @Binding var encodeVideo: Bool
+    @Binding var encodeAudio: Bool
+    @Binding var createSubfolders: Bool
+    @Binding var automaticRename: Bool
+    @Binding var deleteOriginal: Bool
+    @Binding var keepEnglishAudioOnly: Bool
+    @Binding var keepEnglishSubtitlesOnly: Bool
+    @Binding var postProcessScriptPath: String
+    @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
+    @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
+    let isProcessing: Bool
+    @Binding var isSettingsExpanded: Bool
+
+    @AppStorage("processingPresets") private var encodedPresets = ""
+    @AppStorage("selectedProcessingPresetID") private var selectedPresetIDRawValue = ""
+
+    private var userPresets: [ProcessingPreset] {
+        guard let data = encodedPresets.data(using: .utf8),
+              let presets = try? JSONDecoder().decode([ProcessingPreset].self, from: data) else {
+            return []
+        }
+        return presets.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private var presets: [ProcessingPreset] {
+        ProcessingPreset.builtInPresets + userPresets
+    }
+
+    private var selectedPresetID: UUID? {
+        get { UUID(uuidString: selectedPresetIDRawValue) }
+        nonmutating set { selectedPresetIDRawValue = newValue?.uuidString ?? "" }
+    }
+
+    private var selectedPresetIDBinding: Binding<UUID?> {
+        Binding(
+            get: { selectedPresetID },
+            set: { selectedPresetID = $0 }
+        )
+    }
+
+    private var selectedProcessingPreset: ProcessingPreset? {
+        guard let selectedPresetID else { return nil }
+        return presets.first { $0.id == selectedPresetID }
+    }
+
+    private var isModified: Bool {
+        guard let selectedProcessingPreset else { return false }
+        return currentPreset(
+            id: selectedProcessingPreset.id,
+            name: selectedProcessingPreset.name
+        ) != selectedProcessingPreset
+    }
+
+    private var settingsSummary: String {
+        switch selectedMode {
+        case .remux:
+            return "Remux • Copy streams without re-encoding"
+        case .encodeH264, .encodeH265:
+            let codec = selectedMode == .encodeH265 ? "H.265" : "H.264"
+            let resolution = selectedResolution == .default
+                ? "Original" : selectedResolution.description
+            return "\(codec) • CRF \(Int(crfValue)) • \(resolution) • \(encoderPreset.description)"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label("Processing Setup", systemImage: "slider.horizontal.3")
+                    .font(.subheadline.weight(.semibold))
+
+                if isModified {
+                    Label("Modified", systemImage: "pencil.circle.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.orange)
+                }
+
+                Spacer()
+
+                Button(isSettingsExpanded ? "Done" : "Customize…") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isSettingsExpanded.toggle()
+                    }
+                }
+                .controlSize(.small)
+                .disabled(isProcessing)
+            }
+
+            HStack(spacing: 12) {
+                Picker("Preset", selection: selectedPresetIDBinding) {
+                    Text("Custom Settings")
+                        .tag(nil as UUID?)
+                    ForEach(presets) { preset in
+                        Text(presetDisplayName(preset))
+                            .tag(Optional(preset.id))
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 220)
+                .disabled(isProcessing)
+
+                Text(settingsSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.secondary.opacity(0.06))
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .onAppear(perform: clearInvalidSelection)
+        .onChange(of: encodedPresets) { _, _ in
+            clearInvalidSelection()
+        }
+        .onChange(of: selectedPresetID) { _, presetID in
+            guard let presetID,
+                  let preset = presets.first(where: { $0.id == presetID }) else {
+                return
+            }
+            apply(preset)
+        }
+    }
+
+    private func presetDisplayName(_ preset: ProcessingPreset) -> String {
+        var name = ProcessingPreset.builtInPresets.contains { $0.id == preset.id }
+            ? "\(preset.name) (Built-in)" : preset.name
+        if preset.id == selectedPresetID, isModified {
+            name += " • Modified"
+        }
+        return name
+    }
+
+    private func clearInvalidSelection() {
+        guard selectedPresetID != nil, selectedProcessingPreset == nil else { return }
+        selectedPresetID = nil
+    }
+
+    private func currentPreset(id: UUID, name: String) -> ProcessingPreset {
+        ProcessingPreset(
+            id: id,
+            name: name,
+            modeRawValue: selectedMode.rawValue,
+            crfValue: crfValue,
+            resolutionRawValue: selectedResolution.rawValue,
+            encoderPresetRawValue: encoderPreset.rawValue,
+            encodeVideo: encodeVideo,
+            encodeAudio: encodeAudio,
+            createSubfolders: createSubfolders,
+            automaticRename: automaticRename,
+            deleteOriginal: deleteOriginal,
+            keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            postProcessScriptPath: postProcessScriptPath,
+            postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
+            postProcessScriptPassFileNameAsFirstArgument:
+                postProcessScriptRunTiming == .afterEachItem
+                && postProcessScriptPassFileNameAsFirstArgument
+        )
+    }
+
+    private func apply(_ preset: ProcessingPreset) {
+        selectedMode = preset.mode
+        crfValue = min(max(preset.crfValue, 0), 50)
+        selectedResolution = preset.resolution
+        encoderPreset = preset.encoderPreset
+        encodeVideo = preset.encodeVideo
+        encodeAudio = preset.encodeAudio
+        createSubfolders = preset.createSubfolders
+        automaticRename = preset.automaticRename
+        deleteOriginal = preset.deleteOriginal
+        keepEnglishAudioOnly = preset.keepEnglishAudioOnly
+        keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
+        postProcessScriptPath = preset.postProcessScriptPath
+        postProcessScriptRunTiming = preset.postProcessScriptRunTiming
+        postProcessScriptPassFileNameAsFirstArgument =
+            preset.postProcessScriptRunTiming == .afterEachItem
+            && preset.postProcessScriptPassFileNameAsFirstArgument
     }
 }
 
@@ -915,7 +1012,6 @@ struct ExpandedSettingsPanel: View {
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
-    let settingsAreInitialized: Bool
     @Binding var isExpanded: Bool
     
     var body: some View {
@@ -936,7 +1032,6 @@ struct ExpandedSettingsPanel: View {
                 postProcessScriptRunTiming: $postProcessScriptRunTiming,
                 postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
                 isProcessing: isProcessing,
-                settingsAreInitialized: settingsAreInitialized,
                 isExpanded: $isExpanded
             )
             .frame(width: 400)

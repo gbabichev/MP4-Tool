@@ -8,21 +8,6 @@
 import SwiftUI
 import AppKit
 
-private struct PresetModificationSnapshot: Equatable {
-    let settingsAreInitialized: Bool
-    let selectedPreset: ProcessingPreset?
-    let currentSettings: ProcessingPreset?
-
-    var isModified: Bool {
-        guard settingsAreInitialized,
-              let selectedPreset,
-              let currentSettings else {
-            return false
-        }
-        return selectedPreset != currentSettings
-    }
-}
-
 struct SettingsView: View {
     @Binding var selectedMode: ProcessingMode
     @Binding var crfValue: Double
@@ -39,14 +24,12 @@ struct SettingsView: View {
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
     let isProcessing: Bool
-    let settingsAreInitialized: Bool
     @Binding var isExpanded: Bool
     @AppStorage("processingPresets") private var encodedPresets = ""
     @AppStorage("selectedProcessingPresetID") private var selectedProcessingPresetIDRawValue = ""
     @State private var isShowingSavePresetAlert = false
     @State private var isShowingDeletePresetAlert = false
     @State private var newPresetName = ""
-    @State private var displaysModifiedState = false
 
     private var userProcessingPresets: [ProcessingPreset] {
         guard let data = encodedPresets.data(using: .utf8),
@@ -67,13 +50,6 @@ struct SettingsView: View {
         nonmutating set { selectedProcessingPresetIDRawValue = newValue?.uuidString ?? "" }
     }
 
-    private var selectedProcessingPresetIDBinding: Binding<UUID?> {
-        Binding(
-            get: { selectedProcessingPresetID },
-            set: { selectedProcessingPresetID = $0 }
-        )
-    }
-
     private var selectedProcessingPreset: ProcessingPreset? {
         guard let selectedProcessingPresetID else { return nil }
         return processingPresets.first { $0.id == selectedProcessingPresetID }
@@ -85,26 +61,11 @@ struct SettingsView: View {
     }
 
     private var selectedPresetIsModified: Bool {
-        displaysModifiedState && presetModificationSnapshot.isModified
-    }
-
-    private var presetModificationSnapshot: PresetModificationSnapshot {
-        guard let selectedProcessingPreset else {
-            return PresetModificationSnapshot(
-                settingsAreInitialized: settingsAreInitialized,
-                selectedPreset: nil,
-                currentSettings: nil
-            )
-        }
-
-        return PresetModificationSnapshot(
-            settingsAreInitialized: settingsAreInitialized,
-            selectedPreset: selectedProcessingPreset,
-            currentSettings: currentPreset(
-                id: selectedProcessingPreset.id,
-                name: selectedProcessingPreset.name
-            )
-        )
+        guard let selectedProcessingPreset else { return false }
+        return currentPreset(
+            id: selectedProcessingPreset.id,
+            name: selectedProcessingPreset.name
+        ) != selectedProcessingPreset
     }
 
     private var newPresetUsesReservedName: Bool {
@@ -117,7 +78,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Settings")
+                Text("Customize Preset")
                     .font(.title3)
                     .fontWeight(.semibold)
 
@@ -242,41 +203,6 @@ struct SettingsView: View {
         .onChange(of: encodedPresets) { _, _ in
             clearInvalidPresetSelection()
         }
-        .onChange(of: selectedProcessingPresetID) { _, presetID in
-            guard let presetID,
-                  let preset = processingPresets.first(where: { $0.id == presetID }) else {
-                return
-            }
-            apply(preset)
-        }
-        .task {
-            var candidateSnapshot: PresetModificationSnapshot?
-            var stableObservationCount = 0
-
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(nanoseconds: 50_000_000)
-                } catch {
-                    return
-                }
-
-                let snapshot = presetModificationSnapshot
-                if candidateSnapshot == snapshot {
-                    stableObservationCount += 1
-                } else {
-                    candidateSnapshot = snapshot
-                    stableObservationCount = 0
-                    displaysModifiedState = false
-                }
-
-                if stableObservationCount >= 2 {
-                    displaysModifiedState = snapshot.isModified
-                }
-            }
-        }
-        .onDisappear {
-            displaysModifiedState = false
-        }
         .alert("Save Processing Preset", isPresented: $isShowingSavePresetAlert) {
             TextField("Preset Name", text: $newPresetName)
             Button("Cancel", role: .cancel) {}
@@ -308,18 +234,19 @@ struct SettingsView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Picker("Processing Preset", selection: selectedProcessingPresetIDBinding) {
-                        Text(processingPresets.isEmpty ? "No Saved Presets" : "Choose a Preset")
-                            .tag(nil as UUID?)
-                        ForEach(processingPresets) { preset in
-                            Text(presetDisplayName(preset))
-                                .tag(Optional(preset.id))
-                        }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Selected Preset")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text(
+                            selectedProcessingPreset.map(presetDisplayName)
+                                ?? "Custom Settings"
+                        )
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .disabled(isProcessing || processingPresets.isEmpty)
 
                     Button {
                         newPresetName = ""
@@ -333,10 +260,27 @@ struct SettingsView: View {
                     Button {
                         updateSelectedPreset()
                     } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Image(systemName: "square.and.arrow.down")
                     }
-                    .help("Update selected preset with current settings")
-                    .disabled(isProcessing || selectedProcessingPreset == nil || selectedPresetIsBuiltIn)
+                    .help("Save changes to the selected preset")
+                    .disabled(
+                        isProcessing
+                        || selectedProcessingPreset == nil
+                        || selectedPresetIsBuiltIn
+                        || !selectedPresetIsModified
+                    )
+
+                    Button {
+                        resetSelectedPreset()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .help("Discard unsaved changes and restore the selected preset")
+                    .disabled(
+                        isProcessing
+                        || selectedProcessingPreset == nil
+                        || !selectedPresetIsModified
+                    )
 
                     Button(role: .destructive) {
                         isShowingDeletePresetAlert = true
@@ -358,14 +302,14 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                 } else {
-                    Text("Choose a preset to apply it, or save the current settings for later.")
+                    Text("Choose presets from Processing Setup, or save these settings for later.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             .padding(.vertical, 4)
         } label: {
-            Label("Processing Presets", systemImage: "slider.horizontal.3")
+            Label("Preset Management", systemImage: "slider.horizontal.3")
                 .font(.subheadline.weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -440,6 +384,11 @@ struct SettingsView: View {
         persist(presets)
     }
 
+    private func resetSelectedPreset() {
+        guard let selectedProcessingPreset else { return }
+        apply(selectedProcessingPreset)
+    }
+
     private func deleteSelectedPreset() {
         guard let selectedProcessingPresetID else { return }
         guard !selectedPresetIsBuiltIn else { return }
@@ -474,6 +423,7 @@ struct SettingsView: View {
             preset.postProcessScriptRunTiming == .afterEachItem
             && preset.postProcessScriptPassFileNameAsFirstArgument
     }
+
 }
 
 private struct PostProcessScriptSettingsSection: View {

@@ -19,6 +19,7 @@ class ContentViewModel: ObservableObject {
     @Published var logExportDocument: LogDocument?
     @Published var showingTutorial = false
     @Published var showingAbout = false
+    @Published var selectedFileIDs: Set<UUID> = []
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -227,6 +228,7 @@ class ContentViewModel: ObservableObject {
         outputFolderPath = ""
         processor.logText = ""
         processor.videoFiles = []
+        selectedFileIDs.removeAll()
         processor.totalFiles = 0
         processor.processingHadError = false
         processor.clearDockBadge()
@@ -234,12 +236,14 @@ class ContentViewModel: ObservableObject {
 
     func clearFilesToProcess() {
         processor.videoFiles = []
+        selectedFileIDs.removeAll()
         processor.totalFiles = 0
         processor.processingHadError = false
     }
 
     func removeFile(at index: Int) {
         guard index < processor.videoFiles.count else { return }
+        selectedFileIDs.remove(processor.videoFiles[index].id)
         processor.videoFiles.remove(at: index)
         processor.totalFiles = processor.videoFiles.count
     }
