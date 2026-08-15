@@ -563,6 +563,7 @@ struct ContentView: View {
                     viewModel.processor.logText = ""
                 }
             )
+            .inspectorColumnWidth(min: 280, ideal: 400, max: 700)
         }
     }
     
