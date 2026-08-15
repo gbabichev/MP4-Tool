@@ -313,10 +313,10 @@ class VideoProcessor: ObservableObject {
         addLog("Bundled FFmpeg: \(self.hasBundledFFmpeg ? "✓ Available" : "✗ Not Available")")
         addLog("System FFmpeg: \(hasSystemFfmpeg ? "✓ Available" : "✗ Not Available")")
 
-        // If multiple FFmpeg options available, show how to change
+        // If multiple FFmpeg options are available, show where to choose one.
         let availableCount = (self.hasBundledFFmpeg ? 1 : 0) + (hasSystemFfmpeg ? 1 : 0)
         if availableCount > 1 {
-            addLog("Multiple FFmpeg versions available - use Tools > Toggle FFmpeg Source to switch")
+            addLog("Multiple FFmpeg versions available - choose a source in Processing Setup")
         }
 
         // Restore the preferred source when available, otherwise use the available fallback.

@@ -15,7 +15,6 @@ struct WindowCommandActions {
     let exportLog: () -> Void
     let showTutorial: () -> Void
     let showAbout: () -> Void
-    let toggleFFmpegSource: () -> Void
 }
 
 struct WindowCommandAvailability: Equatable {
@@ -23,7 +22,6 @@ struct WindowCommandAvailability: Equatable {
     var isProcessing = false
     var canClearFolders = false
     var canExportLog = false
-    var canToggleFFmpeg = false
 }
 
 @MainActor

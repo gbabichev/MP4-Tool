@@ -173,17 +173,6 @@ struct MP4_ToolApp: App {
 
                 Divider()
 
-                if windowCommandRegistry.activeAvailability.canToggleFFmpeg {
-                    Button(action: {
-                        windowCommandRegistry.activeActions?.toggleFFmpegSource()
-                    }) {
-                        Label("Toggle FFmpeg Source", systemImage: "arrow.triangle.swap")
-                    }
-                    .help("Switch between bundled and system FFmpeg")
-
-                    Divider()
-                }
-                
                 Button(action: {
                     openWindow(id: "videoSplitter")
                 }) {

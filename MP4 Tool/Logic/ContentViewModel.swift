@@ -191,6 +191,14 @@ class ContentViewModel: ObservableObject {
             guard response == .alertSecondButtonReturn else { return }
         }
 
+        // Starting the batch confirms any replacement warnings. Remove them from
+        // the queue immediately instead of showing "Needs Attention" throughout
+        // a run the user has already approved.
+        for index in processor.videoFiles.indices {
+            processor.videoFiles[index].hasConflict = false
+            processor.videoFiles[index].conflictReason = ""
+        }
+
         Task {
             await processor.processFolder(
                 inputPath: inputFolderPath,
@@ -303,8 +311,4 @@ class ContentViewModel: ObservableObject {
         showingAbout = true
     }
 
-    func toggleFFmpegSource() {
-        // Toggle between bundled and system FFmpeg
-        processor.toggleFFmpegSource(useSystem: !processor.isUsingSystemFFmpeg)
-    }
 }

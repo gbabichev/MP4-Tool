@@ -144,8 +144,7 @@ struct ContentView: View {
             },
             exportLog: { viewModel.exportLogToFile() },
             showTutorial: { viewModel.showTutorial() },
-            showAbout: { viewModel.showAbout() },
-            toggleFFmpegSource: { viewModel.toggleFFmpegSource() }
+            showAbout: { viewModel.showAbout() }
         )
     }
 
@@ -154,8 +153,7 @@ struct ContentView: View {
             canStartProcessing: viewModel.canStartProcessing,
             isProcessing: viewModel.processor.isProcessing,
             canClearFolders: !(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty),
-            canExportLog: !viewModel.processor.logText.isEmpty,
-            canToggleFFmpeg: viewModel.processor.hasBundledFFmpeg && viewModel.processor.hasSystemFFmpeg
+            canExportLog: !viewModel.processor.logText.isEmpty
         )
     }
 
@@ -527,8 +525,25 @@ struct ContentView: View {
                     postProcessScriptPath: $postProcessScriptPath,
                     postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
                     postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+                    outputFolderPath: viewModel.outputFolderPath,
+                    ffmpegAvailable: viewModel.processor.ffmpegAvailable,
+                    hasBundledFFmpeg: viewModel.processor.hasBundledFFmpeg,
+                    hasSystemFFmpeg: viewModel.processor.hasSystemFFmpeg,
+                    isUsingSystemFFmpeg: viewModel.processor.isUsingSystemFFmpeg,
                     isProcessing: viewModel.processor.isProcessing,
-                    isSettingsExpanded: isSettingsExpandedBinding
+                    isSettingsExpanded: isSettingsExpandedBinding,
+                    onSelectFFmpegSource: { useSystem in
+                        viewModel.processor.toggleFFmpegSource(useSystem: useSystem)
+                    },
+                    onChooseOutputFolder: {
+                        viewModel.selectFolder(isInput: false)
+                    },
+                    onOpenOutputFolder: {
+                        viewModel.openOutputFolderInFinder()
+                    },
+                    onSetOutputFolder: { path in
+                        viewModel.setOutputFolder(path: path)
+                    }
                 )
 
                 MainContentView(viewModel: viewModel)
@@ -580,27 +595,6 @@ struct ContentView: View {
                     .help(viewModel.inputFolderPath.isEmpty ? "Select input folder" : viewModel.inputFolderPath)
                     //.foregroundStyle(.orange)
                 }
-                
-                ToolbarItem(placement: .navigation) {
-                    Button(action: {
-                        viewModel.selectFolder(isInput: false)
-                    }) {
-                        Label("Output Folder", systemImage: "folder.badge.plus")
-                    }
-                    .disabled(viewModel.processor.isProcessing)
-                    .help(viewModel.outputFolderPath.isEmpty ? "Select output folder" : viewModel.outputFolderPath)
-                }
-                
-                ToolbarItem(placement: .navigation) {
-                    Button(action: {
-                        viewModel.clearFolders()
-                    }) {
-                        Label("Clear All", systemImage: "arrow.counterclockwise")
-                    }
-                    .disabled(viewModel.processor.isProcessing || (viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty))
-                    .help("Clear input and output folders")
-                }
-                
                 
                 ToolbarItem(placement: .primaryAction) {
                     if viewModel.processor.isProcessing {
@@ -777,8 +771,17 @@ private struct CompactProcessingSetupView: View {
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
+    let outputFolderPath: String
+    let ffmpegAvailable: Bool
+    let hasBundledFFmpeg: Bool
+    let hasSystemFFmpeg: Bool
+    let isUsingSystemFFmpeg: Bool
     let isProcessing: Bool
     @Binding var isSettingsExpanded: Bool
+    let onSelectFFmpegSource: (Bool) -> Void
+    let onChooseOutputFolder: () -> Void
+    let onOpenOutputFolder: () -> Void
+    let onSetOutputFolder: (String) -> Void
 
     @AppStorage("processingPresets") private var encodedPresets = ""
     @AppStorage("selectedProcessingPresetID") private var selectedPresetIDRawValue = ""
@@ -834,6 +837,26 @@ private struct CompactProcessingSetupView: View {
         }
     }
 
+    private var ffmpegSourceBinding: Binding<Bool> {
+        Binding(
+            get: { isUsingSystemFFmpeg },
+            set: { newValue in
+                onSelectFFmpegSource(newValue)
+            }
+        )
+    }
+
+    private var availableFFmpegSourceCount: Int {
+        (hasBundledFFmpeg ? 1 : 0) + (hasSystemFFmpeg ? 1 : 0)
+    }
+
+    private var ffmpegSourceDescription: String {
+        guard ffmpegAvailable else { return "FFmpeg and FFprobe were not found" }
+        return isUsingSystemFFmpeg
+            ? "Uses the version installed on this Mac"
+            : "Uses the version included with MP4 Tool"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
@@ -879,6 +902,83 @@ private struct CompactProcessingSetupView: View {
 
                 Spacer(minLength: 0)
             }
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Image(systemName: ffmpegAvailable ? "terminal.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(ffmpegAvailable ? Color.accentColor : Color.orange)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("FFmpeg")
+                        .font(.caption.weight(.medium))
+
+                    Text(ffmpegSourceDescription)
+                        .font(.caption)
+                        .foregroundStyle(ffmpegAvailable ? Color.secondary : Color.orange)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 10)
+
+                if ffmpegAvailable {
+                    Picker("FFmpeg Source", selection: ffmpegSourceBinding) {
+                        if hasBundledFFmpeg {
+                            Text("Bundled").tag(false)
+                        }
+                        if hasSystemFFmpeg {
+                            Text("System").tag(true)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 130)
+                    .disabled(isProcessing || availableFFmpegSourceCount < 2)
+                    .help(
+                        availableFFmpegSourceCount < 2
+                            ? "Only one FFmpeg source is available"
+                            : "Choose which FFmpeg installation to use"
+                    )
+                } else {
+                    Text("Not Available")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Image(systemName: outputFolderPath.isEmpty ? "folder.badge.plus" : "folder.fill")
+                    .foregroundStyle(
+                        outputFolderPath.isEmpty ? Color.secondary : Color.accentColor
+                    )
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Output Folder")
+                        .font(.caption.weight(.medium))
+
+                    Text(outputFolderPath.isEmpty ? "Choose or drop an output folder here" : outputFolderPath)
+                        .font(.caption)
+                        .foregroundStyle(outputFolderPath.isEmpty ? .tertiary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 10)
+
+                Button("Choose…", action: onChooseOutputFolder)
+                    .controlSize(.small)
+                    .disabled(isProcessing)
+
+                Button("Open", action: onOpenOutputFolder)
+                    .controlSize(.small)
+                    .disabled(outputFolderPath.isEmpty)
+            }
+            .contentShape(Rectangle())
+            .onDrop(of: [.fileURL], isTargeted: nil, perform: handleOutputFolderDrop)
         }
         .padding(12)
         .background(
@@ -912,6 +1012,26 @@ private struct CompactProcessingSetupView: View {
     private func clearInvalidSelection() {
         guard selectedPresetID != nil, selectedProcessingPreset == nil else { return }
         selectedPresetID = nil
+    }
+
+    private func handleOutputFolderDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !isProcessing, let provider = providers.first else { return false }
+
+        _ = provider.loadObject(ofClass: URL.self) { url, error in
+            guard let url, error == nil else { return }
+
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                onSetOutputFolder(url.path)
+            }
+        }
+
+        return true
     }
 
     private func currentPreset(id: UUID, name: String) -> ProcessingPreset {

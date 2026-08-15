@@ -18,81 +18,27 @@ struct MainContentView: View {
     private var selectedFileIDsBinding: Binding<Set<UUID>> {
         Binding(
             get: { viewModel.selectedFileIDs },
-            set: { viewModel.selectedFileIDs = $0 }
-        )
-    }
+            set: { newSelection in
+                guard newSelection != viewModel.selectedFileIDs else { return }
 
-    var ffmpegSourceLabel: String {
-        if viewModel.processor.isUsingSystemFFmpeg {
-            return "FFmpeg: System"
-        } else if !viewModel.processor.bundledFfmpegPath.isEmpty {
-            return "FFmpeg: Bundled"
-        } else {
-            return "FFmpeg: None"
-        }
+                // List can normalize its selection while SwiftUI is updating the
+                // view hierarchy. Publish the persisted selection on the next run
+                // loop so that normalization does not mutate observable state mid-update.
+                DispatchQueue.main.async {
+                    guard newSelection != viewModel.selectedFileIDs else { return }
+                    viewModel.selectedFileIDs = newSelection
+                }
+            }
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Output Folder
-            HStack(alignment: .top) {
-                if !viewModel.outputFolderPath.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 8) {
-                            Text("Output Folder")
-                                .font(.title2)
-                                .fontWeight(.semibold)
-
-                            Button("Open") {
-                                viewModel.openOutputFolderInFinder()
-                            }
-                            .controlSize(.small)
-                        }
-                        Text(viewModel.outputFolderPath)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 8) {
-                            Text("Output Folder")
-                                .font(.title2)
-                                .fontWeight(.semibold)
-
-                            Button("Open") {
-                                viewModel.openOutputFolderInFinder()
-                            }
-                            .controlSize(.small)
-                            .disabled(true)
-                        }
-                        HStack(spacing: 4) {
-                            Image(systemName: "folder.badge.plus")
-                                .font(.caption2)
-                            Text("Select output or drop folder here")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    }
-                }
-                Spacer()
-            }
-            .frame(minHeight: 35)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal)
-            .contentShape(Rectangle())
-            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                handleDrop(providers: providers)
-            }
-
             if viewModel.processor.isProcessing {
                 ProcessingProgressCard(processor: viewModel.processor)
                     .padding(.horizontal)
                     .padding(.top, 18)
                     .transition(.move(edge: .top).combined(with: .opacity))
-            } else {
-                idleStatusSection
-                    .padding(.horizontal)
-                    .padding(.top, 18)
             }
 
             // File list - Fills available space
@@ -179,40 +125,6 @@ struct MainContentView: View {
         .padding()
     }
 
-    private var idleStatusSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Status")
-                    .font(.title2.weight(.semibold))
-                Spacer()
-            }
-
-            HStack(spacing: 8) {
-                Image(
-                    systemName: viewModel.processor.ffmpegAvailable
-                        ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                )
-                .foregroundStyle(viewModel.processor.ffmpegAvailable ? .green : .orange)
-
-                Text(viewModel.processor.ffmpegAvailable ? ffmpegSourceLabel : "FFmpeg: Not Available")
-                    .foregroundStyle(
-                        viewModel.processor.ffmpegAvailable ? Color.secondary : Color.orange
-                    )
-
-                Spacer()
-
-                Text("Ready to process")
-                    .foregroundStyle(.secondary)
-            }
-            .font(.caption)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.secondary.opacity(0.06))
-            )
-        }
-    }
-
     private func chooseFilesToAdd() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -257,24 +169,6 @@ struct MainContentView: View {
                 viewModel.addVideoFile(url: url)
             }
         }
-    }
-
-    private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-
-        _ = provider.loadObject(ofClass: URL.self) { url, error in
-            guard let url = url, error == nil else { return }
-
-            // Check if it's a directory
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
-                DispatchQueue.main.async {
-                    viewModel.setOutputFolder(path: url.path)
-                }
-            }
-        }
-
-        return true
     }
 
     private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
