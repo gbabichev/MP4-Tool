@@ -24,6 +24,8 @@ struct VideoStream: Codable {
     let tags: [String: String]?
     let width: Int?
     let height: Int?
+    let averageFrameRate: String?
+    let realFrameRate: String?
 
     enum CodingKeys: String, CodingKey {
         case index
@@ -36,6 +38,8 @@ struct VideoStream: Codable {
         case tags
         case width
         case height
+        case averageFrameRate = "avg_frame_rate"
+        case realFrameRate = "r_frame_rate"
     }
 }
 
@@ -252,7 +256,11 @@ class VideoProcessor: ObservableObject {
 
     private var startTime: Date?
     private var currentInputDurationSeconds: TimeInterval?
+    private var currentInputFrameRate: Double?
     private var currentEncodedTimeSeconds: TimeInterval = 0
+    private var latestFFmpegTimestampSeconds: TimeInterval?
+    private var lastFFmpegTimestampAdvanceAt: Date?
+    private var estimatedBatchCompletionDate: Date?
     private var ffmpegProgressTail: String = ""
     private var timer: Timer?
     private nonisolated(unsafe) var shouldCancelScan = false
@@ -274,6 +282,10 @@ class VideoProcessor: ObservableObject {
     private static let ffmpegTimeRegex: NSRegularExpression = {
         let pattern = #"(?:time|out_time)=\s*([0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?)"#
         return try! NSRegularExpression(pattern: pattern)
+    }()
+
+    private static let ffmpegFrameRegex: NSRegularExpression = {
+        try! NSRegularExpression(pattern: #"(?:^|[\r\n])frame=\s*([0-9]+)"#)
     }()
 
     init() {
@@ -503,6 +515,34 @@ class VideoProcessor: ObservableObject {
         return TimeInterval(hours * 3600) + TimeInterval(minutes * 60) + seconds
     }
 
+    private static func latestFFmpegFrame(in text: String) -> Int? {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = ffmpegFrameRegex.matches(in: text, range: range)
+        guard let match = matches.last,
+              let captureRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return Int(text[captureRange])
+    }
+
+    private static func frameRate(from value: String?) -> Double? {
+        guard let value, !value.isEmpty else { return nil }
+
+        let components = value.split(separator: "/", omittingEmptySubsequences: false)
+        let frameRate: Double?
+        if components.count == 2,
+           let numerator = Double(components[0]),
+           let denominator = Double(components[1]),
+           denominator != 0 {
+            frameRate = numerator / denominator
+        } else {
+            frameRate = Double(value)
+        }
+
+        guard let frameRate, frameRate.isFinite, frameRate > 0 else { return nil }
+        return frameRate
+    }
+
     private func estimateCurrentFileETASeconds(elapsedWallSeconds: TimeInterval) -> TimeInterval? {
         guard let duration = currentInputDurationSeconds,
               duration > 0,
@@ -551,18 +591,35 @@ class VideoProcessor: ObservableObject {
         return currentFileETA + (Double(remainingAfterCurrent) * perFileEstimate)
     }
 
+    private func continuousBatchETASeconds(
+        freshEstimate: TimeInterval?,
+        now: Date
+    ) -> TimeInterval? {
+        if let freshEstimate, freshEstimate.isFinite, freshEstimate >= 0 {
+            estimatedBatchCompletionDate = now.addingTimeInterval(freshEstimate)
+            return freshEstimate
+        }
+
+        guard let estimatedBatchCompletionDate else {
+            return nil
+        }
+        return max(estimatedBatchCompletionDate.timeIntervalSince(now), 0)
+    }
+
     func processingETASnapshot() -> (currentFileSeconds: Int?, totalSeconds: Int?) {
         guard isProcessing, let startTime else {
             return (nil, nil)
         }
 
-        let elapsedWallSeconds = Date().timeIntervalSince(startTime)
+        let now = Date()
+        let elapsedWallSeconds = now.timeIntervalSince(startTime)
         let currentETA = estimateCurrentFileETASeconds(elapsedWallSeconds: elapsedWallSeconds)
         let currentFileEstimatedTotal = currentETA.map { elapsedWallSeconds + $0 }
-        let totalETA = estimateAllFilesETASeconds(
+        let freshTotalETA = estimateAllFilesETASeconds(
             currentFileETA: currentETA,
             currentFileEstimatedTotalWallSeconds: currentFileEstimatedTotal
         )
+        let totalETA = continuousBatchETASeconds(freshEstimate: freshTotalETA, now: now)
 
         return (
             currentETA.map { max(Int($0.rounded(.up)), 0) },
@@ -586,10 +643,11 @@ class VideoProcessor: ObservableObject {
         }
 
         let currentFileEstimatedTotal = currentETA.map { elapsedWallSeconds + $0 }
-        if let allETA = estimateAllFilesETASeconds(
+        let freshAllETA = estimateAllFilesETASeconds(
             currentFileETA: currentETA,
             currentFileEstimatedTotalWallSeconds: currentFileEstimatedTotal
-        ) {
+        )
+        if let allETA = continuousBatchETASeconds(freshEstimate: freshAllETA, now: Date()) {
             parts.append("ETA all: \(formatDuration(seconds: max(Int(allETA), 0)))")
         }
 
@@ -600,7 +658,22 @@ class VideoProcessor: ObservableObject {
     private func ingestFFmpegProgressChunk(_ chunk: String) {
         let combined = ffmpegProgressTail + chunk
         if let latestTime = Self.latestFFmpegMediaTimeSeconds(in: combined) {
-            currentEncodedTimeSeconds = latestTime
+            if latestFFmpegTimestampSeconds == nil || latestTime > (latestFFmpegTimestampSeconds ?? 0) + 0.001 {
+                latestFFmpegTimestampSeconds = latestTime
+                lastFFmpegTimestampAdvanceAt = Date()
+            }
+            currentEncodedTimeSeconds = max(currentEncodedTimeSeconds, latestTime)
+        }
+
+        let timestampIsUnavailableOrStale = lastFFmpegTimestampAdvanceAt.map {
+            Date().timeIntervalSince($0) >= 5
+        } ?? true
+
+        if timestampIsUnavailableOrStale,
+           let frame = Self.latestFFmpegFrame(in: combined),
+           let frameRate = currentInputFrameRate {
+            let frameBasedTime = TimeInterval(frame) / frameRate
+            currentEncodedTimeSeconds = max(currentEncodedTimeSeconds, frameBasedTime)
         }
         ffmpegProgressTail = String(combined.suffix(256))
     }
@@ -677,7 +750,11 @@ class VideoProcessor: ObservableObject {
             self.currentFileIndex = 0
             self.encodingProgress = ""
             self.currentInputDurationSeconds = nil
+            self.currentInputFrameRate = nil
             self.currentEncodedTimeSeconds = 0
+            self.latestFFmpegTimestampSeconds = nil
+            self.lastFFmpegTimestampAdvanceAt = nil
+            self.estimatedBatchCompletionDate = nil
             self.ffmpegProgressTail = ""
             self.currentFileProgressFraction = 0
             self.shouldCancelProcessing = false
@@ -844,7 +921,10 @@ class VideoProcessor: ObservableObject {
             let sourceDuration = await probeDurationSeconds(inputFile: inputFilePath)
             DispatchQueue.main.async {
                 self.currentInputDurationSeconds = sourceDuration
+                self.currentInputFrameRate = nil
                 self.currentEncodedTimeSeconds = 0
+                self.latestFFmpegTimestampSeconds = nil
+                self.lastFFmpegTimestampAdvanceAt = nil
                 self.ffmpegProgressTail = ""
                 self.currentFileProgressFraction = 0
             }
@@ -1094,7 +1174,11 @@ class VideoProcessor: ObservableObject {
             self.activeMode = nil
             self.shouldCancelProcessing = false
             self.currentInputDurationSeconds = nil
+            self.currentInputFrameRate = nil
             self.currentEncodedTimeSeconds = 0
+            self.latestFFmpegTimestampSeconds = nil
+            self.lastFFmpegTimestampAdvanceAt = nil
+            self.estimatedBatchCompletionDate = nil
             self.ffmpegProgressTail = ""
             self.currentFileProgressFraction = 0
             if !wasCancelled {
@@ -1406,6 +1490,13 @@ class VideoProcessor: ObservableObject {
         // Get video dimensions
         let videoDimensions = getVideoDimensions(videoStreams: videoStreams)
 
+        // FFmpeg's mux-level out_time can be unavailable or stale for some files.
+        // Retain the source frame rate so frame= can provide a progress fallback.
+        let videoFrameRate = getVideoFrameRate(videoStreams: videoStreams)
+        await MainActor.run {
+            self.currentInputFrameRate = videoFrameRate
+        }
+
         if mode == .remux,
            let compatibilityIssue = await remuxCompatibilityIssue(
             inputFile: inputFile,
@@ -1712,6 +1803,14 @@ class VideoProcessor: ObservableObject {
             return nil
         }
         return (width, height)
+    }
+
+    private func getVideoFrameRate(videoStreams: FFProbeOutput) -> Double? {
+        guard let videoStream = videoStreams.streams.first(where: { $0.codecType == "video" }) else {
+            return nil
+        }
+        return Self.frameRate(from: videoStream.averageFrameRate)
+            ?? Self.frameRate(from: videoStream.realFrameRate)
     }
 
     private func getSubtitleMappings(
