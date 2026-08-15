@@ -9,23 +9,73 @@ let queueMP4ValidationFlaggedFilesPathsKey = "paths"
 
 private struct MP4ValidationAudioProbeOutput: Decodable {
     let streams: [MP4ValidationAudioStream]
+    let format: MP4ValidationProbeFormat?
 }
 
 private struct MP4ValidationAudioStream: Decodable {
+    let index: Int
     let codecName: String?
     let codecTagString: String?
     let sampleFormat: String?
+    let channels: Int?
+    let channelLayout: String?
+    let startTime: String?
+    let duration: String?
+    let disposition: MP4ValidationStreamDisposition?
+    let tags: [String: String]?
 
     enum CodingKeys: String, CodingKey {
+        case index
         case codecName = "codec_name"
         case codecTagString = "codec_tag_string"
         case sampleFormat = "sample_fmt"
+        case channels
+        case channelLayout = "channel_layout"
+        case startTime = "start_time"
+        case duration
+        case disposition
+        case tags
     }
+}
+
+private struct MP4ValidationStreamDisposition: Decodable {
+    let isDefault: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case isDefault = "default"
+    }
+}
+
+private struct MP4ValidationProbeFormat: Decodable {
+    let duration: String?
 }
 
 private struct MP4ValidationAudioCompatibility {
     let hasAudioStreams: Bool
     let issues: [String]
+    let streams: [MP4ValidationAudioStream]
+    let formatDuration: TimeInterval?
+}
+
+struct MP4AudioRepairCandidate: Equatable {
+    let streamIndex: Int
+    let audioIndex: Int
+}
+
+private struct MP4ValidationAudioAuthoringAnalysis {
+    let warnings: [String]
+    let repairCandidates: [MP4AudioRepairCandidate]
+}
+
+enum MP4ValidationSeverity {
+    case warning
+    case error
+}
+
+private struct MP4ValidationFinding {
+    let message: String
+    let severity: MP4ValidationSeverity
+    let repairCandidates: [MP4AudioRepairCandidate]
 }
 
 struct MP4ValidationResult: Identifiable {
@@ -33,9 +83,16 @@ struct MP4ValidationResult: Identifiable {
     let fileName: String
     let filePath: String
     let issue: String?
+    let severity: MP4ValidationSeverity?
+    let repairCandidates: [MP4AudioRepairCandidate]
+    var repairMessage: String? = nil
 
     var isFlagged: Bool {
         issue != nil
+    }
+
+    var isRepairable: Bool {
+        !repairCandidates.isEmpty
     }
 }
 
@@ -43,36 +100,57 @@ struct MP4ValidationResult: Identifiable {
 final class MP4ValidationViewModel: ObservableObject {
     @Published var inputFolderPath: String = ""
     @Published var isScanning = false
+    @Published var isRepairing = false
     @Published var scanProgress = ""
     @Published var scanAlertText = ""
     @Published var results: [MP4ValidationResult] = []
+    @Published private(set) var droppedFilePaths: [String] = []
 
     private var ffprobePath: String = ""
     private var ffprobeAvailable = false
+    private var ffmpegPath: String = ""
+    private var ffmpegAvailable = false
     private var scanTask: Task<Void, Never>?
+    private var repairTask: Task<Void, Never>?
     private var scanToken = UUID()
     private let processLock = NSLock()
     private nonisolated(unsafe) var currentProcess: Process?
     private var exportDialogHostWindow: NSWindow?
 
     var canScan: Bool {
-        !inputFolderPath.isEmpty && !isScanning
+        (!inputFolderPath.isEmpty || !droppedFilePaths.isEmpty) && !isScanning && !isRepairing
+    }
+
+    var inputSelectionDescription: String {
+        if !droppedFilePaths.isEmpty {
+            let noun = droppedFilePaths.count == 1 ? "file" : "files"
+            return "\(droppedFilePaths.count) dropped MP4 \(noun)"
+        }
+        return inputFolderPath.isEmpty ? "Select a folder or drop MP4 files here" : inputFolderPath
     }
 
     var flaggedResults: [MP4ValidationResult] {
         results.filter(\.isFlagged)
     }
 
+    var warningResults: [MP4ValidationResult] {
+        results.filter { $0.severity == .warning }
+    }
+
+    var errorResults: [MP4ValidationResult] {
+        results.filter { $0.severity == .error }
+    }
+
     var canExportFlagged: Bool {
-        !isScanning && !flaggedResults.isEmpty
+        !isScanning && !isRepairing && !flaggedResults.isEmpty
     }
 
     var canSendFlaggedToMainApp: Bool {
-        !isScanning && !flaggedResults.isEmpty
+        !isScanning && !isRepairing && !flaggedResults.isEmpty
     }
 
     init() {
-        locateFFprobe()
+        locateMediaTools()
     }
 
     func selectInputFolder() {
@@ -85,12 +163,20 @@ final class MP4ValidationViewModel: ObservableObject {
 
         if panel.runModal() == .OK, let url = panel.url {
             inputFolderPath = url.path
+            droppedFilePaths = []
         }
     }
 
     func openInputFolderInFinder() {
-        guard !inputFolderPath.isEmpty else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+        if let firstDroppedPath = droppedFilePaths.first {
+            NSWorkspace.shared.selectFile(
+                firstDroppedPath,
+                inFileViewerRootedAtPath: URL(fileURLWithPath: firstDroppedPath)
+                    .deletingLastPathComponent().path
+            )
+        } else if !inputFolderPath.isEmpty {
+            NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+        }
     }
 
     func setInputFolder(url: URL) -> Bool {
@@ -101,7 +187,35 @@ final class MP4ValidationViewModel: ObservableObject {
         }
 
         inputFolderPath = url.path
+        droppedFilePaths = []
         scanAlertText = ""
+        return true
+    }
+
+    func setDroppedFiles(urls: [URL]) -> Bool {
+        let paths = urls.compactMap { url -> String? in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue,
+                  url.pathExtension.lowercased() == "mp4" else {
+                return nil
+            }
+            return url.path
+        }
+
+        let uniquePaths = Array(Set(droppedFilePaths).union(paths)).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+        guard !uniquePaths.isEmpty else {
+            scanAlertText = "Drop one or more MP4 files, or a folder containing MP4 files."
+            return false
+        }
+
+        droppedFilePaths = uniquePaths
+        inputFolderPath = ""
+        results = []
+        scanProgress = ""
+        scanAlertText = "Ready to validate \(uniquePaths.count) dropped MP4 file(s)."
         return true
     }
 
@@ -127,6 +241,262 @@ final class MP4ValidationViewModel: ObservableObject {
         terminateCurrentProcess()
         scanProgress = "Validation canceled."
         isScanning = false
+    }
+
+    func repairSelected(resultIDs: Set<UUID>) {
+        guard !isScanning, !isRepairing else { return }
+        let selectedResults = results.filter {
+            resultIDs.contains($0.id) && $0.isRepairable
+        }
+        guard !selectedResults.isEmpty else {
+            scanAlertText = "Select at least one repairable audio warning."
+            return
+        }
+
+        isRepairing = true
+        scanAlertText = ""
+        repairTask?.cancel()
+        repairTask = Task {
+            await runRepairs(selectedResults)
+        }
+    }
+
+    func cancelRepair() {
+        guard isRepairing else { return }
+        repairTask?.cancel()
+        terminateCurrentProcess()
+        scanProgress = "Repair canceled."
+        isRepairing = false
+    }
+
+    private func runRepairs(_ selectedResults: [MP4ValidationResult]) async {
+        var repairedCount = 0
+        var skippedCount = 0
+
+        for (index, result) in selectedResults.enumerated() {
+            if Task.isCancelled {
+                scanProgress = "Repair canceled."
+                isRepairing = false
+                return
+            }
+
+            scanProgress = "Repairing \(index + 1)/\(selectedResults.count): \(result.fileName)"
+            updateRepairMessage(for: result.id, message: "Confirming channel activity across the full audio track…")
+
+            guard let compatibility = await probeAudioCompatibility(filePath: result.filePath) else {
+                skippedCount += 1
+                updateRepairMessage(for: result.id, message: "Repair failed: could not inspect audio streams.")
+                continue
+            }
+
+            var confirmedCandidates: [MP4AudioRepairCandidate] = []
+            for candidate in result.repairCandidates {
+                guard let stream = compatibility.streams.first(where: { $0.index == candidate.streamIndex }),
+                      let activeChannels = await activeAudioChannels(
+                        filePath: result.filePath,
+                        stream: stream,
+                        formatDuration: compatibility.formatDuration,
+                        fullScan: true
+                      ),
+                      activeChannels == Set([1, 2]) else {
+                    continue
+                }
+                confirmedCandidates.append(candidate)
+            }
+
+            if Task.isCancelled {
+                scanProgress = "Repair canceled."
+                isRepairing = false
+                return
+            }
+
+            guard confirmedCandidates.count == result.repairCandidates.count else {
+                skippedCount += 1
+                updateRepairMessage(
+                    for: result.id,
+                    message: "Repair skipped: the full-track scan did not confirm stereo-only signal."
+                )
+                continue
+            }
+
+            let inputURL = URL(fileURLWithPath: result.filePath)
+            let outputURL = inputURL.deletingLastPathComponent().appendingPathComponent(
+                inputURL.deletingPathExtension().lastPathComponent + "_repaired.mp4"
+            )
+
+            guard !FileManager.default.fileExists(atPath: outputURL.path) else {
+                skippedCount += 1
+                updateRepairMessage(
+                    for: result.id,
+                    message: "Repair skipped: \(outputURL.lastPathComponent) already exists."
+                )
+                continue
+            }
+
+            let temporaryURL = inputURL.deletingLastPathComponent().appendingPathComponent(
+                ".mp4tool-audio-repair-\(UUID().uuidString).mp4"
+            )
+            defer { try? FileManager.default.removeItem(at: temporaryURL) }
+
+            updateRepairMessage(for: result.id, message: "Re-encoding the malformed audio track as stereo…")
+            var arguments = [
+                "-hide_banner", "-nostats", "-y",
+                "-i", result.filePath,
+                "-map", "0",
+                "-map_metadata", "0",
+                "-map_chapters", "0",
+                "-c", "copy"
+            ]
+
+            let repairedTrackNames = repairedAudioTrackNames(
+                compatibility: compatibility,
+                repairedCandidates: confirmedCandidates
+            )
+
+            for audioIndex in compatibility.streams.indices {
+                arguments.append(
+                    contentsOf: [
+                        "-disposition:a:\(audioIndex)", audioIndex == 0 ? "default" : "0"
+                    ]
+                )
+                if let trackName = repairedTrackNames[audioIndex] {
+                    arguments.append(
+                        contentsOf: [
+                            "-metadata:s:a:\(audioIndex)", "title=\(trackName)",
+                            "-metadata:s:a:\(audioIndex)", "handler_name=\(trackName)"
+                        ]
+                    )
+                }
+            }
+
+            for candidate in confirmedCandidates {
+                arguments.append(
+                    contentsOf: [
+                        "-filter:a:\(candidate.audioIndex)", "pan=stereo|c0=FL|c1=FR",
+                        "-c:a:\(candidate.audioIndex)", "aac",
+                        "-b:a:\(candidate.audioIndex)", "192k",
+                        "-channel_layout:a:\(candidate.audioIndex)", "stereo"
+                    ]
+                )
+            }
+            arguments.append(contentsOf: ["-movflags", "+faststart", temporaryURL.path])
+
+            let repairOutput = await runProcessCaptureStderr(path: ffmpegPath, arguments: arguments)
+            if Task.isCancelled {
+                scanProgress = "Repair canceled."
+                isRepairing = false
+                return
+            }
+            guard repairOutput != nil else {
+                skippedCount += 1
+                updateRepairMessage(for: result.id, message: "Repair failed while processing the audio track.")
+                continue
+            }
+
+            guard let repairedCompatibility = await probeAudioCompatibility(filePath: temporaryURL.path),
+                  repairedCompatibility.streams.filter({ $0.disposition?.isDefault == 1 }).count <= 1,
+                  audioTrackNamesAreDistinguishable(repairedCompatibility.streams),
+                  confirmedCandidates.allSatisfy({ candidate in
+                    repairedCompatibility.streams.indices.contains(candidate.audioIndex)
+                        && repairedCompatibility.streams[candidate.audioIndex].channels == 2
+                        && normalizedProbeValue(
+                            repairedCompatibility.streams[candidate.audioIndex].channelLayout
+                        ) == "stereo"
+                  }) else {
+                skippedCount += 1
+                updateRepairMessage(for: result.id, message: "Repair failed validation; the original was untouched.")
+                continue
+            }
+
+            do {
+                try FileManager.default.moveItem(at: temporaryURL, to: outputURL)
+                repairedCount += 1
+                updateRepairMessage(for: result.id, message: "Saved \(outputURL.lastPathComponent)")
+            } catch {
+                skippedCount += 1
+                updateRepairMessage(for: result.id, message: "Repair failed: \(error.localizedDescription)")
+            }
+        }
+
+        isRepairing = false
+        scanProgress = "Repair complete: \(repairedCount) saved, \(skippedCount) skipped or failed."
+        scanAlertText = repairedCount > 0
+            ? "Repaired files were saved beside their originals with _repaired filenames."
+            : "No repaired files were created."
+    }
+
+    private func updateRepairMessage(for resultID: UUID, message: String) {
+        guard let index = results.firstIndex(where: { $0.id == resultID }) else { return }
+        results[index].repairMessage = message
+    }
+
+    private func repairedAudioTrackNames(
+        compatibility: MP4ValidationAudioCompatibility,
+        repairedCandidates: [MP4AudioRepairCandidate]
+    ) -> [Int: String] {
+        let repairedAudioIndexes = Set(repairedCandidates.map(\.audioIndex))
+        let indexedStreams = Array(compatibility.streams.enumerated())
+        let languageGroups = Dictionary(grouping: indexedStreams) { indexedStream in
+            normalizedProbeValue(indexedStream.element.tags?["language"])
+        }
+        var names: [Int: String] = [:]
+
+        for (language, group) in languageGroups where group.count > 1 {
+            let existingNames = group.map { audioTrackName($0.element) }
+            let existingNameCounts = Dictionary(grouping: existingNames, by: { $0 }).mapValues(\.count)
+            var generatedNameCounts: [String: Int] = [:]
+
+            for (audioIndex, stream) in group {
+                let existingName = audioTrackName(stream)
+                let hasMeaningfulUniqueName = !existingName.isEmpty
+                    && existingName != "soundhandler"
+                    && existingNameCounts[existingName] == 1
+                guard !hasMeaningfulUniqueName else { continue }
+
+                let languageName: String
+                if language.isEmpty || language == "und" {
+                    languageName = "Audio"
+                } else {
+                    languageName = Locale(identifier: "en").localizedString(forLanguageCode: language)
+                        ?? language.uppercased()
+                }
+
+                let layoutName: String
+                if repairedAudioIndexes.contains(audioIndex) {
+                    layoutName = "Stereo (Repaired)"
+                } else if let layout = stream.channelLayout, !layout.isEmpty {
+                    layoutName = layout.uppercased()
+                } else if let channels = stream.channels {
+                    layoutName = "\(channels) Channel"
+                } else {
+                    layoutName = "Track"
+                }
+
+                let baseName = "\(languageName) \(layoutName)"
+                let occurrence = (generatedNameCounts[baseName] ?? 0) + 1
+                generatedNameCounts[baseName] = occurrence
+                names[audioIndex] = occurrence == 1 ? baseName : "\(baseName) \(occurrence)"
+            }
+        }
+
+        return names
+    }
+
+    private func audioTrackNamesAreDistinguishable(
+        _ streams: [MP4ValidationAudioStream]
+    ) -> Bool {
+        let languageGroups = Dictionary(grouping: streams) { stream in
+            normalizedProbeValue(stream.tags?["language"])
+        }
+
+        for group in languageGroups.values where group.count > 1 {
+            let names = group.map(audioTrackName)
+            let meaningfulNames = names.filter { !$0.isEmpty && $0 != "soundhandler" }
+            if meaningfulNames.count != group.count || Set(meaningfulNames).count != group.count {
+                return false
+            }
+        }
+        return true
     }
 
     func exportFlaggedToFile() {
@@ -186,11 +556,23 @@ final class MP4ValidationViewModel: ObservableObject {
 
     private func runScan(token: UUID) async {
         let rootPath = inputFolderPath
-        scanProgress = "Collecting MP4 files in folder and subfolders..."
+        let selectedDroppedPaths = droppedFilePaths
+        let files: [(relativePath: String, fullPath: String)]
 
-        let files = await Task.detached(priority: .userInitiated) {
-            Self.collectMP4FilesRecursively(in: rootPath)
-        }.value
+        if selectedDroppedPaths.isEmpty {
+            scanProgress = "Collecting MP4 files in folder and subfolders..."
+            files = await Task.detached(priority: .userInitiated) {
+                Self.collectMP4FilesRecursively(in: rootPath)
+            }.value
+        } else {
+            scanProgress = "Preparing dropped MP4 files..."
+            files = selectedDroppedPaths.map { path in
+                (
+                    relativePath: URL(fileURLWithPath: path).lastPathComponent,
+                    fullPath: path
+                )
+            }
+        }
 
         if Task.isCancelled || token != scanToken {
             scanProgress = "Validation canceled."
@@ -215,12 +597,14 @@ final class MP4ValidationViewModel: ObservableObject {
 
             scanProgress = "Validating \(index + 1)/\(files.count): \(fileInfo.relativePath) \(validationETA(elapsed: Date().timeIntervalSince(scanStartDate), completedCount: index, totalCount: files.count))"
 
-            let issue = await validationIssue(filePath: fileInfo.fullPath)
+            let finding = await validationFinding(filePath: fileInfo.fullPath)
             results.append(
                 MP4ValidationResult(
                     fileName: fileInfo.relativePath,
                     filePath: fileInfo.fullPath,
-                    issue: issue
+                    issue: finding?.message,
+                    severity: finding?.severity,
+                    repairCandidates: finding?.repairCandidates ?? []
                 )
             )
         }
@@ -236,16 +620,23 @@ final class MP4ValidationViewModel: ObservableObject {
 
         var parts: [String] = []
         parts.append("Flagged file(s): \(flaggedCount)")
+        if flaggedCount > 0 {
+            parts.append("\(errorResults.count) error(s), \(warningResults.count) warning(s)")
+        }
         if !ffprobeAvailable {
             parts.append("ffprobe not found; codec checks were skipped")
+        } else if !ffmpegAvailable {
+            parts.append("ffmpeg not found; channel activity checks were skipped")
         }
         scanAlertText = parts.joined(separator: ". ") + "."
 
         isScanning = false
     }
 
-    private func validationIssue(filePath: String) async -> String? {
+    private func validationFinding(filePath: String) async -> MP4ValidationFinding? {
         var reasons: [String] = []
+        var warnings: [String] = []
+        var repairCandidates: [MP4AudioRepairCandidate] = []
         var audioCompatibility: MP4ValidationAudioCompatibility?
 
         if ffprobeAvailable {
@@ -256,6 +647,12 @@ final class MP4ValidationViewModel: ObservableObject {
             audioCompatibility = await probeAudioCompatibility(filePath: filePath)
             if let audioCompatibility {
                 reasons.append(contentsOf: audioCompatibility.issues)
+                let authoringAnalysis = await audioAuthoringAnalysis(
+                    filePath: filePath,
+                    compatibility: audioCompatibility
+                )
+                warnings.append(contentsOf: authoringAnalysis.warnings)
+                repairCandidates = authoringAnalysis.repairCandidates
             }
         }
 
@@ -275,11 +672,21 @@ final class MP4ValidationViewModel: ObservableObject {
             reasons.append("could not be opened")
         }
 
-        guard !reasons.isEmpty else {
-            return nil
+        if !reasons.isEmpty {
+            let allFindings = reasons + warnings
+            return MP4ValidationFinding(
+                message: allFindings.joined(separator: ", "),
+                severity: .error,
+                repairCandidates: []
+            )
         }
 
-        return reasons.joined(separator: ", ")
+        guard !warnings.isEmpty else { return nil }
+        return MP4ValidationFinding(
+            message: warnings.joined(separator: ", "),
+            severity: .warning,
+            repairCandidates: repairCandidates
+        )
     }
 
     private func unsupportedAppleVideoCodec(filePath: String) async -> String? {
@@ -321,7 +728,8 @@ final class MP4ValidationViewModel: ObservableObject {
         let arguments = [
             "-v", "error",
             "-select_streams", "a",
-            "-show_entries", "stream=codec_name,codec_tag_string,sample_fmt",
+            "-show_entries",
+            "stream=index,codec_name,codec_tag_string,sample_fmt,channels,channel_layout,start_time,duration:stream_disposition=default:stream_tags=language,title,handler_name:format=duration",
             "-print_format", "json",
             filePath
         ]
@@ -336,7 +744,12 @@ final class MP4ValidationViewModel: ObservableObject {
         }
 
         guard !probeOutput.streams.isEmpty else {
-            return MP4ValidationAudioCompatibility(hasAudioStreams: false, issues: ["missing audio"])
+            return MP4ValidationAudioCompatibility(
+                hasAudioStreams: false,
+                issues: ["missing audio"],
+                streams: [],
+                formatDuration: probeOutput.format?.duration.flatMap(TimeInterval.init)
+            )
         }
 
         var issues: [String] = []
@@ -362,7 +775,192 @@ final class MP4ValidationViewModel: ObservableObject {
         for issue in issues where !uniqueIssues.contains(issue) {
             uniqueIssues.append(issue)
         }
-        return MP4ValidationAudioCompatibility(hasAudioStreams: true, issues: uniqueIssues)
+        return MP4ValidationAudioCompatibility(
+            hasAudioStreams: true,
+            issues: uniqueIssues,
+            streams: probeOutput.streams,
+            formatDuration: probeOutput.format?.duration.flatMap(TimeInterval.init)
+        )
+    }
+
+    private func audioAuthoringAnalysis(
+        filePath: String,
+        compatibility: MP4ValidationAudioCompatibility
+    ) async -> MP4ValidationAudioAuthoringAnalysis {
+        let streams = compatibility.streams
+        guard !streams.isEmpty else {
+            return MP4ValidationAudioAuthoringAnalysis(warnings: [], repairCandidates: [])
+        }
+
+        var warnings: [String] = []
+        var repairCandidates: [MP4AudioRepairCandidate] = []
+
+        let defaultStreams = streams.filter { $0.disposition?.isDefault == 1 }
+        if defaultStreams.count > 1 {
+            warnings.append("multiple default audio tracks")
+        }
+
+        let languageGroups = Dictionary(grouping: streams) { stream in
+            normalizedProbeValue(stream.tags?["language"])
+        }
+        for language in languageGroups.keys.sorted()
+            where !language.isEmpty {
+            guard let matchingStreams = languageGroups[language], matchingStreams.count > 1 else {
+                continue
+            }
+            let trackNames = matchingStreams.map(audioTrackName)
+            let meaningfulNames = trackNames.filter { !$0.isEmpty && $0 != "soundhandler" }
+            if meaningfulNames.count != matchingStreams.count
+                || Set(meaningfulNames).count != matchingStreams.count {
+                warnings.append("multiple \(language) audio tracks lack distinguishing titles")
+            }
+        }
+
+        for (audioIndex, stream) in streams.enumerated() {
+            guard let channelCount = stream.channels else { continue }
+
+            if let expectedCount = expectedChannelCount(for: stream.channelLayout),
+               expectedCount != channelCount {
+                warnings.append(
+                    "audio stream \(stream.index) declares \(stream.channelLayout ?? "unknown") but contains \(channelCount) channels"
+                )
+            } else if channelCount > 2,
+                      normalizedProbeValue(stream.channelLayout).isEmpty {
+                warnings.append("audio stream \(stream.index) has \(channelCount) channels with no channel layout")
+            }
+
+            if let formatDuration = compatibility.formatDuration,
+               let audioDuration = stream.duration.flatMap(TimeInterval.init),
+               abs(formatDuration - audioDuration) > 2 {
+                warnings.append("audio stream \(stream.index) duration differs from the file by more than 2 seconds")
+            }
+
+            if let startTime = stream.startTime.flatMap(TimeInterval.init), abs(startTime) > 0.5 {
+                warnings.append("audio stream \(stream.index) starts at \(String(format: "%.2f", startTime)) seconds")
+            }
+
+            guard ffmpegAvailable, channelCount >= 4 else { continue }
+            if let activeChannels = await activeAudioChannels(
+                filePath: filePath,
+                stream: stream,
+                formatDuration: compatibility.formatDuration,
+                fullScan: false
+            ), !activeChannels.isEmpty, activeChannels.count <= 2 {
+                warnings.append(
+                    "audio stream \(stream.index) claims \(channelCount) channels but only \(activeChannels.count) contain signal"
+                )
+                if activeChannels == Set([1, 2]) {
+                    repairCandidates.append(
+                        MP4AudioRepairCandidate(streamIndex: stream.index, audioIndex: audioIndex)
+                    )
+                }
+            }
+        }
+
+        var uniqueWarnings: [String] = []
+        for warning in warnings where !uniqueWarnings.contains(warning) {
+            uniqueWarnings.append(warning)
+        }
+        return MP4ValidationAudioAuthoringAnalysis(
+            warnings: uniqueWarnings,
+            repairCandidates: repairCandidates
+        )
+    }
+
+    private func audioTrackName(_ stream: MP4ValidationAudioStream) -> String {
+        let title = normalizedProbeValue(stream.tags?["title"])
+        if !title.isEmpty {
+            return title
+        }
+        return normalizedProbeValue(stream.tags?["handler_name"])
+    }
+
+    private func expectedChannelCount(for layout: String?) -> Int? {
+        switch normalizedProbeValue(layout) {
+        case "mono": return 1
+        case "stereo": return 2
+        case "2.1", "3.0": return 3
+        case "quad", "4.0": return 4
+        case "5.0": return 5
+        case "5.1", "5.1(side)": return 6
+        case "6.1": return 7
+        case "7.1", "7.1(wide)": return 8
+        default: return nil
+        }
+    }
+
+    private func activeAudioChannels(
+        filePath: String,
+        stream: MP4ValidationAudioStream,
+        formatDuration: TimeInterval?,
+        fullScan: Bool
+    ) async -> Set<Int>? {
+        let duration = formatDuration ?? stream.duration.flatMap(TimeInterval.init)
+        let sampleWindows: [(start: TimeInterval, duration: TimeInterval)]
+
+        if fullScan {
+            sampleWindows = [(0, max(duration ?? 86_400, 1))]
+        } else if let duration, duration > 30 {
+            sampleWindows = [
+                (0, 5),
+                (max((duration / 2) - 2.5, 0), 5),
+                (max(duration - 5, 0), 5)
+            ]
+        } else {
+            sampleWindows = [(0, max(min(duration ?? 30, 30), 1))]
+        }
+
+        var activeChannels = Set<Int>()
+        var completedSample = false
+
+        for window in sampleWindows {
+            if Task.isCancelled { return nil }
+
+            let arguments = [
+                "-hide_banner", "-nostats",
+                "-ss", String(format: "%.3f", window.start),
+                "-t", String(format: "%.3f", window.duration),
+                "-i", filePath,
+                "-map", "0:\(stream.index)",
+                "-vn",
+                "-af", "astats=metadata=0:reset=0",
+                "-f", "null", "-"
+            ]
+
+            guard let output = await runProcessCaptureStderr(path: ffmpegPath, arguments: arguments) else {
+                continue
+            }
+            completedSample = true
+            activeChannels.formUnion(Self.activeChannels(inAstatsOutput: output))
+        }
+
+        return completedSample ? activeChannels : nil
+    }
+
+    nonisolated private static func activeChannels(inAstatsOutput output: String) -> Set<Int> {
+        var activeChannels = Set<Int>()
+        var currentChannel: Int?
+
+        for line in output.split(whereSeparator: \.isNewline).map(String.init) {
+            if let markerRange = line.range(of: "Channel: "),
+               let channel = Int(line[markerRange.upperBound...].trimmingCharacters(in: .whitespaces)) {
+                currentChannel = channel
+                continue
+            }
+
+            guard let channel = currentChannel,
+                  let markerRange = line.range(of: "RMS level dB: ") else {
+                continue
+            }
+
+            let valueText = line[markerRange.upperBound...].trimmingCharacters(in: .whitespaces)
+            if let rms = Double(valueText), rms > -90 {
+                activeChannels.insert(channel)
+            }
+            currentChannel = nil
+        }
+
+        return activeChannels
     }
 
     private func isAppleCompatibleAudioCodec(_ codec: String) -> Bool {
@@ -514,6 +1112,50 @@ final class MP4ValidationViewModel: ObservableObject {
         }
     }
 
+    private func runProcessCaptureStderr(path: String, arguments: [String]) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = arguments
+
+                let errorPipe = Pipe()
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = errorPipe
+
+                do {
+                    self.processLock.lock()
+                    self.currentProcess = process
+                    self.processLock.unlock()
+
+                    try process.run()
+                    let outputData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+
+                    self.processLock.lock()
+                    if self.currentProcess === process {
+                        self.currentProcess = nil
+                    }
+                    self.processLock.unlock()
+
+                    guard process.terminationStatus == 0 else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+
+                    continuation.resume(returning: String(data: outputData, encoding: .utf8))
+                } catch {
+                    self.processLock.lock()
+                    if self.currentProcess === process {
+                        self.currentProcess = nil
+                    }
+                    self.processLock.unlock()
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
     private func terminateCurrentProcess() {
         processLock.lock()
         let process = currentProcess
@@ -522,21 +1164,16 @@ final class MP4ValidationViewModel: ObservableObject {
         process?.terminate()
     }
 
-    private func locateFFprobe() {
-        if let bundledPath = Self.findBundledBinary(named: "ffprobe") {
-            ffprobePath = bundledPath
-            ffprobeAvailable = true
-            return
-        }
+    private func locateMediaTools() {
+        ffprobePath = Self.findBundledBinary(named: "ffprobe")
+            ?? Self.findInPath(command: "ffprobe")
+            ?? ""
+        ffprobeAvailable = !ffprobePath.isEmpty
 
-        if let systemPath = Self.findInPath(command: "ffprobe") {
-            ffprobePath = systemPath
-            ffprobeAvailable = true
-            return
-        }
-
-        ffprobePath = ""
-        ffprobeAvailable = false
+        ffmpegPath = Self.findBundledBinary(named: "ffmpeg")
+            ?? Self.findInPath(command: "ffmpeg")
+            ?? ""
+        ffmpegAvailable = !ffmpegPath.isEmpty
     }
 
     private static func findBundledBinary(named name: String) -> String? {
