@@ -33,96 +33,112 @@ struct MainContentView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Group {
             if viewModel.processor.isProcessing {
-                ProcessingProgressCard(processor: viewModel.processor)
-                    .padding(.horizontal)
-                    .padding(.top, 18)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ProcessingProgressCard(processor: viewModel.processor)
+                            .padding(.horizontal)
+                            .padding(.top, 18)
+                            .transition(.move(edge: .top).combined(with: .opacity))
 
-            // File list - Fills available space
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Queue (\(viewModel.processor.videoFiles.count))")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-
-                    Button {
-                        chooseFilesToAdd()
-                    } label: {
-                        Label("Add Files", systemImage: "plus")
+                        queueSection
+                            .frame(height: processingQueueHeight)
                     }
-                    .controlSize(.small)
-                    .help(
-                        viewModel.processor.isProcessing
-                            ? "Add files to the active batch"
-                            : "Add files to the queue"
-                    )
-
-                    Button {
-                        viewModel.clearFilesToProcess()
-                        viewModel.selectedFileIDs.removeAll()
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .controlSize(.small)
-                    .buttonStyle(.borderless)
-                    .disabled(viewModel.processor.isProcessing || viewModel.processor.videoFiles.isEmpty)
-                    .help("Clear queue")
-
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .padding(.horizontal)
-                .padding(.top, 24)
-
-                if viewModel.processor.videoFiles.isEmpty {
-                    // Empty state with drop zone
-                    VStack(spacing: 8) {
-                        Image(systemName: "film.stack")
-                            .font(.largeTitle)
-                            .foregroundStyle(.tertiary)
-                        Text("Drop video files here")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.secondary.opacity(0.05))
-                    .cornerRadius(8)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                        handleFileDrop(providers: providers)
-                    }
-                } else {
-                    List(selection: selectedFileIDsBinding) {
-                        ForEach(viewModel.processor.videoFiles) { file in
-                            queueRow(for: file)
-                                .tag(file.id)
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .contextMenu {
-                                    contextMenuItems(for: file)
-                                }
-                        }
-                    }
-                    .listStyle(.inset)
-                    .scrollContentBackground(.hidden)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.secondary.opacity(0.04))
-                    )
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                        handleFileDrop(providers: providers)
-                    }
-                }
+            } else {
+                queueSection
+                    .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    private var processingQueueHeight: CGFloat {
+        let rowsHeight = CGFloat(max(viewModel.processor.videoFiles.count, 1)) * 68
+        return min(max(rowsHeight + 76, 220), 420)
+    }
+
+    private var queueSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Queue (\(viewModel.processor.videoFiles.count))")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+
+                Button {
+                    chooseFilesToAdd()
+                } label: {
+                    Label("Add Files", systemImage: "plus")
+                }
+                .controlSize(.small)
+                .help(
+                    viewModel.processor.isProcessing
+                        ? "Add files to the active batch"
+                        : "Add files to the queue"
+                )
+
+                Button {
+                    viewModel.clearFilesToProcess()
+                    viewModel.selectedFileIDs.removeAll()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+                .disabled(viewModel.processor.isProcessing || viewModel.processor.videoFiles.isEmpty)
+                .help("Clear queue")
+
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 24)
+
+            if viewModel.processor.videoFiles.isEmpty {
+                // Empty state with drop zone
+                VStack(spacing: 8) {
+                    Image(systemName: "film.stack")
+                        .font(.largeTitle)
+                        .foregroundStyle(.tertiary)
+                    Text("Drop video files here")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.secondary.opacity(0.05))
+                .cornerRadius(8)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleFileDrop(providers: providers)
+                }
+            } else {
+                List(selection: selectedFileIDsBinding) {
+                    ForEach(viewModel.processor.videoFiles) { file in
+                        queueRow(for: file)
+                            .tag(file.id)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .contextMenu {
+                                contextMenuItems(for: file)
+                            }
+                    }
+                }
+                .listStyle(.inset)
+                .scrollContentBackground(.hidden)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.secondary.opacity(0.04))
+                )
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleFileDrop(providers: providers)
+                }
+            }
+        }
     }
 
     private func chooseFilesToAdd() {

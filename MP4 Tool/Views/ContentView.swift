@@ -484,7 +484,6 @@ struct ContentView: View {
     var mainContent: some View {
         HStack(spacing: 0) {
             if isSettingsExpanded {
-                // Settings - Left Side
                 ExpandedSettingsPanel(
                     selectedMode: selectedModeBinding,
                     crfValue: $crfValue,
@@ -504,11 +503,9 @@ struct ContentView: View {
                     isExpanded: isSettingsExpandedBinding
                 )
 
-                // Divider between panes
                 Divider()
             }
 
-            // Main Content - Right Side
             VStack(spacing: 0) {
                 CompactProcessingSetupView(
                     selectedMode: selectedModeBinding,
@@ -549,19 +546,23 @@ struct ContentView: View {
                 MainContentView(viewModel: viewModel)
             }
         }
-        .frame(minWidth: 800, minHeight: 360)
+        .frame(minWidth: 800, minHeight: 500)
         .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
-        .safeAreaInset(edge: .bottom) {
-            logPanel
-        }
-    }
-    
-    @ViewBuilder
-    var logPanel: some View {
-        if isLogExpanded {
-            ExpandedLogPanel(isLogExpanded: $isLogExpanded, logText: viewModel.processor.logText)
-        } else {
-            CollapsedLogPanel(isLogExpanded: $isLogExpanded)
+        .inspector(isPresented: $isLogExpanded) {
+            LogInspectorView(
+                logText: viewModel.processor.logText,
+                onCopy: {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(viewModel.processor.logText, forType: .string)
+                },
+                onExport: {
+                    viewModel.exportLogToFile()
+                },
+                onClear: {
+                    viewModel.processor.logText = ""
+                }
+            )
         }
     }
     
@@ -594,6 +595,17 @@ struct ContentView: View {
                     .disabled(viewModel.processor.isProcessing)
                     .help(viewModel.inputFolderPath.isEmpty ? "Select input folder" : viewModel.inputFolderPath)
                     //.foregroundStyle(.orange)
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isLogExpanded.toggle()
+                        }
+                    } label: {
+                        Label(isLogExpanded ? "Hide Log" : "Show Log", systemImage: "sidebar.trailing")
+                    }
+                    .help(isLogExpanded ? "Hide log inspector" : "Show log inspector")
                 }
                 
                 ToolbarItem(placement: .primaryAction) {
@@ -1077,41 +1089,96 @@ private struct CompactProcessingSetupView: View {
     }
 }
 
-// Log Panel Views
-struct ExpandedLogPanel: View {
-    @Binding var isLogExpanded: Bool
+private struct LogInspectorView: View {
     let logText: String
+    let onCopy: () -> Void
+    let onExport: () -> Void
+    let onClear: () -> Void
+    @State private var isShowingCopyConfirmation = false
+    @State private var copyConfirmationTask: Task<Void, Never>?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Divider()
-            
-            Button(action: {
-                withAnimation {
-                    isLogExpanded.toggle()
-                }
-            }) {
-                HStack {
-                    Text("Log Output")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Label("Log", systemImage: "terminal")
+                    .font(.headline)
+
+                Spacer()
+
+                if !logText.isEmpty {
+                    Button(action: copyLog) {
+                        Label("Copy Log", systemImage: "doc.on.doc")
+                    }
+                    .labelStyle(.iconOnly)
+                    .help("Copy log to clipboard")
+
+                    Button(action: onExport) {
+                        Label("Export Log", systemImage: "square.and.arrow.up")
+                    }
+                    .labelStyle(.iconOnly)
+                    .help("Export log")
+
+                    Button(action: onClear) {
+                        Label("Clear Log", systemImage: "trash")
+                    }
+                    .labelStyle(.iconOnly)
+                    .help("Clear log")
                 }
             }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .padding(.horizontal)
-            .padding(.top, 12)
-            
-            LogView(logText: logText)
-                .frame(height: 200)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            if logText.isEmpty {
+                ContentUnavailableView(
+                    "No Log Output",
+                    systemImage: "terminal",
+                    description: Text("Processing details will appear here.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                LogView(logText: logText)
+            }
         }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .bottom) {
+            if isShowingCopyConfirmation {
+                Label("Copied to Clipboard", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .shadow(color: .black.opacity(0.15), radius: 8, y: 3)
+                    .padding(.bottom, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDisappear {
+            copyConfirmationTask?.cancel()
+        }
+    }
+
+    private func copyLog() {
+        onCopy()
+        copyConfirmationTask?.cancel()
+
+        withAnimation(.easeOut(duration: 0.15)) {
+            isShowingCopyConfirmation = true
+        }
+
+        copyConfirmationTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 1_500_000_000)
+            } catch {
+                return
+            }
+
+            withAnimation(.easeIn(duration: 0.2)) {
+                isShowingCopyConfirmation = false
+            }
+        }
     }
 }
 
@@ -1159,36 +1226,6 @@ struct ExpandedSettingsPanel: View {
     }
 }
 
-struct CollapsedLogPanel: View {
-    @Binding var isLogExpanded: Bool
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            Divider()
-            
-            Button(action: {
-                withAnimation {
-                    isLogExpanded.toggle()
-                }
-            }) {
-                HStack {
-                    Text("Log Output")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "chevron.up")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-        }
-    }
-}
-
 // Document type for log export
 struct LogDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.plainText] }
@@ -1226,7 +1263,18 @@ struct LogView: NSViewRepresentable {
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.autoresizingMask = [.width, .height]
+        textView.isHorizontallyResizable = true
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
         
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
