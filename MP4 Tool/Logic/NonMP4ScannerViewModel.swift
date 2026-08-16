@@ -146,6 +146,9 @@ final class NonMP4ScannerViewModel: ObservableObject {
     }
 
     private func runScan(token: UUID) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is scanning for non-MP4 files")
+        defer { sleepAssertion.invalidate() }
+
         let files = collectVideoFilesRecursively(in: inputFolderPath)
 
         if files.isEmpty {

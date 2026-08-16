@@ -270,6 +270,9 @@ final class MP4ValidationViewModel: ObservableObject {
     }
 
     private func runRepairs(_ selectedResults: [MP4ValidationResult]) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is repairing MP4 files")
+        defer { sleepAssertion.invalidate() }
+
         var repairedCount = 0
         var skippedCount = 0
 
@@ -555,6 +558,9 @@ final class MP4ValidationViewModel: ObservableObject {
     }
 
     private func runScan(token: UUID) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is validating MP4 files")
+        defer { sleepAssertion.invalidate() }
+
         let rootPath = inputFolderPath
         let selectedDroppedPaths = droppedFilePaths
         let files: [(relativePath: String, fullPath: String)]

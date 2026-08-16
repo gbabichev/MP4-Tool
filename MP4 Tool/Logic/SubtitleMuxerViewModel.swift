@@ -202,6 +202,9 @@ final class SubtitleMuxerViewModel: ObservableObject {
     }
 
     private func runMux(overwriteExisting: Bool) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is muxing subtitles")
+        defer { sleepAssertion.invalidate() }
+
         guard ffmpegAvailable else {
             muxProgress = ""
             statusMessage = ffmpegMissingMessage

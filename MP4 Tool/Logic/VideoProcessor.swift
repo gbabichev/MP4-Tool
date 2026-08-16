@@ -850,6 +850,9 @@ class VideoProcessor: ObservableObject {
         postProcessScriptRunTiming: PostProcessScriptRunTiming = .afterEachItem,
         postProcessScriptPassFileNameAsFirstArgument: Bool = false
     ) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is processing video files")
+        defer { sleepAssertion.invalidate() }
+
         let runStartedAt = Date()
         var totalOriginalBytes: Int64 = 0
         var totalOutputBytes: Int64 = 0
@@ -2720,6 +2723,9 @@ class VideoProcessor: ObservableObject {
     }
 
     func scanInputFolder(directoryPath: String, outputPath: String = "") async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is scanning for video files")
+        defer { sleepAssertion.invalidate() }
+
         DispatchQueue.main.async {
             self.isProcessing = true
             self.scanProgress = "Scanning for video files..."

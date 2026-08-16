@@ -221,6 +221,9 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     }
 
     private func runScan(token: UUID) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is scanning video start offsets")
+        defer { sleepAssertion.invalidate() }
+
         guard ffprobeAvailable else {
             scanAlertText = ffprobeMissingMessage
             scanProgress = ""
@@ -273,6 +276,9 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     }
 
     private func runFix(token: UUID) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is repairing video start offsets")
+        defer { sleepAssertion.invalidate() }
+
         guard ffmpegAvailable && ffprobeAvailable else {
             scanAlertText = ffmpegAvailable ? ffprobeMissingMessage : ffmpegMissingMessage
             fixProgress = ""

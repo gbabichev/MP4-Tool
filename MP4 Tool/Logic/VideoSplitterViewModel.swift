@@ -161,6 +161,9 @@ final class VideoSplitterViewModel: ObservableObject {
     }
 
     private func runScan(token: UUID) async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is scanning videos for split points")
+        defer { sleepAssertion.invalidate() }
+
         guard ffmpegAvailable else {
             showAlert(title: "FFmpeg Missing", message: ffmpegMissingMessage)
             isScanning = false
@@ -269,6 +272,9 @@ final class VideoSplitterViewModel: ObservableObject {
     }
 
     private func runSplit() async {
+        let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is splitting video files")
+        defer { sleepAssertion.invalidate() }
+
         guard !outputFolderPath.isEmpty else {
             showAlert(title: "Output Folder Required", message: "Select an output folder to write split files.")
             isSplitting = false
