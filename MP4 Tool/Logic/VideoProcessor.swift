@@ -1097,7 +1097,8 @@ class VideoProcessor: ObservableObject {
                 encodeVideo: encodeVideo,
                 encodeAudio: encodeAudio,
                 keepEnglishAudioOnly: keepEnglishAudioOnly,
-                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
+                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                sourceDuration: sourceDuration
             )
             let conversionEndTime = Date()
 
@@ -1629,7 +1630,8 @@ class VideoProcessor: ObservableObject {
         encodeVideo: Bool = true,
         encodeAudio: Bool = true,
         keepEnglishAudioOnly: Bool,
-        keepEnglishSubtitlesOnly: Bool
+        keepEnglishSubtitlesOnly: Bool,
+        sourceDuration: TimeInterval?
     ) async -> ConversionOutcome {
         // Probe streams
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
@@ -1783,11 +1785,26 @@ class VideoProcessor: ObservableObject {
             self.timer = nil
         }
 
-        if success {
-            return .success
-        } else {
+        guard success else {
             return .failed(reason: ffmpegError)
         }
+
+        guard !shouldCancelProcessing else {
+            return .failed(reason: "Cancelled by user")
+        }
+
+        addLog("􀐱 Validating temporary output...")
+        if let validationFailure = await outputValidationFailure(
+            outputFile: tempFile,
+            expectedAudioTrackCount: audioMappings.count,
+            sourceDuration: sourceDuration
+        ) {
+            addLog("􀁡 Output validation failed: \(validationFailure)")
+            return .failed(reason: "Output validation failed: \(validationFailure)")
+        }
+
+        addLog("􀁢 Output validation passed")
+        return .success
     }
 
     private func probeStreams(inputFile: String, selectStreams: String?) async -> FFProbeOutput? {
@@ -1835,6 +1852,59 @@ class VideoProcessor: ObservableObject {
         }
 
         return seconds
+    }
+
+    private func outputValidationFailure(
+        outputFile: String,
+        expectedAudioTrackCount: Int,
+        sourceDuration: TimeInterval?
+    ) async -> String? {
+        guard FileManager.default.fileExists(atPath: outputFile) else {
+            return "temporary output is missing"
+        }
+
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: outputFile),
+              let outputSize = attributes[.size] as? Int64,
+              outputSize >= 1_024 else {
+            return "temporary output is empty or obviously truncated"
+        }
+
+        guard let outputStreams = await probeStreams(inputFile: outputFile, selectStreams: nil) else {
+            return "FFprobe could not read the temporary output"
+        }
+
+        let videoTrackCount = outputStreams.streams.filter { $0.codecType == "video" }.count
+        guard videoTrackCount > 0 else {
+            return "temporary output contains no video stream"
+        }
+
+        let actualAudioTrackCount = outputStreams.streams.filter { $0.codecType == "audio" }.count
+        guard actualAudioTrackCount == expectedAudioTrackCount else {
+            return "expected \(expectedAudioTrackCount) audio track(s), found \(actualAudioTrackCount)"
+        }
+
+        guard let outputDuration = await probeDurationSeconds(inputFile: outputFile) else {
+            return "temporary output has no readable duration"
+        }
+
+        if let sourceDuration {
+            let tolerance = max(5, min(30, sourceDuration * 0.005))
+            let difference = abs(sourceDuration - outputDuration)
+            guard difference <= tolerance else {
+                return String(
+                    format: "duration mismatch: source %.2fs, output %.2fs",
+                    sourceDuration,
+                    outputDuration
+                )
+            }
+        }
+
+        addLog(
+            "Validated Output: \(formattedByteCount(outputSize)) · "
+            + "\(videoTrackCount) video · "
+            + "\(actualAudioTrackCount) audio · \(formatDuration(seconds: Int(outputDuration)))"
+        )
+        return nil
     }
 
     private func getAudioMappings(
