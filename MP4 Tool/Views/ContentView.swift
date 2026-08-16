@@ -55,6 +55,7 @@ struct ContentView: View {
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("processingNotificationsEnabled") private var processingNotificationsEnabled = true
     @AppStorage("framePreviewsEnabled") private var framePreviewsEnabled = true
+    @AppStorage("stageTemporaryFilesOnDestinationVolume") private var stageTemporaryFilesOnDestinationVolume = false
     @State private var isShowingLogCopyConfirmation = false
     @State private var logCopyConfirmationTask: Task<Void, Never>?
 
@@ -275,7 +276,8 @@ struct ContentView: View {
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTiming: postProcessScriptRunTiming,
-            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
+            stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
         )
     }
 
@@ -416,6 +418,7 @@ struct ContentView: View {
         let postProcessScriptPath = postProcessScriptPath
         let postProcessScriptRunTiming = postProcessScriptRunTiming
         let postProcessScriptPassFileNameAsFirstArgument = postProcessScriptPassFileNameAsFirstArgument
+        let stageTemporaryFilesOnDestinationVolume = stageTemporaryFilesOnDestinationVolume
 
         Task { @MainActor in
             viewModel.startProcessing(
@@ -432,7 +435,8 @@ struct ContentView: View {
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                 postProcessScriptPath: postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTiming,
-                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
+                stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
             )
         }
 
@@ -596,6 +600,7 @@ struct ContentView: View {
                 isProcessing: viewModel.processor.isProcessing,
                 notificationsEnabled: $processingNotificationsEnabled,
                 framePreviewsEnabled: $framePreviewsEnabled,
+                stageTemporaryFilesOnDestinationVolume: $stageTemporaryFilesOnDestinationVolume,
                 isSettingsExpanded: isSettingsExpandedBinding,
                 onSelectFFmpegSource: { useSystem in
                     viewModel.processor.toggleFFmpegSource(useSystem: useSystem)
@@ -740,7 +745,8 @@ struct ContentView: View {
                                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                                 postProcessScriptPath: postProcessScriptPath,
                                 postProcessScriptRunTiming: postProcessScriptRunTiming,
-                                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+                                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
+                                stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
                             )
                         }) {
                             Label("Start Processing", systemImage: "play.fill")
@@ -906,6 +912,7 @@ private struct CompactProcessingSetupView: View {
     let isProcessing: Bool
     @Binding var notificationsEnabled: Bool
     @Binding var framePreviewsEnabled: Bool
+    @Binding var stageTemporaryFilesOnDestinationVolume: Bool
     @Binding var isSettingsExpanded: Bool
     let onSelectFFmpegSource: (Bool) -> Void
     let onChooseOutputFolder: () -> Void
@@ -984,6 +991,30 @@ private struct CompactProcessingSetupView: View {
         return isUsingSystemFFmpeg
             ? "Uses the version installed on this Mac"
             : "Uses the version included with MP4 Tool"
+    }
+
+    private var stagingLocation: ProcessingStagingLocation {
+        ProcessingStagingStorage.location(
+            outputPath: outputFolderPath,
+            preferDestinationVolume: stageTemporaryFilesOnDestinationVolume
+        )
+    }
+
+    private var effectiveDestinationStagingBinding: Binding<Bool> {
+        Binding(
+            get: {
+                stageTemporaryFilesOnDestinationVolume
+                    && stagingLocation.destinationVolumeIsEligible
+            },
+            set: { stageTemporaryFilesOnDestinationVolume = $0 }
+        )
+    }
+
+    private var scratchSpaceDescription: String {
+        let available = stagingLocation.availableBytes.map {
+            ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) + " available"
+        } ?? "Available space unknown"
+        return "\(available) • \(stagingLocation.directoryURL.path)"
     }
 
     var body: some View {
@@ -1132,6 +1163,40 @@ private struct CompactProcessingSetupView: View {
                     systemImage: "photo.fill",
                     isOn: $framePreviewsEnabled
                 )
+            }
+
+            Divider()
+
+            AdaptiveProcessingSetupPair(horizontalMinimumWidth: 620) {
+                HStack(spacing: 10) {
+                    Image(systemName: stagingLocation.usesDestinationVolume ? "externaldrive.fill" : "internaldrive.fill")
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Scratch Space")
+                            .font(.caption.weight(.medium))
+                        Text(scratchSpaceDescription)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .layoutPriority(1)
+
+                    Spacer(minLength: 8)
+                }
+                .frame(maxWidth: .infinity)
+            } trailing: {
+                ProcessingSetupToggle(
+                    title: "Stage on Destination Volume",
+                    subtitle: stagingLocation.destinationVolumeIsEligible
+                        ? "Write temporary output beside the destination"
+                        : "Requires a writable local destination volume",
+                    systemImage: "externaldrive.badge.checkmark",
+                    isOn: effectiveDestinationStagingBinding
+                )
+                .disabled(isProcessing || !stagingLocation.destinationVolumeIsEligible)
             }
         }
         .padding(12)

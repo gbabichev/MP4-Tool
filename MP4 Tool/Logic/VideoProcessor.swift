@@ -393,6 +393,11 @@ class VideoProcessor: ObservableObject {
             self.ffmpegMissingMessage = "Missing required tools: \(missing.joined(separator: ", ")).\nPlease install ffmpeg & ffprobe. Or compile this app with binaries bundled into the Resource folder."
             addLog("􀇾 WARNING: \(self.ffmpegMissingMessage)")
         }
+
+        let abandonedFileCount = ProcessingStagingStorage.cleanupAbandonedFiles()
+        if abandonedFileCount > 0 {
+            addLog("Cleaned \(abandonedFileCount) abandoned staging file(s) from an earlier run.")
+        }
     }
 
     private static func findInPath(command: String) -> String? {
@@ -867,7 +872,8 @@ class VideoProcessor: ObservableObject {
         keepEnglishSubtitlesOnly: Bool,
         postProcessScriptPath: String = "",
         postProcessScriptRunTiming: PostProcessScriptRunTiming = .afterEachItem,
-        postProcessScriptPassFileNameAsFirstArgument: Bool = false
+        postProcessScriptPassFileNameAsFirstArgument: Bool = false,
+        stageTemporaryFilesOnDestinationVolume: Bool = false
     ) async {
         let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is processing video files")
         defer { sleepAssertion.invalidate() }
@@ -982,6 +988,29 @@ class VideoProcessor: ObservableObject {
             addLog("Output directory does not exist!")
             DispatchQueue.main.async { self.isProcessing = false }
             return
+        }
+
+        let stagingLocation = ProcessingStagingStorage.location(
+            outputPath: outputPath,
+            preferDestinationVolume: stageTemporaryFilesOnDestinationVolume
+        )
+        do {
+            try ProcessingStagingStorage.prepareDirectory(for: stagingLocation)
+        } catch {
+            addLog("Failed to prepare staging directory: \(error.localizedDescription)")
+            DispatchQueue.main.async { self.isProcessing = false }
+            return
+        }
+        defer {
+            ProcessingStagingStorage.removeDirectoryIfEmpty(stagingLocation.directoryURL)
+        }
+
+        addLog("Staging Location: \(stagingLocation.directoryURL.path)")
+        if let availableBytes = stagingLocation.availableBytes {
+            addLog("Scratch Space Available: \(formattedByteCount(availableBytes))")
+        }
+        if stageTemporaryFilesOnDestinationVolume && !stagingLocation.usesDestinationVolume {
+            addLog("Destination-volume staging is unavailable; using system scratch storage.")
         }
 
         // Use files from queue if available, otherwise scan input directory
@@ -1108,22 +1137,37 @@ class VideoProcessor: ObservableObject {
                 addLog("Source Duration: \(formatDuration(seconds: Int(sourceDuration)))")
             }
 
-            let tempOutputFile = NSTemporaryDirectory() + UUID().uuidString + ".mp4"
+            let tempOutputFile = ProcessingStagingStorage
+                .temporaryOutputURL(in: stagingLocation)
+                .path
+            let estimatedInputBytes = (try? FileManager.default.attributesOfItem(
+                atPath: inputFilePath
+            ))?[.size] as? Int64 ?? 0
 
             // Process the video
-            let conversionOutcome = await convertToMP4(
-                inputFile: inputFilePath,
-                tempFile: tempOutputFile,
-                mode: mode,
-                crfValue: crfValue,
-                resolution: resolution,
-                preset: preset,
-                encodeVideo: encodeVideo,
-                encodeAudio: encodeAudio,
-                keepEnglishAudioOnly: keepEnglishAudioOnly,
-                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
-                sourceDuration: sourceDuration
-            )
+            let conversionOutcome: ConversionOutcome
+            if let storageIssue = ProcessingStagingStorage.capacityIssue(
+                estimatedOutputBytes: estimatedInputBytes,
+                location: stagingLocation,
+                outputPath: outputPath
+            ) {
+                addLog("Storage check failed before encoding: \(storageIssue)")
+                conversionOutcome = .failed(reason: storageIssue)
+            } else {
+                conversionOutcome = await convertToMP4(
+                    inputFile: inputFilePath,
+                    tempFile: tempOutputFile,
+                    mode: mode,
+                    crfValue: crfValue,
+                    resolution: resolution,
+                    preset: preset,
+                    encodeVideo: encodeVideo,
+                    encodeAudio: encodeAudio,
+                    keepEnglishAudioOnly: keepEnglishAudioOnly,
+                    keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                    sourceDuration: sourceDuration
+                )
+            }
             let conversionEndTime = Date()
 
             if shouldCancelProcessing {

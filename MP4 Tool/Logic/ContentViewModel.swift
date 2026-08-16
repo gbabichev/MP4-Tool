@@ -164,9 +164,13 @@ class ContentViewModel: ObservableObject {
         keepEnglishSubtitlesOnly: Bool,
         postProcessScriptPath: String,
         postProcessScriptRunTiming: PostProcessScriptRunTiming,
-        postProcessScriptPassFileNameAsFirstArgument: Bool
+        postProcessScriptPassFileNameAsFirstArgument: Bool,
+        stageTemporaryFilesOnDestinationVolume: Bool
     ) {
         guard validateOutputFolderForProcessing() else { return }
+        guard validateStorageForProcessing(
+            stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
+        ) else { return }
 
         // Re-check for file conflicts in case settings changed (like createSubfolders)
         _ = processor.checkForFileConflicts(
@@ -216,9 +220,39 @@ class ContentViewModel: ObservableObject {
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                 postProcessScriptPath: postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTiming,
-                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
+                stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
             )
         }
+    }
+
+    private func validateStorageForProcessing(
+        stageTemporaryFilesOnDestinationVolume: Bool
+    ) -> Bool {
+        let largestInputBytes = processor.videoFiles.compactMap { file in
+            (try? FileManager.default.attributesOfItem(atPath: file.filePath))?[.size] as? Int64
+        }.max() ?? 0
+        let location = ProcessingStagingStorage.location(
+            outputPath: outputFolderPath,
+            preferDestinationVolume: stageTemporaryFilesOnDestinationVolume
+        )
+
+        guard let issue = ProcessingStagingStorage.capacityIssue(
+            estimatedOutputBytes: largestInputBytes,
+            location: location,
+            outputPath: outputFolderPath
+        ) else {
+            return true
+        }
+
+        processor.addLog("Storage preflight failed: \(issue)")
+        let alert = NSAlert()
+        alert.messageText = "Not Enough Processing Space"
+        alert.informativeText = "\(issue)\n\nStaging location:\n\(location.directoryURL.path)"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        return false
     }
 
     func exportLogToFile() {
