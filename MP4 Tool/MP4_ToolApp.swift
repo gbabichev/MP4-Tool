@@ -171,6 +171,12 @@ struct MP4_ToolApp: App {
                 .keyboardShortcut("p", modifiers: .command)
                 .disabled(!windowCommandRegistry.activeAvailability.canStartProcessing || windowCommandRegistry.activeAvailability.isProcessing)
 
+                Button(action: {
+                    openWindow(id: "runHistory")
+                }) {
+                    Label("Run History", systemImage: "clock.arrow.circlepath")
+                }
+
                 Divider()
 
                 Button(action: {
@@ -248,6 +254,11 @@ struct MP4_ToolApp: App {
         Window("Validate MP4 Files", id: "mp4Validation") {
             MP4ValidationView()
         }
+
+        Window("Run History", id: "runHistory") {
+            RunHistoryView()
+        }
+        .defaultSize(width: 980, height: 520)
     }
 }
 

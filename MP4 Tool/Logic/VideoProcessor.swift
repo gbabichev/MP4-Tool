@@ -1282,6 +1282,16 @@ class VideoProcessor: ObservableObject {
                 addLog("Space Saved: \(formattedByteCount(savedBytes)) (\(String(format: "%.1f", savedPercentage))%)")
                 addLog("Completed in \(formatDuration(seconds: Int(duration)))")
 
+                let historyWasSaved = ProcessingHistoryStore.shared.record(
+                    fileName: URL(fileURLWithPath: outputFilePath).lastPathComponent,
+                    originalBytes: inputSize,
+                    outputBytes: outputSize,
+                    processedAt: fileEndTime
+                )
+                if !historyWasSaved {
+                    addLog("􀇾 Warning: Could not save this file to processing history")
+                }
+
                 // Mark the item complete only after the move and any per-file script finish.
                 let completedFilePath = fileInfo.path
                 DispatchQueue.main.async {
