@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 private final class MP4ValidationDroppedURLCollector: @unchecked Sendable {
     private let lock = NSLock()
@@ -22,6 +23,9 @@ struct MP4ValidationView: View {
     @StateObject private var viewModel = MP4ValidationViewModel()
     @State private var showFlaggedOnly = false
     @State private var selectedRepairResultIDs = Set<UUID>()
+    @AppStorage("mp4ValidatorReplaceOriginal") private var useOriginalRepairFilename = false
+    @AppStorage("mp4ValidatorUseCustomRepairFolder") private var useCustomRepairFolder = false
+    @AppStorage("mp4ValidatorRepairFolderPath") private var customRepairFolderPath = ""
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -54,6 +58,81 @@ struct MP4ValidationView: View {
                         .truncationMode(.middle)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+            }
+
+            GroupBox("Repair Output") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: useOriginalRepairFilename ? "doc" : "doc.badge.plus")
+                            .foregroundStyle(useOriginalRepairFilename ? Color.orange : Color.accentColor)
+                            .frame(width: 20)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Keep Original Name")
+                                .font(.subheadline)
+                            Text(
+                                useOriginalRepairFilename
+                                    ? useCustomRepairFolder
+                                        ? "Use the source filename in the selected destination folder"
+                                        : "Safely replace the source only after the repair passes validation"
+                                    : "Keep the source and append _fixed to the repaired copy"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(
+                                useOriginalRepairFilename && !useCustomRepairFolder
+                                    ? Color.orange : Color.secondary
+                            )
+                        }
+
+                        Spacer()
+
+                        Toggle("Keep Original Name", isOn: $useOriginalRepairFilename)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .disabled(viewModel.isScanning || viewModel.isRepairing)
+                    }
+
+                    Divider()
+
+                    HStack(spacing: 10) {
+                        Image(systemName: useCustomRepairFolder ? "folder.fill.badge.plus" : "folder.fill")
+                            .foregroundStyle(useCustomRepairFolder ? Color.accentColor : Color.secondary)
+                            .frame(width: 20)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Save to Another Folder")
+                                .font(.subheadline)
+                            Text(repairLocationDescription)
+                                .font(.caption)
+                                .foregroundStyle(
+                                    useCustomRepairFolder && customRepairFolderPath.isEmpty
+                                        ? Color.orange : Color.secondary
+                                )
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        if useCustomRepairFolder {
+                            Button("Choose…", action: chooseCustomRepairFolder)
+                                .controlSize(.small)
+                                .disabled(viewModel.isRepairing)
+
+                            Button("Open", action: openCustomRepairFolder)
+                                .controlSize(.small)
+                                .disabled(customRepairFolderPath.isEmpty)
+                        }
+
+                        Toggle("Save to Another Folder", isOn: $useCustomRepairFolder)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .disabled(viewModel.isScanning || viewModel.isRepairing)
+                    }
+                }
                 .padding(.vertical, 4)
             }
 
@@ -119,7 +198,9 @@ struct MP4ValidationView: View {
                                             Text(repairMessage)
                                                 .font(.caption2)
                                                 .foregroundStyle(
-                                                    repairMessage.hasPrefix("Saved ") ? Color.green : Color.orange
+                                                    repairMessage.hasPrefix("Saved ")
+                                                        || repairMessage.hasPrefix("Replaced ")
+                                                        ? Color.green : Color.orange
                                                 )
                                                 .lineLimit(1)
                                                 .truncationMode(.middle)
@@ -184,15 +265,25 @@ struct MP4ValidationView: View {
 
             ToolbarItem(placement: .navigation) {
                 Button {
-                    viewModel.repairSelected(resultIDs: selectedRepairResultIDs)
+                    viewModel.repairSelected(
+                        resultIDs: selectedRepairResultIDs,
+                        useOriginalFilename: useOriginalRepairFilename,
+                        customOutputFolderPath: useCustomRepairFolder
+                            ? customRepairFolderPath : nil
+                    )
                 } label: {
                     Label(
                         selectedRepairCount > 0 ? "Repair Selected (\(selectedRepairCount))" : "Repair Selected",
                         systemImage: "wrench.and.screwdriver"
                     )
                 }
-                .disabled(selectedRepairCount == 0 || viewModel.isScanning || viewModel.isRepairing)
-                .help("Create repaired copies beside the originals")
+                .disabled(
+                    selectedRepairCount == 0
+                        || viewModel.isScanning
+                        || viewModel.isRepairing
+                        || !repairDestinationIsReady
+                )
+                .help(repairActionHelp)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
@@ -227,6 +318,63 @@ struct MP4ValidationView: View {
                 }
             }
         }
+    }
+
+    private var repairDestinationIsReady: Bool {
+        !useCustomRepairFolder || customRepairFolderIsValid
+    }
+
+    private var customRepairFolderIsValid: Bool {
+        guard !customRepairFolderPath.isEmpty else { return false }
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(
+            atPath: customRepairFolderPath,
+            isDirectory: &isDirectory
+        ) && isDirectory.boolValue && FileManager.default.isWritableFile(atPath: customRepairFolderPath)
+    }
+
+    private var repairLocationDescription: String {
+        if useCustomRepairFolder {
+            return customRepairFolderPath.isEmpty
+                ? "Choose where repaired files should be saved"
+                : customRepairFolderPath
+        }
+        return "Save repaired files beside their sources"
+    }
+
+    private var repairActionHelp: String {
+        if useOriginalRepairFilename && useCustomRepairFolder {
+            return "Save repaired files in the selected folder using their original filenames"
+        }
+        if useOriginalRepairFilename {
+            return "Replace each original only after its repair passes validation"
+        }
+        if useCustomRepairFolder {
+            return "Create _fixed copies in the selected folder"
+        }
+        return "Create _fixed copies beside the originals"
+    }
+
+    private func chooseCustomRepairFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.message = "Choose where repaired MP4 files should be saved"
+
+        if !customRepairFolderPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: customRepairFolderPath, isDirectory: true)
+        }
+
+        if panel.runModal() == .OK, let url = panel.url {
+            customRepairFolderPath = url.path
+        }
+    }
+
+    private func openCustomRepairFolder() {
+        guard customRepairFolderIsValid else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: customRepairFolderPath, isDirectory: true))
     }
 
     private var displayedResults: [MP4ValidationResult] {

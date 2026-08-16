@@ -243,7 +243,11 @@ final class MP4ValidationViewModel: ObservableObject {
         isScanning = false
     }
 
-    func repairSelected(resultIDs: Set<UUID>) {
+    func repairSelected(
+        resultIDs: Set<UUID>,
+        useOriginalFilename: Bool,
+        customOutputFolderPath: String?
+    ) {
         guard !isScanning, !isRepairing else { return }
         let selectedResults = results.filter {
             resultIDs.contains($0.id) && $0.isRepairable
@@ -253,11 +257,31 @@ final class MP4ValidationViewModel: ObservableObject {
             return
         }
 
+        let resolvedCustomOutputFolderPath: String?
+        if let customOutputFolderPath, !customOutputFolderPath.isEmpty {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(
+                atPath: customOutputFolderPath,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue,
+            FileManager.default.isWritableFile(atPath: customOutputFolderPath) else {
+                scanAlertText = "Choose a writable folder for repaired files."
+                return
+            }
+            resolvedCustomOutputFolderPath = customOutputFolderPath
+        } else {
+            resolvedCustomOutputFolderPath = nil
+        }
+
         isRepairing = true
         scanAlertText = ""
         repairTask?.cancel()
         repairTask = Task {
-            await runRepairs(selectedResults)
+            await runRepairs(
+                selectedResults,
+                useOriginalFilename: useOriginalFilename,
+                customOutputFolderPath: resolvedCustomOutputFolderPath
+            )
         }
     }
 
@@ -269,7 +293,11 @@ final class MP4ValidationViewModel: ObservableObject {
         isRepairing = false
     }
 
-    private func runRepairs(_ selectedResults: [MP4ValidationResult]) async {
+    private func runRepairs(
+        _ selectedResults: [MP4ValidationResult],
+        useOriginalFilename: Bool,
+        customOutputFolderPath: String?
+    ) async {
         let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is repairing MP4 files")
         defer { sleepAssertion.invalidate() }
 
@@ -323,11 +351,16 @@ final class MP4ValidationViewModel: ObservableObject {
             }
 
             let inputURL = URL(fileURLWithPath: result.filePath)
-            let outputURL = inputURL.deletingLastPathComponent().appendingPathComponent(
-                inputURL.deletingPathExtension().lastPathComponent + "_repaired.mp4"
-            )
+            let destinationDirectoryURL = customOutputFolderPath.map {
+                URL(fileURLWithPath: $0, isDirectory: true)
+            } ?? inputURL.deletingLastPathComponent()
+            let replacesOriginal = useOriginalFilename && customOutputFolderPath == nil
+            let outputFileName = useOriginalFilename
+                ? inputURL.lastPathComponent
+                : inputURL.deletingPathExtension().lastPathComponent + "_fixed.mp4"
+            let outputURL = destinationDirectoryURL.appendingPathComponent(outputFileName)
 
-            guard !FileManager.default.fileExists(atPath: outputURL.path) else {
+            guard replacesOriginal || !FileManager.default.fileExists(atPath: outputURL.path) else {
                 skippedCount += 1
                 updateRepairMessage(
                     for: result.id,
@@ -336,7 +369,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 continue
             }
 
-            let temporaryURL = inputURL.deletingLastPathComponent().appendingPathComponent(
+            let temporaryURL = destinationDirectoryURL.appendingPathComponent(
                 ".mp4tool-audio-repair-\(UUID().uuidString).mp4"
             )
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
@@ -412,9 +445,18 @@ final class MP4ValidationViewModel: ObservableObject {
             }
 
             do {
-                try FileManager.default.moveItem(at: temporaryURL, to: outputURL)
+                if replacesOriginal {
+                    _ = try FileManager.default.replaceItemAt(inputURL, withItemAt: temporaryURL)
+                } else {
+                    try FileManager.default.moveItem(at: temporaryURL, to: outputURL)
+                }
                 repairedCount += 1
-                updateRepairMessage(for: result.id, message: "Saved \(outputURL.lastPathComponent)")
+                updateRepairMessage(
+                    for: result.id,
+                    message: replacesOriginal
+                        ? "Replaced original after validation"
+                        : "Saved \(outputURL.lastPathComponent)"
+                )
             } catch {
                 skippedCount += 1
                 updateRepairMessage(for: result.id, message: "Repair failed: \(error.localizedDescription)")
@@ -423,9 +465,17 @@ final class MP4ValidationViewModel: ObservableObject {
 
         isRepairing = false
         scanProgress = "Repair complete: \(repairedCount) saved, \(skippedCount) skipped or failed."
-        scanAlertText = repairedCount > 0
-            ? "Repaired files were saved beside their originals with _repaired filenames."
-            : "No repaired files were created."
+        if repairedCount == 0 {
+            scanAlertText = "No repaired files were created."
+        } else if useOriginalFilename && customOutputFolderPath == nil {
+            scanAlertText = "Repaired originals were replaced only after validation succeeded."
+        } else if let customOutputFolderPath {
+            scanAlertText = useOriginalFilename
+                ? "Repaired files were saved to \(customOutputFolderPath) with their original filenames."
+                : "Repaired files were saved to \(customOutputFolderPath) with _fixed filenames."
+        } else {
+            scanAlertText = "Repaired files were saved beside their originals with _fixed filenames."
+        }
     }
 
     private func updateRepairMessage(for resultID: UUID, message: String) {
