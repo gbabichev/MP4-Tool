@@ -36,28 +36,20 @@ struct MP4ValidationView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            GroupBox("Folder") {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Button("Open") {
-                            viewModel.openInputFolderInFinder()
-                        }
-                        .controlSize(.small)
-                        .disabled(viewModel.inputFolderPath.isEmpty && viewModel.droppedFilePaths.isEmpty)
-
-                        Text("Input")
-                            .font(.subheadline)
-                    }
-                    Text(viewModel.inputSelectionDescription)
-                        .font(.caption)
-                        .foregroundStyle(
-                            viewModel.inputFolderPath.isEmpty && viewModel.droppedFilePaths.isEmpty
-                                ? .tertiary : .secondary
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            GroupBox("Input") {
+                ToolSelectionRow(
+                    title: inputSelectionTitle,
+                    detail: viewModel.inputSelectionDescription,
+                    isSelected: hasInputSelection,
+                    emptySystemImage: "folder.badge.plus",
+                    selectedSystemImage: viewModel.droppedFilePaths.isEmpty
+                        ? "folder.fill" : "doc.on.doc.fill",
+                    chooseLabel: "Choose…",
+                    openLabel: viewModel.droppedFilePaths.isEmpty ? "Open" : "Reveal",
+                    chooseDisabled: viewModel.isScanning || viewModel.isRepairing,
+                    openAction: viewModel.openInputFolderInFinder,
+                    chooseAction: viewModel.selectInputFolder
+                )
                 .padding(.vertical, 4)
             }
 
@@ -238,15 +230,6 @@ struct MP4ValidationView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
-                    viewModel.selectInputFolder()
-                } label: {
-                    Label("Choose Folder...", systemImage: "folder")
-                }
-                .disabled(viewModel.isScanning || viewModel.isRepairing)
-            }
-
-            ToolbarItem(placement: .navigation) {
-                Button {
                     sendFlaggedToMainApp()
                 } label: {
                     Label("Send Flagged to Main", systemImage: "arrowshape.turn.up.right")
@@ -255,10 +238,20 @@ struct MP4ValidationView: View {
             }
 
             ToolbarItem(placement: .navigation) {
-                Button {
-                    viewModel.exportFlaggedToFile()
+                Menu {
+                    Button {
+                        viewModel.exportFlaggedToFile()
+                    } label: {
+                        Label("File Paths…", systemImage: "doc.plaintext")
+                    }
+
+                    Button {
+                        viewModel.exportCSVReport()
+                    } label: {
+                        Label("CSV Report…", systemImage: "tablecells")
+                    }
                 } label: {
-                    Label("Export Flagged...", systemImage: "square.and.arrow.up")
+                    Label("Export…", systemImage: "square.and.arrow.up")
                 }
                 .disabled(!viewModel.canExportFlagged)
             }
@@ -322,6 +315,19 @@ struct MP4ValidationView: View {
 
     private var repairDestinationIsReady: Bool {
         !useCustomRepairFolder || customRepairFolderIsValid
+    }
+
+    private var hasInputSelection: Bool {
+        !viewModel.inputFolderPath.isEmpty || !viewModel.droppedFilePaths.isEmpty
+    }
+
+    private var inputSelectionTitle: String {
+        if !viewModel.droppedFilePaths.isEmpty {
+            return viewModel.droppedFilePaths.count == 1
+                ? "Dropped MP4 File"
+                : "Dropped MP4 Files"
+        }
+        return viewModel.inputFolderPath.isEmpty ? "No Folder Selected" : "Input Folder"
     }
 
     private var customRepairFolderIsValid: Bool {

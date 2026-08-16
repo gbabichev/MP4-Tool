@@ -65,6 +65,7 @@ struct MP4AudioRepairCandidate: Equatable {
 private struct MP4ValidationAudioAuthoringAnalysis {
     let warnings: [String]
     let repairCandidates: [MP4AudioRepairCandidate]
+    let needsMetadataRepair: Bool
 }
 
 enum MP4ValidationSeverity {
@@ -76,6 +77,7 @@ private struct MP4ValidationFinding {
     let message: String
     let severity: MP4ValidationSeverity
     let repairCandidates: [MP4AudioRepairCandidate]
+    let needsAudioMetadataRepair: Bool
 }
 
 struct MP4ValidationResult: Identifiable {
@@ -85,6 +87,7 @@ struct MP4ValidationResult: Identifiable {
     let issue: String?
     let severity: MP4ValidationSeverity?
     let repairCandidates: [MP4AudioRepairCandidate]
+    let needsAudioMetadataRepair: Bool
     var repairMessage: String? = nil
 
     var isFlagged: Bool {
@@ -92,7 +95,7 @@ struct MP4ValidationResult: Identifiable {
     }
 
     var isRepairable: Bool {
-        !repairCandidates.isEmpty
+        needsAudioMetadataRepair || !repairCandidates.isEmpty
     }
 }
 
@@ -249,6 +252,10 @@ final class MP4ValidationViewModel: ObservableObject {
         customOutputFolderPath: String?
     ) {
         guard !isScanning, !isRepairing else { return }
+        guard ffmpegAvailable else {
+            scanAlertText = "FFmpeg is required to repair selected files."
+            return
+        }
         let selectedResults = results.filter {
             resultIDs.contains($0.id) && $0.isRepairable
         }
@@ -312,7 +319,14 @@ final class MP4ValidationViewModel: ObservableObject {
             }
 
             scanProgress = "Repairing \(index + 1)/\(selectedResults.count): \(result.fileName)"
-            updateRepairMessage(for: result.id, message: "Confirming channel activity across the full audio track…")
+            if result.repairCandidates.isEmpty {
+                updateRepairMessage(for: result.id, message: "Preparing audio metadata repair…")
+            } else {
+                updateRepairMessage(
+                    for: result.id,
+                    message: "Confirming channel activity across the full audio track…"
+                )
+            }
 
             guard let compatibility = await probeAudioCompatibility(filePath: result.filePath) else {
                 skippedCount += 1
@@ -374,7 +388,12 @@ final class MP4ValidationViewModel: ObservableObject {
             )
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
 
-            updateRepairMessage(for: result.id, message: "Re-encoding the malformed audio track as stereo…")
+            updateRepairMessage(
+                for: result.id,
+                message: confirmedCandidates.isEmpty
+                    ? "Normalizing audio defaults and track titles…"
+                    : "Repairing malformed audio and normalizing its metadata…"
+            )
             var arguments = [
                 "-hide_banner", "-nostats", "-y",
                 "-i", result.filePath,
@@ -389,12 +408,21 @@ final class MP4ValidationViewModel: ObservableObject {
                 repairedCandidates: confirmedCandidates
             )
 
+            let defaultAudioIndexes = compatibility.streams.indices.filter {
+                compatibility.streams[$0].disposition?.isDefault == 1
+            }
+            if defaultAudioIndexes.count > 1, let retainedDefaultIndex = defaultAudioIndexes.first {
+                for audioIndex in compatibility.streams.indices {
+                    arguments.append(
+                        contentsOf: [
+                            "-disposition:a:\(audioIndex)",
+                            audioIndex == retainedDefaultIndex ? "+default" : "-default"
+                        ]
+                    )
+                }
+            }
+
             for audioIndex in compatibility.streams.indices {
-                arguments.append(
-                    contentsOf: [
-                        "-disposition:a:\(audioIndex)", audioIndex == 0 ? "default" : "0"
-                    ]
-                )
                 if let trackName = repairedTrackNames[audioIndex] {
                     arguments.append(
                         contentsOf: [
@@ -514,18 +542,28 @@ final class MP4ValidationViewModel: ObservableObject {
                         ?? language.uppercased()
                 }
 
-                let layoutName: String
+                let technicalName: String
                 if repairedAudioIndexes.contains(audioIndex) {
-                    layoutName = "Stereo (Repaired)"
+                    technicalName = "Stereo (Repaired AAC)"
                 } else if let layout = stream.channelLayout, !layout.isEmpty {
-                    layoutName = layout.uppercased()
+                    let layoutName = displayAudioLayout(layout)
+                    let codecName = displayAudioCodec(stream.codecName)
+                    technicalName = codecName.isEmpty
+                        ? layoutName
+                        : "\(layoutName) (\(codecName))"
                 } else if let channels = stream.channels {
-                    layoutName = "\(channels) Channel"
+                    let codecName = displayAudioCodec(stream.codecName)
+                    let channelName = "\(channels) Channel"
+                    technicalName = codecName.isEmpty
+                        ? channelName
+                        : "\(channelName) (\(codecName))"
                 } else {
-                    layoutName = "Track"
+                    technicalName = displayAudioCodec(stream.codecName).isEmpty
+                        ? "Track"
+                        : displayAudioCodec(stream.codecName)
                 }
 
-                let baseName = "\(languageName) \(layoutName)"
+                let baseName = "\(languageName) — \(technicalName)"
                 let occurrence = (generatedNameCounts[baseName] ?? 0) + 1
                 generatedNameCounts[baseName] = occurrence
                 names[audioIndex] = occurrence == 1 ? baseName : "\(baseName) \(occurrence)"
@@ -550,6 +588,26 @@ final class MP4ValidationViewModel: ObservableObject {
             }
         }
         return true
+    }
+
+    private func displayAudioLayout(_ layout: String) -> String {
+        switch normalizedProbeValue(layout) {
+        case "mono": return "Mono"
+        case "stereo": return "Stereo"
+        case "5.1(side)": return "5.1"
+        default: return layout.uppercased()
+        }
+    }
+
+    private func displayAudioCodec(_ codec: String?) -> String {
+        switch normalizedProbeValue(codec) {
+        case "aac": return "AAC"
+        case "ac3": return "AC-3"
+        case "eac3": return "E-AC-3"
+        case "alac": return "ALAC"
+        case "mp3": return "MP3"
+        default: return codec?.uppercased() ?? ""
+        }
     }
 
     func exportFlaggedToFile() {
@@ -590,6 +648,61 @@ final class MP4ValidationViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func exportCSVReport() {
+        let reportRows = flaggedResults.map { result in
+            (
+                itemName: URL(fileURLWithPath: result.filePath).lastPathComponent,
+                path: result.filePath,
+                error: result.issue ?? ""
+            )
+        }
+        guard !reportRows.isEmpty else {
+            scanAlertText = "No flagged files to export."
+            return
+        }
+
+        let hostWindow = makeHiddenChromeHostWindow()
+        exportDialogHostWindow = hostWindow
+        hostWindow.makeKeyAndOrderFront(nil)
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = "mp4-validation-report.csv"
+
+        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+            Task { @MainActor in
+                guard let self else { return }
+
+                defer {
+                    self.exportDialogHostWindow?.orderOut(nil)
+                    self.exportDialogHostWindow = nil
+                }
+
+                guard response == .OK, let url = panel.url else {
+                    return
+                }
+
+                let header = ["Item Name", "Path", "Error"].map(self.csvField).joined(separator: ",")
+                let rows = reportRows.map { row in
+                    [row.itemName, row.path, row.error].map(self.csvField).joined(separator: ",")
+                }
+                let body = "\u{FEFF}" + ([header] + rows).joined(separator: "\r\n") + "\r\n"
+
+                do {
+                    try body.write(to: url, atomically: true, encoding: .utf8)
+                    self.scanAlertText = "Exported \(reportRows.count) validation result(s) to \(url.path)."
+                } catch {
+                    self.scanAlertText = "Failed to export CSV report: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func csvField(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 
     func sendFlaggedToMainApp() {
@@ -660,7 +773,8 @@ final class MP4ValidationViewModel: ObservableObject {
                     filePath: fileInfo.fullPath,
                     issue: finding?.message,
                     severity: finding?.severity,
-                    repairCandidates: finding?.repairCandidates ?? []
+                    repairCandidates: finding?.repairCandidates ?? [],
+                    needsAudioMetadataRepair: finding?.needsAudioMetadataRepair ?? false
                 )
             )
         }
@@ -693,6 +807,7 @@ final class MP4ValidationViewModel: ObservableObject {
         var reasons: [String] = []
         var warnings: [String] = []
         var repairCandidates: [MP4AudioRepairCandidate] = []
+        var needsAudioMetadataRepair = false
         var audioCompatibility: MP4ValidationAudioCompatibility?
 
         if ffprobeAvailable {
@@ -709,6 +824,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 )
                 warnings.append(contentsOf: authoringAnalysis.warnings)
                 repairCandidates = authoringAnalysis.repairCandidates
+                needsAudioMetadataRepair = authoringAnalysis.needsMetadataRepair
             }
         }
 
@@ -733,7 +849,8 @@ final class MP4ValidationViewModel: ObservableObject {
             return MP4ValidationFinding(
                 message: allFindings.joined(separator: ", "),
                 severity: .error,
-                repairCandidates: []
+                repairCandidates: [],
+                needsAudioMetadataRepair: false
             )
         }
 
@@ -741,7 +858,8 @@ final class MP4ValidationViewModel: ObservableObject {
         return MP4ValidationFinding(
             message: warnings.joined(separator: ", "),
             severity: .warning,
-            repairCandidates: repairCandidates
+            repairCandidates: repairCandidates,
+            needsAudioMetadataRepair: needsAudioMetadataRepair
         )
     }
 
@@ -845,15 +963,21 @@ final class MP4ValidationViewModel: ObservableObject {
     ) async -> MP4ValidationAudioAuthoringAnalysis {
         let streams = compatibility.streams
         guard !streams.isEmpty else {
-            return MP4ValidationAudioAuthoringAnalysis(warnings: [], repairCandidates: [])
+            return MP4ValidationAudioAuthoringAnalysis(
+                warnings: [],
+                repairCandidates: [],
+                needsMetadataRepair: false
+            )
         }
 
         var warnings: [String] = []
         var repairCandidates: [MP4AudioRepairCandidate] = []
+        var needsMetadataRepair = false
 
         let defaultStreams = streams.filter { $0.disposition?.isDefault == 1 }
         if defaultStreams.count > 1 {
             warnings.append("multiple default audio tracks")
+            needsMetadataRepair = true
         }
 
         let languageGroups = Dictionary(grouping: streams) { stream in
@@ -869,6 +993,7 @@ final class MP4ValidationViewModel: ObservableObject {
             if meaningfulNames.count != matchingStreams.count
                 || Set(meaningfulNames).count != matchingStreams.count {
                 warnings.append("multiple \(language) audio tracks lack distinguishing titles")
+                needsMetadataRepair = true
             }
         }
 
@@ -887,8 +1012,19 @@ final class MP4ValidationViewModel: ObservableObject {
 
             if let formatDuration = compatibility.formatDuration,
                let audioDuration = stream.duration.flatMap(TimeInterval.init),
-               abs(formatDuration - audioDuration) > 2 {
-                warnings.append("audio stream \(stream.index) duration differs from the file by more than 2 seconds")
+               formatDuration > 0 {
+                let audioStartTime = stream.startTime.flatMap(TimeInterval.init) ?? 0
+                let audioEndTime = audioStartTime + audioDuration
+                let durationDifference = formatDuration - audioEndTime
+                let meaningfulDurationTolerance = max(10, formatDuration * 0.01)
+
+                if abs(durationDifference) > meaningfulDurationTolerance {
+                    let differenceDescription = String(format: "%.1f", abs(durationDifference))
+                    let direction = durationDifference > 0 ? "early" : "after the file ends"
+                    warnings.append(
+                        "audio stream \(stream.index) ends \(differenceDescription) seconds \(direction)"
+                    )
+                }
             }
 
             if let startTime = stream.startTime.flatMap(TimeInterval.init), abs(startTime) > 0.5 {
@@ -919,7 +1055,8 @@ final class MP4ValidationViewModel: ObservableObject {
         }
         return MP4ValidationAudioAuthoringAnalysis(
             warnings: uniqueWarnings,
-            repairCandidates: repairCandidates
+            repairCandidates: repairCandidates,
+            needsMetadataRepair: needsMetadataRepair
         )
     }
 

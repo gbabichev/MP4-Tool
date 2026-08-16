@@ -28,33 +28,35 @@ struct VideoSplitterView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         GroupBox("Folders") {
                             VStack(spacing: 12) {
-                                FolderPickerRow(
+                                ToolSelectionRow(
                                     title: "Input Folder",
-                                    subtitle: viewModel.inputFolderPath.isEmpty ? "Select folder containing MP4 files" : viewModel.inputFolderPath,
-                                    isPlaceholder: viewModel.inputFolderPath.isEmpty,
-                                    buttonLabel: "Choose...",
-                                    systemImage: "folder",
-                                    openDisabled: viewModel.inputFolderPath.isEmpty,
-                                    openAction: {
-                                        viewModel.openInputFolderInFinder()
-                                    }
-                                ) {
-                                    viewModel.selectFolder(isInput: true)
-                                }
+                                    detail: viewModel.inputFolderPath.isEmpty
+                                        ? "Choose a folder containing MP4 files" : viewModel.inputFolderPath,
+                                    isSelected: !viewModel.inputFolderPath.isEmpty,
+                                    emptySystemImage: "folder.badge.plus",
+                                    selectedSystemImage: "folder.fill",
+                                    chooseLabel: "Choose…",
+                                    openLabel: "Open",
+                                    chooseDisabled: viewModel.isScanning || viewModel.isSplitting,
+                                    openAction: viewModel.openInputFolderInFinder,
+                                    chooseAction: { viewModel.selectFolder(isInput: true) }
+                                )
 
-                                FolderPickerRow(
+                                Divider()
+
+                                ToolSelectionRow(
                                     title: "Output Folder",
-                                    subtitle: viewModel.outputFolderPath.isEmpty ? "Select folder for split files" : viewModel.outputFolderPath,
-                                    isPlaceholder: viewModel.outputFolderPath.isEmpty,
-                                    buttonLabel: "Choose...",
-                                    systemImage: "folder.badge.gearshape",
-                                    openDisabled: viewModel.outputFolderPath.isEmpty,
-                                    openAction: {
-                                        viewModel.openOutputFolderInFinder()
-                                    }
-                                ) {
-                                    viewModel.selectFolder(isInput: false)
-                                }
+                                    detail: viewModel.outputFolderPath.isEmpty
+                                        ? "Choose where split files should be saved" : viewModel.outputFolderPath,
+                                    isSelected: !viewModel.outputFolderPath.isEmpty,
+                                    emptySystemImage: "folder.badge.plus",
+                                    selectedSystemImage: "folder.fill",
+                                    chooseLabel: "Choose…",
+                                    openLabel: "Open",
+                                    chooseDisabled: viewModel.isScanning || viewModel.isSplitting,
+                                    openAction: viewModel.openOutputFolderInFinder,
+                                    chooseAction: { viewModel.selectFolder(isInput: false) }
+                                )
                             }
                             .padding(.vertical, 4)
                         }
@@ -341,48 +343,6 @@ private extension VideoSplitterView {
                     .foregroundStyle(.red)
                     .lineLimit(1)
                     .truncationMode(.middle)
-            }
-        }
-    }
-}
-
-private struct FolderPickerRow: View {
-    let title: String
-    let subtitle: String
-    let isPlaceholder: Bool
-    let buttonLabel: String
-    let systemImage: String
-    let openDisabled: Bool
-    let openAction: (() -> Void)?
-    let action: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(isPlaceholder ? .tertiary : .secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                if let openAction {
-                    Button("Open") {
-                        openAction()
-                    }
-                    .controlSize(.small)
-                    .disabled(openDisabled)
-                }
-
-                Button(action: action) {
-                    Label(buttonLabel, systemImage: systemImage)
-                }
-                .controlSize(.small)
             }
         }
     }

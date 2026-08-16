@@ -13,25 +13,20 @@ struct NonMP4ScannerView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            GroupBox("Folder") {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Button("Open") {
-                            viewModel.openInputFolderInFinder()
-                        }
-                        .controlSize(.small)
-                        .disabled(viewModel.inputFolderPath.isEmpty)
-
-                        Text("Input Folder")
-                            .font(.subheadline)
-                    }
-                    Text(viewModel.inputFolderPath.isEmpty ? "Select folder containing video files" : viewModel.inputFolderPath)
-                        .font(.caption)
-                        .foregroundStyle(viewModel.inputFolderPath.isEmpty ? .tertiary : .secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            GroupBox("Input") {
+                ToolSelectionRow(
+                    title: viewModel.inputFolderPath.isEmpty ? "No Folder Selected" : "Input Folder",
+                    detail: viewModel.inputFolderPath.isEmpty
+                        ? "Choose a folder containing video files" : viewModel.inputFolderPath,
+                    isSelected: !viewModel.inputFolderPath.isEmpty,
+                    emptySystemImage: "folder.badge.plus",
+                    selectedSystemImage: "folder.fill",
+                    chooseLabel: "Choose…",
+                    openLabel: "Open",
+                    chooseDisabled: viewModel.isScanning,
+                    openAction: viewModel.openInputFolderInFinder,
+                    chooseAction: viewModel.selectInputFolder
+                )
                 .padding(.vertical, 4)
             }
 
@@ -93,15 +88,6 @@ struct NonMP4ScannerView: View {
         .frame(minWidth: 760, minHeight: 560)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    viewModel.selectInputFolder()
-                } label: {
-                    Label("Choose Folder...", systemImage: "folder")
-                }
-                .disabled(viewModel.isScanning)
-            }
-
             ToolbarItem(placement: .navigation) {
                 Button {
                     sendFlaggedToMainApp()

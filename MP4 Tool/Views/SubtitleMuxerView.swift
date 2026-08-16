@@ -11,69 +11,58 @@ struct SubtitleMuxerView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            GroupBox("Files") {
+            GroupBox("Inputs") {
                 VStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Button("Open") {
-                                viewModel.openMP4InFinder()
-                            }
-                            .controlSize(.small)
-                            .disabled(viewModel.inputMP4Path.isEmpty)
+                    ToolSelectionRow(
+                        title: viewModel.inputMP4Path.isEmpty ? "No MP4 Selected" : "Input MP4",
+                        detail: viewModel.inputMP4Path.isEmpty
+                            ? "Choose the MP4 file to receive subtitles" : viewModel.inputMP4Path,
+                        isSelected: !viewModel.inputMP4Path.isEmpty,
+                        emptySystemImage: "film",
+                        selectedSystemImage: "film.fill",
+                        chooseLabel: "Choose…",
+                        openLabel: "Reveal",
+                        chooseDisabled: viewModel.isMuxing,
+                        openAction: viewModel.openMP4InFinder,
+                        chooseAction: viewModel.selectMP4File
+                    )
 
-                            Text("Input MP4")
-                                .font(.subheadline)
-                        }
-                        Text(viewModel.inputMP4Path.isEmpty ? "Select an MP4 file from the toolbar." : viewModel.inputMP4Path)
-                            .font(.caption)
-                            .foregroundStyle(viewModel.inputMP4Path.isEmpty ? .tertiary : .secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Divider()
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Button("Open") {
-                                viewModel.openSRTInFinder()
-                            }
-                            .controlSize(.small)
-                            .disabled(viewModel.inputSRTPath.isEmpty)
-
-                            Text("Subtitle SRT")
-                                .font(.subheadline)
-                        }
-                        Text(viewModel.inputSRTPath.isEmpty ? "Select an SRT file from the toolbar." : viewModel.inputSRTPath)
-                            .font(.caption)
-                            .foregroundStyle(viewModel.inputSRTPath.isEmpty ? .tertiary : .secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ToolSelectionRow(
+                        title: viewModel.inputSRTPath.isEmpty ? "No Subtitle Selected" : "Subtitle SRT",
+                        detail: viewModel.inputSRTPath.isEmpty
+                            ? "Choose the SRT subtitle file to embed" : viewModel.inputSRTPath,
+                        isSelected: !viewModel.inputSRTPath.isEmpty,
+                        emptySystemImage: "doc.text",
+                        selectedSystemImage: "doc.text.fill",
+                        chooseLabel: "Choose…",
+                        openLabel: "Reveal",
+                        chooseDisabled: viewModel.isMuxing,
+                        openAction: viewModel.openSRTInFinder,
+                        chooseAction: viewModel.selectSRTFile
+                    )
                 }
                 .padding(.vertical, 4)
             }
 
             GroupBox("Output") {
                 VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Button("Open") {
-                                viewModel.openOutputFolderInFinder()
-                            }
-                            .controlSize(.small)
-                            .disabled(viewModel.outputFolderPath.isEmpty)
+                    ToolSelectionRow(
+                        title: viewModel.outputFolderPath.isEmpty ? "No Folder Selected" : "Output Folder",
+                        detail: viewModel.outputFolderPath.isEmpty
+                            ? "Choose where the merged MP4 should be saved" : viewModel.outputFolderPath,
+                        isSelected: !viewModel.outputFolderPath.isEmpty,
+                        emptySystemImage: "folder.badge.plus",
+                        selectedSystemImage: "folder.fill",
+                        chooseLabel: "Choose…",
+                        openLabel: "Open",
+                        chooseDisabled: viewModel.isMuxing,
+                        openAction: viewModel.openOutputFolderInFinder,
+                        chooseAction: viewModel.selectOutputFolder
+                    )
 
-                            Text("Output Folder")
-                                .font(.subheadline)
-                        }
-                        Text(viewModel.outputFolderPath.isEmpty ? "Select output folder from the toolbar." : viewModel.outputFolderPath)
-                            .font(.caption)
-                            .foregroundStyle(viewModel.outputFolderPath.isEmpty ? .tertiary : .secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Divider()
 
                     HStack(spacing: 8) {
                         Text("Output File")
@@ -114,29 +103,6 @@ struct SubtitleMuxerView: View {
         .frame(minWidth: 760, minHeight: 460)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
-            ToolbarItemGroup(placement: .navigation) {
-                Button {
-                    viewModel.selectMP4File()
-                } label: {
-                    Label("Choose MP4...", systemImage: "film")
-                }
-                .disabled(viewModel.isMuxing)
-
-                Button {
-                    viewModel.selectSRTFile()
-                } label: {
-                    Label("Choose SRT...", systemImage: "captions.bubble")
-                }
-                .disabled(viewModel.isMuxing)
-
-                Button {
-                    viewModel.selectOutputFolder()
-                } label: {
-                    Label("Output Folder...", systemImage: "folder")
-                }
-                .disabled(viewModel.isMuxing)
-            }
-
             ToolbarItemGroup(placement: .primaryAction) {
                 if viewModel.isMuxing {
                     Button {
