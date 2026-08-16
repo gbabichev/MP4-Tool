@@ -253,6 +253,7 @@ class VideoProcessor: ObservableObject {
     @Published var completionSummary: ProcessingCompletionSummary?
     @Published private(set) var processingStartedAt: Date?
     @Published private(set) var activeMode: ProcessingMode?
+    @Published private(set) var stopAfterCurrentFileRequested = false
     @Published private(set) var currentFramePreview: NSImage?
     @Published private(set) var notificationsEnabled =
         UserDefaults.standard.object(forKey: "processingNotificationsEnabled") as? Bool ?? true
@@ -884,6 +885,7 @@ class VideoProcessor: ObservableObject {
             self.ffmpegProgressTail = ""
             self.currentFileProgressFraction = 0
             self.shouldCancelProcessing = false
+            self.stopAfterCurrentFileRequested = false
             self.processingHadError = false
             self.completionSummary = nil
             self.pendingBatchFiles = []
@@ -1156,6 +1158,13 @@ class VideoProcessor: ObservableObject {
                         }
                         self.processingHadError = true
                     }
+
+                    if stopAfterCurrentFileRequested {
+                        addLog("\n􀛶 Current file finished. Stopping before the next queue item.")
+                        clearDockBadge()
+                        break
+                    }
+
                     index += 1
                     continue
                 }
@@ -1276,6 +1285,14 @@ class VideoProcessor: ObservableObject {
                 }
             }
 
+            // A graceful stop finishes every acceptance and cleanup step for the
+            // active item, then leaves the remaining queue entries untouched.
+            if stopAfterCurrentFileRequested {
+                addLog("\n􀛶 Current file finished. Stopping before the next queue item.")
+                clearDockBadge()
+                break
+            }
+
             // Extend the active queue whenever we reach its current end. This also
             // supports files added while an earlier on-demand batch is processing.
             if index == filesToProcess.count - 1 && !pendingBatchFiles.isEmpty {
@@ -1322,6 +1339,7 @@ class VideoProcessor: ObservableObject {
         }
 
         let wasCancelled = shouldCancelProcessing
+        let stoppedAfterCurrentFile = stopAfterCurrentFileRequested
         let runEndedAt = Date()
         let summary = ProcessingCompletionSummary(
             mode: mode,
@@ -1336,6 +1354,8 @@ class VideoProcessor: ObservableObject {
 
         if wasCancelled {
             addLog("\nProcessing stopped.")
+        } else if stoppedAfterCurrentFile {
+            addLog("\nProcessing stopped after the current file.")
         } else {
             addLog("\n􀋚 All files processed!")
         }
@@ -1346,6 +1366,7 @@ class VideoProcessor: ObservableObject {
             self.processingStartedAt = nil
             self.activeMode = nil
             self.shouldCancelProcessing = false
+            self.stopAfterCurrentFileRequested = false
             self.currentInputDurationSeconds = nil
             self.currentInputFrameRate = nil
             self.currentEncodedTimeSeconds = 0
@@ -1358,7 +1379,7 @@ class VideoProcessor: ObservableObject {
                 self.completionSummary = summary
             }
 
-            if wasCancelled || NSApplication.shared.isActive || !self.notificationsEnabled {
+            if wasCancelled || stoppedAfterCurrentFile || NSApplication.shared.isActive || !self.notificationsEnabled {
                 self.clearDockBadge()
             } else {
                 self.setDockBadgeCheckmark()
@@ -2682,6 +2703,18 @@ class VideoProcessor: ObservableObject {
 
         // Clear dock badge when cancelled
         clearDockBadge()
+    }
+
+    func requestStopAfterCurrentFile() {
+        guard isProcessing, !stopAfterCurrentFileRequested else { return }
+        stopAfterCurrentFileRequested = true
+        addLog("􀛶 Stop requested after the current file finishes.")
+    }
+
+    func cancelStopAfterCurrentFile() {
+        guard isProcessing, stopAfterCurrentFileRequested else { return }
+        stopAfterCurrentFileRequested = false
+        addLog("􀁢 Stop-after-current-file request canceled. The batch will continue.")
     }
 
     private func scheduleForcedStop(for process: Process) {

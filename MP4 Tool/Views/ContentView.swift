@@ -683,14 +683,47 @@ struct ContentView: View {
                 
                 ToolbarItem(placement: .primaryAction) {
                     if viewModel.processor.isProcessing {
-                        Button(action: {
+                        Menu {
+                            if viewModel.processor.stopAfterCurrentFileRequested {
+                                Button {
+                                    viewModel.processor.cancelStopAfterCurrentFile()
+                                } label: {
+                                    Label("Continue Batch", systemImage: "play.fill")
+                                }
+                            } else {
+                                Button {
+                                    viewModel.processor.requestStopAfterCurrentFile()
+                                } label: {
+                                    Label("Stop After Current File", systemImage: "hourglass")
+                                }
+                            }
+
+                            Divider()
+
+                            Button(role: .destructive) {
+                                viewModel.processor.cancelScan()
+                            } label: {
+                                Label("Stop Now", systemImage: "stop.fill")
+                            }
+                        } label: {
+                            Label(
+                                viewModel.processor.stopAfterCurrentFileRequested
+                                    ? "Stopping After Current File"
+                                    : "Stop",
+                                systemImage: viewModel.processor.stopAfterCurrentFileRequested
+                                    ? "hourglass"
+                                    : "stop.fill"
+                            )
+                        } primaryAction: {
                             viewModel.processor.cancelScan()
-                        }) {
-                            Label("Stop", systemImage: "stop.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
-                        .keyboardShortcut(".", modifiers: .command)
+                        .help(
+                            viewModel.processor.stopAfterCurrentFileRequested
+                                ? "The current file will finish, then the batch will stop"
+                                : "Stop now, or use the menu to stop after the current file"
+                        )
                     } else {
                         Button(action: {
                             viewModel.startProcessing(
