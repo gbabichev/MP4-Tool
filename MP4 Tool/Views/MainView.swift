@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
+    @State private var draggedPendingFileID: UUID?
 
     private var selectedFileIDs: Set<UUID> {
         viewModel.selectedFileIDs
@@ -112,6 +113,13 @@ struct MainContentView: View {
                             .tag(file.id)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
+                            .modifier(
+                                PendingQueueReorderModifier(
+                                    file: file,
+                                    processor: viewModel.processor,
+                                    draggedFileID: $draggedPendingFileID
+                                )
+                            )
                             .contextMenu {
                                 contextMenuItems(for: file)
                             }
@@ -287,6 +295,14 @@ struct MainContentView: View {
 
                 Spacer(minLength: 12)
 
+                if file.status == .pending {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .help("Drag to reorder pending files")
+                        .accessibilityLabel("Drag to reorder")
+                }
+
                 Text(queueStatusTitle(for: file))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(queueStatusColor(for: file))
@@ -420,6 +436,61 @@ struct MainContentView: View {
         let fileURL = URL(fileURLWithPath: filePath)
         let parentURL = fileURL.deletingLastPathComponent()
         NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: parentURL.path)
+    }
+}
+
+private struct PendingQueueReorderModifier: ViewModifier {
+    let file: VideoFileInfo
+    let processor: VideoProcessor
+    @Binding var draggedFileID: UUID?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if file.status == .pending {
+            content
+                .onDrag {
+                    draggedFileID = file.id
+                    return NSItemProvider(object: file.id.uuidString as NSString)
+                }
+                .onDrop(
+                    of: [.text],
+                    delegate: PendingQueueDropDelegate(
+                        targetFileID: file.id,
+                        processor: processor,
+                        draggedFileID: $draggedFileID
+                    )
+                )
+        } else {
+            content
+        }
+    }
+}
+
+private struct PendingQueueDropDelegate: DropDelegate {
+    let targetFileID: UUID
+    let processor: VideoProcessor
+    @Binding var draggedFileID: UUID?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        guard let draggedFileID, draggedFileID != targetFileID else { return false }
+        return processor.videoFiles.contains { $0.id == draggedFileID && $0.status == .pending }
+            && processor.videoFiles.contains { $0.id == targetFileID && $0.status == .pending }
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedFileID, draggedFileID != targetFileID else { return }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            processor.movePendingFile(draggedFileID, relativeTo: targetFileID)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedFileID = nil
+        return true
     }
 }
 

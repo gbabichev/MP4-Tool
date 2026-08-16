@@ -822,14 +822,32 @@ class VideoProcessor: ObservableObject {
 
     func addToPendingBatch(_ fileInfo: VideoFileInfo) {
         pendingBatchFiles.append(fileInfo)
-        // Sort the pending batch alphabetically by file path
-        pendingBatchFiles.sort { $0.filePath < $1.filePath }
 
         // Update dock badge to reflect new total remaining files
         // currentFileIndex is 1-indexed (e.g., File 1/2), so subtract 1 to get processed count
         let filesRemaining = videoFiles.count - (currentFileIndex - 1)
         if filesRemaining > 0 {
             updateDockBadge(filesRemaining: filesRemaining)
+        }
+    }
+
+    func movePendingFile(_ sourceID: UUID, relativeTo targetID: UUID) {
+        let pendingSlots = videoFiles.indices.filter { videoFiles[$0].status == .pending }
+        var pendingFiles = pendingSlots.map { videoFiles[$0] }
+
+        guard let sourceIndex = pendingFiles.firstIndex(where: { $0.id == sourceID }),
+              let targetIndex = pendingFiles.firstIndex(where: { $0.id == targetID }),
+              sourceIndex != targetIndex else {
+            return
+        }
+
+        pendingFiles.move(
+            fromOffsets: IndexSet(integer: sourceIndex),
+            toOffset: targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
+        )
+
+        for (slot, file) in zip(pendingSlots, pendingFiles) {
+            videoFiles[slot] = file
         }
     }
 
@@ -1018,6 +1036,7 @@ class VideoProcessor: ObservableObject {
         var completedPostProcessFiles: [CompletedPostProcessFile] = []
         var index = 0
         while index < filesToProcess.count {
+            reorderPendingProcessingFiles(&filesToProcess, startingAt: index)
             let fileInfo = filesToProcess[index]
 
             // Check for cancellation
@@ -1293,12 +1312,15 @@ class VideoProcessor: ObservableObject {
                 break
             }
 
-            // Extend the active queue whenever we reach its current end. This also
-            // supports files added while an earlier on-demand batch is processing.
-            if index == filesToProcess.count - 1 && !pendingBatchFiles.isEmpty {
+            // Add on-demand files after the active item finishes. Their visible
+            // pending order is applied at the start of the next loop iteration.
+            if !pendingBatchFiles.isEmpty {
                 addLog("\n􀐱 Processing additional batch...")
 
-                let additionalFiles = pendingBatchFiles.sorted { $0.filePath < $1.filePath }
+                let pendingPaths = Set(pendingBatchFiles.map(\.filePath))
+                let additionalFiles = videoFiles.filter {
+                    $0.status == .pending && pendingPaths.contains($0.filePath)
+                }
                 for additionalFile in additionalFiles {
                     if !filesToProcess.contains(where: { $0.path == additionalFile.filePath }) {
                         filesToProcess.append((path: additionalFile.filePath, name: additionalFile.fileName))
@@ -1386,6 +1408,38 @@ class VideoProcessor: ObservableObject {
                 self.sendProcessingCompleteNotification()
             }
         }
+    }
+
+    private func reorderPendingProcessingFiles(
+        _ filesToProcess: inout [(path: String, name: String)],
+        startingAt index: Int
+    ) {
+        guard index < filesToProcess.count else { return }
+
+        let completedPrefix = Array(filesToProcess.prefix(index))
+        let remainingFiles = Array(filesToProcess.dropFirst(index))
+        let remainingByPath = Dictionary(
+            uniqueKeysWithValues: remainingFiles.map { ($0.path, $0) }
+        )
+        let orderedPendingPaths = videoFiles
+            .filter { $0.status == .pending }
+            .map(\.filePath)
+
+        var includedPaths: Set<String> = []
+        var reorderedRemaining: [(path: String, name: String)] = []
+
+        for path in orderedPendingPaths {
+            if let file = remainingByPath[path] {
+                reorderedRemaining.append(file)
+                includedPaths.insert(path)
+            }
+        }
+
+        // Preserve any entry that is temporarily between UI state updates.
+        reorderedRemaining.append(
+            contentsOf: remainingFiles.filter { !includedPaths.contains($0.path) }
+        )
+        filesToProcess = completedPrefix + reorderedRemaining
     }
 
     private func validatedPostProcessScriptPath(_ scriptPath: String) -> String? {
