@@ -272,6 +272,7 @@ class VideoProcessor: ObservableObject {
     private nonisolated(unsafe) var shouldCancelProcessing = false
     private var encodingTimer: Timer?
     private var currentProcess: Process?
+    private var forcedStopTask: Task<Void, Never>?
     private var framePreviewTask: Task<Void, Never>?
     private var framePreviewProcess: Process?
     private var framePreviewToken = UUID()
@@ -1099,6 +1100,23 @@ class VideoProcessor: ObservableObject {
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly
             )
             let conversionEndTime = Date()
+
+            if shouldCancelProcessing {
+                try? FileManager.default.removeItem(atPath: tempOutputFile)
+
+                let cancelledFilePath = fileInfo.path
+                DispatchQueue.main.async {
+                    if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == cancelledFilePath }) {
+                        var updatedFile = self.videoFiles[fileIndex]
+                        updatedFile.status = .pending
+                        updatedFile.processingStartTime = nil
+                        updatedFile.processingEndTime = nil
+                        updatedFile.processingTimeSeconds = 0
+                        self.videoFiles[fileIndex] = updatedFile
+                    }
+                }
+                break
+            }
 
             if case .success = conversionOutcome {
                 // Get file sizes
@@ -2253,6 +2271,8 @@ class VideoProcessor: ObservableObject {
 
                     if process.terminationStatus == 0 {
                         continuation.resume(returning: (true, ""))
+                    } else if self.shouldCancelProcessing {
+                        continuation.resume(returning: (false, "Cancelled by user"))
                     } else {
                         // Capture both stderr and stdout for error details
                         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
@@ -2582,12 +2602,29 @@ class VideoProcessor: ObservableObject {
         if let process = currentProcess, process.isRunning {
             process.terminate()
             addLog("􀛶 Terminating current operation...")
+            scheduleForcedStop(for: process)
         } else {
             addLog("􀊆 Cancelling...")
         }
 
         // Clear dock badge when cancelled
         clearDockBadge()
+    }
+
+    private func scheduleForcedStop(for process: Process) {
+        forcedStopTask?.cancel()
+        forcedStopTask = Task { @MainActor [weak self, weak process] in
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+
+            guard let self, let process, process.isRunning else { return }
+            kill(process.processIdentifier, SIGKILL)
+            self.addLog("􀛶 FFmpeg did not stop gracefully; forced it to stop.")
+            self.forcedStopTask = nil
+        }
     }
 
     func cancelForApplicationTermination() async {
