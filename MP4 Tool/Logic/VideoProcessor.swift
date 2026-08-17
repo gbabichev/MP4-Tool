@@ -47,6 +47,14 @@ struct FFProbeOutput: Codable {
     let streams: [VideoStream]
 }
 
+private struct AudioMapping {
+    let index: Int
+    let language: String?
+    let title: String?
+    let channels: Int?
+    let channelLayout: String?
+}
+
 enum ProcessingMode: String, CaseIterable {
     case encodeH264 = "encode_h264"
     case encodeH265 = "encode_h265"
@@ -1929,6 +1937,9 @@ class VideoProcessor: ObservableObject {
         if let validationFailure = await outputValidationFailure(
             outputFile: tempFile,
             expectedAudioTrackCount: audioMappings.count,
+            expectedAudioLayouts: encodeAudio && mode != .remux
+                ? audioMappings.map(\.channelLayout)
+                : [],
             sourceDuration: sourceDuration
         ) {
             addLog("􀁡 Output validation failed: \(validationFailure)")
@@ -1989,6 +2000,7 @@ class VideoProcessor: ObservableObject {
     private func outputValidationFailure(
         outputFile: String,
         expectedAudioTrackCount: Int,
+        expectedAudioLayouts: [String?],
         sourceDuration: TimeInterval?
     ) async -> String? {
         guard FileManager.default.fileExists(atPath: outputFile) else {
@@ -2010,9 +2022,27 @@ class VideoProcessor: ObservableObject {
             return "temporary output contains no video stream"
         }
 
-        let actualAudioTrackCount = outputStreams.streams.filter { $0.codecType == "audio" }.count
+        let outputAudioStreams = outputStreams.streams.filter { $0.codecType == "audio" }
+        let actualAudioTrackCount = outputAudioStreams.count
         guard actualAudioTrackCount == expectedAudioTrackCount else {
             return "expected \(expectedAudioTrackCount) audio track(s), found \(actualAudioTrackCount)"
+        }
+
+        for (audioIndex, expectedLayout) in expectedAudioLayouts.enumerated() {
+            guard let expectedLayout, audioIndex < outputAudioStreams.count else { continue }
+            let actualLayout = outputAudioStreams[audioIndex].channelLayout ?? ""
+            guard normalizedProbeValue(actualLayout) == normalizedProbeValue(expectedLayout) else {
+                return "audio track \(audioIndex + 1) is missing its expected \(expectedLayout) channel layout"
+            }
+        }
+
+        let outputAsset = AVURLAsset(url: URL(fileURLWithPath: outputFile))
+        let appleAudioTracks = (try? await outputAsset.loadTracks(withMediaType: .audio)) ?? []
+        guard appleAudioTracks.count == expectedAudioTrackCount else {
+            return "Apple media frameworks could not read all encoded audio tracks"
+        }
+        guard (try? await outputAsset.load(.isPlayable)) == true else {
+            return "temporary output is not playable by Apple media frameworks"
         }
 
         guard let outputDuration = await probeDurationSeconds(inputFile: outputFile) else {
@@ -2042,7 +2072,7 @@ class VideoProcessor: ObservableObject {
     private func getAudioMappings(
         audioStreams: FFProbeOutput,
         keepEnglishOnly: Bool
-    ) -> [(index: Int, language: String?, title: String?, channelLayout: String?)] {
+    ) -> [AudioMapping] {
         let streams = audioStreams.streams
 
         if keepEnglishOnly {
@@ -2051,20 +2081,22 @@ class VideoProcessor: ObservableObject {
                 guard language == "eng" || language == "und" else {
                     return nil
                 }
-                return (
+                return AudioMapping(
                     index: stream.index,
                     language: language,
                     title: stream.tags?["title"],
+                    channels: stream.channels,
                     channelLayout: resolvedAudioChannelLayout(for: stream)
                 )
             }
         } else {
             return streams.map { stream in
                 let language = stream.tags?["language"]?.lowercased()
-                return (
+                return AudioMapping(
                     index: stream.index,
                     language: language,
                     title: stream.tags?["title"],
+                    channels: stream.channels,
                     channelLayout: resolvedAudioChannelLayout(for: stream)
                 )
             }
@@ -2082,6 +2114,14 @@ class VideoProcessor: ObservableObject {
         case 6: return "5.1"
         case 8: return "7.1"
         default: return nil
+        }
+    }
+
+    private func aacBitrate(for mapping: AudioMapping) -> String {
+        switch mapping.channels {
+        case 6: return "256k"
+        case 8: return "512k"
+        default: return "192k"
         }
     }
 
@@ -2260,7 +2300,7 @@ class VideoProcessor: ObservableObject {
         videoCodec: String?,
         videoWidth: Int?,
         videoHeight: Int?,
-        audioMappings: [(index: Int, language: String?, title: String?, channelLayout: String?)],
+        audioMappings: [AudioMapping],
         subtitleMappings: [(index: Int, language: String?)]
     ) -> [String] {
         var cmd: [String] = []
@@ -2383,6 +2423,9 @@ class VideoProcessor: ObservableObject {
                         channelLayout
                     ]
                 )
+            }
+            if encodeAudio, mode != .remux {
+                cmd.append(contentsOf: ["-b:a:\(outputIndex)", aacBitrate(for: mapping)])
             }
             cmd.append(
                 contentsOf: [

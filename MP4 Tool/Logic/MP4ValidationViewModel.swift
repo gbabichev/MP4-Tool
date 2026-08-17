@@ -57,9 +57,15 @@ private struct MP4ValidationAudioCompatibility {
     let formatDuration: TimeInterval?
 }
 
+enum MP4AudioRepairKind: Equatable {
+    case downmixToStereo
+    case restoreLayout(String)
+}
+
 struct MP4AudioRepairCandidate: Equatable {
     let streamIndex: Int
     let audioIndex: Int
+    let kind: MP4AudioRepairKind
 }
 
 private struct MP4ValidationAudioAuthoringAnalysis {
@@ -342,11 +348,17 @@ final class MP4ValidationViewModel: ObservableObject {
                         stream: stream,
                         formatDuration: compatibility.formatDuration,
                         fullScan: true
-                      ),
-                      activeChannels == Set([1, 2]) else {
+                      ) else {
                     continue
                 }
-                confirmedCandidates.append(candidate)
+                switch candidate.kind {
+                case .downmixToStereo where activeChannels == Set([1, 2]):
+                    confirmedCandidates.append(candidate)
+                case .restoreLayout where activeChannels.count > 2:
+                    confirmedCandidates.append(candidate)
+                default:
+                    break
+                }
             }
 
             if Task.isCancelled {
@@ -359,7 +371,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 skippedCount += 1
                 updateRepairMessage(
                     for: result.id,
-                    message: "Repair skipped: the full-track scan did not confirm stereo-only signal."
+                    message: "Repair skipped: the full-track channel scan did not confirm the expected audio layout."
                 )
                 continue
             }
@@ -434,14 +446,22 @@ final class MP4ValidationViewModel: ObservableObject {
             }
 
             for candidate in confirmedCandidates {
-                arguments.append(
-                    contentsOf: [
+                switch candidate.kind {
+                case .downmixToStereo:
+                    arguments.append(contentsOf: [
                         "-filter:a:\(candidate.audioIndex)", "pan=stereo|c0=FL|c1=FR",
                         "-c:a:\(candidate.audioIndex)", "aac",
                         "-b:a:\(candidate.audioIndex)", "192k",
                         "-channel_layout:a:\(candidate.audioIndex)", "stereo"
-                    ]
-                )
+                    ])
+                case .restoreLayout(let layout):
+                    let bitrate = layout == "7.1" ? "512k" : "256k"
+                    arguments.append(contentsOf: [
+                        "-c:a:\(candidate.audioIndex)", "aac",
+                        "-b:a:\(candidate.audioIndex)", bitrate,
+                        "-channel_layout:a:\(candidate.audioIndex)", layout
+                    ])
+                }
             }
             arguments.append(contentsOf: ["-movflags", "+faststart", temporaryURL.path])
 
@@ -461,14 +481,33 @@ final class MP4ValidationViewModel: ObservableObject {
                   repairedCompatibility.streams.filter({ $0.disposition?.isDefault == 1 }).count <= 1,
                   audioTrackNamesAreDistinguishable(repairedCompatibility.streams),
                   confirmedCandidates.allSatisfy({ candidate in
-                    repairedCompatibility.streams.indices.contains(candidate.audioIndex)
-                        && repairedCompatibility.streams[candidate.audioIndex].channels == 2
-                        && normalizedProbeValue(
-                            repairedCompatibility.streams[candidate.audioIndex].channelLayout
-                        ) == "stereo"
+                    guard repairedCompatibility.streams.indices.contains(candidate.audioIndex) else {
+                        return false
+                    }
+                    let repairedStream = repairedCompatibility.streams[candidate.audioIndex]
+                    switch candidate.kind {
+                    case .downmixToStereo:
+                        return repairedStream.channels == 2
+                            && normalizedProbeValue(repairedStream.channelLayout) == "stereo"
+                    case .restoreLayout(let layout):
+                        return normalizedProbeValue(repairedStream.channelLayout)
+                            == normalizedProbeValue(layout)
+                    }
                   }) else {
                 skippedCount += 1
                 updateRepairMessage(for: result.id, message: "Repair failed validation; the original was untouched.")
+                continue
+            }
+
+            let repairedAsset = AVURLAsset(url: temporaryURL)
+            let appleAudioTracks = (try? await repairedAsset.loadTracks(withMediaType: .audio)) ?? []
+            guard !appleAudioTracks.isEmpty,
+                  (try? await repairedAsset.load(.isPlayable)) == true else {
+                skippedCount += 1
+                updateRepairMessage(
+                    for: result.id,
+                    message: "Repair failed Apple playback validation; the original was untouched."
+                )
                 continue
             }
 
@@ -515,7 +554,6 @@ final class MP4ValidationViewModel: ObservableObject {
         compatibility: MP4ValidationAudioCompatibility,
         repairedCandidates: [MP4AudioRepairCandidate]
     ) -> [Int: String] {
-        let repairedAudioIndexes = Set(repairedCandidates.map(\.audioIndex))
         let indexedStreams = Array(compatibility.streams.enumerated())
         let languageGroups = Dictionary(grouping: indexedStreams) { indexedStream in
             normalizedProbeValue(indexedStream.element.tags?["language"])
@@ -543,8 +581,13 @@ final class MP4ValidationViewModel: ObservableObject {
                 }
 
                 let technicalName: String
-                if repairedAudioIndexes.contains(audioIndex) {
-                    technicalName = "Stereo (Repaired AAC)"
+                if let repairedCandidate = repairedCandidates.first(where: { $0.audioIndex == audioIndex }) {
+                    switch repairedCandidate.kind {
+                    case .downmixToStereo:
+                        technicalName = "Stereo (Repaired AAC)"
+                    case .restoreLayout(let layout):
+                        technicalName = "\(displayAudioLayout(layout)) (Repaired AAC)"
+                    }
                 } else if let layout = stream.channelLayout, !layout.isEmpty {
                     let layoutName = displayAudioLayout(layout)
                     let codecName = displayAudioCodec(stream.codecName)
@@ -849,8 +892,8 @@ final class MP4ValidationViewModel: ObservableObject {
             return MP4ValidationFinding(
                 message: allFindings.joined(separator: ", "),
                 severity: .error,
-                repairCandidates: [],
-                needsAudioMetadataRepair: false
+                repairCandidates: repairCandidates,
+                needsAudioMetadataRepair: needsAudioMetadataRepair
             )
         }
 
@@ -1037,13 +1080,28 @@ final class MP4ValidationViewModel: ObservableObject {
                 stream: stream,
                 formatDuration: compatibility.formatDuration,
                 fullScan: false
-            ), !activeChannels.isEmpty, activeChannels.count <= 2 {
-                warnings.append(
-                    "audio stream \(stream.index) claims \(channelCount) channels but only \(activeChannels.count) contain signal"
-                )
-                if activeChannels == Set([1, 2]) {
+            ), !activeChannels.isEmpty {
+                if activeChannels.count <= 2 {
+                    warnings.append(
+                        "audio stream \(stream.index) claims \(channelCount) channels but only \(activeChannels.count) contain signal"
+                    )
+                    if activeChannels == Set([1, 2]) {
+                        repairCandidates.append(
+                            MP4AudioRepairCandidate(
+                                streamIndex: stream.index,
+                                audioIndex: audioIndex,
+                                kind: .downmixToStereo
+                            )
+                        )
+                    }
+                } else if normalizedProbeValue(stream.channelLayout).isEmpty,
+                          let inferredLayout = inferredChannelLayout(channelCount: channelCount) {
                     repairCandidates.append(
-                        MP4AudioRepairCandidate(streamIndex: stream.index, audioIndex: audioIndex)
+                        MP4AudioRepairCandidate(
+                            streamIndex: stream.index,
+                            audioIndex: audioIndex,
+                            kind: .restoreLayout(inferredLayout)
+                        )
                     )
                 }
             }
@@ -1066,6 +1124,14 @@ final class MP4ValidationViewModel: ObservableObject {
             return title
         }
         return normalizedProbeValue(stream.tags?["handler_name"])
+    }
+
+    private func inferredChannelLayout(channelCount: Int) -> String? {
+        switch channelCount {
+        case 6: return "5.1"
+        case 8: return "7.1"
+        default: return nil
+        }
     }
 
     private func expectedChannelCount(for layout: String?) -> Int? {
