@@ -2104,16 +2104,19 @@ class VideoProcessor: ObservableObject {
     }
 
     private func resolvedAudioChannelLayout(for stream: VideoStream) -> String? {
-        if let channelLayout = stream.channelLayout, !channelLayout.isEmpty {
-            return channelLayout
-        }
-
+        // Use canonical MPEG layouts for AAC-in-MP4. Passing 5.1(side) makes
+        // FFmpeg use a PCE, which some FFmpeg 8.x MP4 outputs and Apple players
+        // fail to expose as a readable channel layout.
         switch stream.channels {
         case 1: return "mono"
         case 2: return "stereo"
         case 6: return "5.1"
         case 8: return "7.1"
-        default: return nil
+        default:
+            guard let channelLayout = stream.channelLayout, !channelLayout.isEmpty else {
+                return nil
+            }
+            return channelLayout
         }
     }
 
