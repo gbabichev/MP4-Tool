@@ -48,7 +48,7 @@ struct MP4ValidationView: View {
                     openLabel: viewModel.droppedFilePaths.isEmpty ? "Open" : "Reveal",
                     chooseDisabled: viewModel.isScanning || viewModel.isRepairing,
                     openAction: viewModel.openInputFolderInFinder,
-                    chooseAction: viewModel.selectInputFolder
+                    chooseAction: viewModel.selectInput
                 )
                 .padding(.vertical, 4)
             }
@@ -256,29 +256,6 @@ struct MP4ValidationView: View {
                 .disabled(!viewModel.canExportFlagged)
             }
 
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    viewModel.repairSelected(
-                        resultIDs: selectedRepairResultIDs,
-                        useOriginalFilename: useOriginalRepairFilename,
-                        customOutputFolderPath: useCustomRepairFolder
-                            ? customRepairFolderPath : nil
-                    )
-                } label: {
-                    Label(
-                        selectedRepairCount > 0 ? "Repair Selected (\(selectedRepairCount))" : "Repair Selected",
-                        systemImage: "wrench.and.screwdriver"
-                    )
-                }
-                .disabled(
-                    selectedRepairCount == 0
-                        || viewModel.isScanning
-                        || viewModel.isRepairing
-                        || !repairDestinationIsReady
-                )
-                .help(repairActionHelp)
-            }
-
             ToolbarItemGroup(placement: .primaryAction) {
                 if viewModel.isRepairing {
                     Button {
@@ -299,6 +276,26 @@ struct MP4ValidationView: View {
                     .tint(.red)
                     .keyboardShortcut(".", modifiers: .command)
                 } else {
+                    if !repairableResultIDs.isEmpty {
+                        Button {
+                            viewModel.repairSelected(
+                                resultIDs: selectedRepairResultIDs,
+                                useOriginalFilename: useOriginalRepairFilename,
+                                customOutputFolderPath: useCustomRepairFolder
+                                    ? customRepairFolderPath : nil
+                            )
+                        } label: {
+                            Label(
+                                selectedRepairCount > 0
+                                    ? "Repair Selected (\(selectedRepairCount))"
+                                    : "Repair Selected",
+                                systemImage: "wrench.and.screwdriver"
+                            )
+                        }
+                        .disabled(selectedRepairCount == 0 || !repairDestinationIsReady)
+                        .help(repairActionHelp)
+                    }
+
                     Button {
                         showFlaggedOnly = false
                         selectedRepairResultIDs.removeAll()
@@ -324,10 +321,10 @@ struct MP4ValidationView: View {
     private var inputSelectionTitle: String {
         if !viewModel.droppedFilePaths.isEmpty {
             return viewModel.droppedFilePaths.count == 1
-                ? "Dropped MP4 File"
-                : "Dropped MP4 Files"
+                ? "Input MP4 File"
+                : "Input MP4 Files"
         }
-        return viewModel.inputFolderPath.isEmpty ? "No Folder Selected" : "Input Folder"
+        return viewModel.inputFolderPath.isEmpty ? "No Input Selected" : "Input Folder"
     }
 
     private var customRepairFolderIsValid: Bool {

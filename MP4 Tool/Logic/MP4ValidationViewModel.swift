@@ -132,10 +132,14 @@ final class MP4ValidationViewModel: ObservableObject {
 
     var inputSelectionDescription: String {
         if !droppedFilePaths.isEmpty {
-            let noun = droppedFilePaths.count == 1 ? "file" : "files"
-            return "\(droppedFilePaths.count) dropped MP4 \(noun)"
+            if droppedFilePaths.count == 1 {
+                return droppedFilePaths[0]
+            }
+            return "\(droppedFilePaths.count) selected MP4 files"
         }
-        return inputFolderPath.isEmpty ? "Select a folder or drop MP4 files here" : inputFolderPath
+        return inputFolderPath.isEmpty
+            ? "Select an MP4 file or folder, or drop MP4 files here"
+            : inputFolderPath
     }
 
     var flaggedResults: [MP4ValidationResult] {
@@ -162,17 +166,28 @@ final class MP4ValidationViewModel: ObservableObject {
         locateMediaTools()
     }
 
-    func selectInputFolder() {
+    func selectInput() {
         let panel = NSOpenPanel()
-        panel.canChooseFiles = false
+        panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
-        panel.message = "Select folder to validate MP4 files"
+        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.message = "Choose one MP4 file or a folder containing MP4 files"
 
         if panel.runModal() == .OK, let url = panel.url {
-            inputFolderPath = url.path
-            droppedFilePaths = []
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+                return
+            }
+            if isDirectory.boolValue {
+                _ = setInputFolder(url: url)
+            } else {
+                droppedFilePaths = []
+                if setDroppedFiles(urls: [url]) {
+                    scanAlertText = "Ready to validate the selected MP4 file."
+                }
+            }
         }
     }
 
@@ -197,7 +212,9 @@ final class MP4ValidationViewModel: ObservableObject {
 
         inputFolderPath = url.path
         droppedFilePaths = []
-        scanAlertText = ""
+        results = []
+        scanProgress = ""
+        scanAlertText = "Ready to validate MP4 files in the selected folder."
         return true
     }
 
@@ -777,7 +794,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 Self.collectMP4FilesRecursively(in: rootPath)
             }.value
         } else {
-            scanProgress = "Preparing dropped MP4 files..."
+            scanProgress = "Preparing selected MP4 files..."
             files = selectedDroppedPaths.map { path in
                 (
                     relativePath: URL(fileURLWithPath: path).lastPathComponent,
