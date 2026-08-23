@@ -90,6 +90,42 @@ extension ProcessingPreset {
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: false
+        ),
+        ProcessingPreset(
+            id: UUID(uuidString: "648AF3DE-62F0-4ACF-90A4-840A421D9330")!,
+            name: "Remux English Only",
+            modeRawValue: ProcessingMode.remux.rawValue,
+            crfValue: 23,
+            resolutionRawValue: ResolutionOption.default.rawValue,
+            encoderPresetRawValue: PresetOption.fast.rawValue,
+            encodeVideo: true,
+            encodeAudio: true,
+            createSubfolders: false,
+            automaticRename: true,
+            deleteOriginal: false,
+            keepEnglishAudioOnly: true,
+            keepEnglishSubtitlesOnly: true,
+            postProcessScriptPath: "",
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
+            postProcessScriptPassFileNameAsFirstArgument: false
+        ),
+        ProcessingPreset(
+            id: UUID(uuidString: "8E7773E3-65C5-4E37-98BD-F97C0452FE6B")!,
+            name: "Remux",
+            modeRawValue: ProcessingMode.remux.rawValue,
+            crfValue: 23,
+            resolutionRawValue: ResolutionOption.default.rawValue,
+            encoderPresetRawValue: PresetOption.fast.rawValue,
+            encodeVideo: true,
+            encodeAudio: true,
+            createSubfolders: false,
+            automaticRename: true,
+            deleteOriginal: false,
+            keepEnglishAudioOnly: false,
+            keepEnglishSubtitlesOnly: false,
+            postProcessScriptPath: "",
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
+            postProcessScriptPassFileNameAsFirstArgument: false
         )
     ]
 }

@@ -312,6 +312,22 @@ struct MainContentView: View {
                         Capsule(style: .continuous)
                             .fill(queueStatusColor(for: file).opacity(0.12))
                     )
+
+                Button(role: .destructive) {
+                    removeSingleFile(fileID: file.id)
+                } label: {
+                    Image(systemName: "trash")
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(file.status == .processing)
+                .help(
+                    file.status == .processing
+                        ? "The active file cannot be removed"
+                        : "Remove from queue"
+                )
+                .accessibilityLabel("Remove \(file.fileName) from queue")
             }
 
             if file.status == .pending && file.hasConflict && !file.conflictReason.isEmpty {
@@ -430,6 +446,15 @@ struct MainContentView: View {
                 viewModel.selectedFileIDs.remove(fileID)
             }
         }
+    }
+
+    private func removeSingleFile(fileID: UUID) {
+        guard let index = viewModel.processor.videoFiles.firstIndex(where: { $0.id == fileID }),
+              viewModel.processor.videoFiles[index].status != .processing else {
+            return
+        }
+        viewModel.removeFile(at: index)
+        viewModel.selectedFileIDs.remove(fileID)
     }
 
     private func openParentFolderInFinder(filePath: String) {
