@@ -197,6 +197,12 @@ struct MP4_ToolApp: App {
                     Label("Subtitle Merger", systemImage: "captions.bubble.fill")
                 }
 
+                Button(action: {
+                    openWindow(id: "trackEditor")
+                }) {
+                    Label("Track Editor", systemImage: "list.bullet.rectangle")
+                }
+
                 Divider()
                 
                 Button(action: {
@@ -246,6 +252,11 @@ struct MP4_ToolApp: App {
         Window("Subtitle Merger", id: "subtitleMuxer") {
             SubtitleMuxerView()
         }
+
+        Window("Track Editor", id: "trackEditor") {
+            TrackEditorView()
+        }
+        .defaultSize(width: 1120, height: 760)
 
         Window("Scan for Non-MP4 Files", id: "nonMP4Scanner") {
             NonMP4ScannerView()
