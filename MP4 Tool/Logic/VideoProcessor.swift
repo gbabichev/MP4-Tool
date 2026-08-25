@@ -26,6 +26,7 @@ struct VideoStream: Codable {
     let height: Int?
     let averageFrameRate: String?
     let realFrameRate: String?
+    let disposition: VideoStreamDisposition?
 
     enum CodingKeys: String, CodingKey {
         case index
@@ -40,6 +41,21 @@ struct VideoStream: Codable {
         case height
         case averageFrameRate = "avg_frame_rate"
         case realFrameRate = "r_frame_rate"
+        case disposition
+    }
+}
+
+struct VideoStreamDisposition: Codable {
+    let isDefault: Int?
+    let isForced: Int?
+    let isHearingImpaired: Int?
+    let isCaptions: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case isDefault = "default"
+        case isForced = "forced"
+        case isHearingImpaired = "hearing_impaired"
+        case isCaptions = "captions"
     }
 }
 
@@ -53,6 +69,16 @@ private struct AudioMapping {
     let title: String?
     let channels: Int?
     let channelLayout: String?
+}
+
+private struct SubtitleMapping {
+    let index: Int
+    let language: String?
+    let title: String?
+    let isDefault: Bool
+    let isForced: Bool
+    let isHearingImpaired: Bool
+    let isCaptions: Bool
 }
 
 enum ProcessingMode: String, CaseIterable {
@@ -1881,7 +1907,15 @@ class VideoProcessor: ObservableObject {
         if subtitleMappings.isEmpty {
             addLog("Selected Subtitles: none")
         } else {
-            let descriptions = subtitleMappings.map { "0:\($0.index) (\($0.language ?? "und"))" }
+            let descriptions = subtitleMappings.map { subtitle in
+                var traits: [String] = []
+                if subtitle.isDefault { traits.append("default") }
+                if subtitle.isForced { traits.append("forced") }
+                if subtitle.isHearingImpaired { traits.append("hearing impaired") }
+                if subtitle.isCaptions { traits.append("captions") }
+                let traitDescription = traits.isEmpty ? "" : " · \(traits.joined(separator: ", "))"
+                return "0:\(subtitle.index) (\(subtitle.language ?? "und")\(traitDescription))"
+            }
             addLog("Selected Subtitles: \(descriptions.joined(separator: ", "))")
         }
 
@@ -2356,26 +2390,82 @@ class VideoProcessor: ObservableObject {
     private func getSubtitleMappings(
         subtitleStreams: FFProbeOutput,
         keepEnglishOnly: Bool
-    ) -> [(index: Int, language: String?)] {
+    ) -> [SubtitleMapping] {
         let validCodecs = ["subrip", "ass", "ssa", "mov_text"]
 
-        return subtitleStreams.streams.compactMap { stream in
+        let candidates = subtitleStreams.streams.compactMap { stream -> (
+            index: Int,
+            language: String?,
+            title: String?,
+            sourceDefault: Bool,
+            forced: Bool,
+            hearingImpaired: Bool,
+            captions: Bool
+        )? in
             guard let codec = stream.codecName,
                   validCodecs.contains(codec) else {
                 return nil
             }
 
             let language = stream.tags?["language"]?.lowercased()
+            let title = stream.tags?["title"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedTitle = title?.lowercased() ?? ""
+            let forced = stream.disposition?.isForced == 1 || normalizedTitle.contains("forced")
+            let hearingImpaired = stream.disposition?.isHearingImpaired == 1
+                || normalizedTitle.contains("hearing impaired")
+                || normalizedTitle.contains("sdh")
+            let captions = stream.disposition?.isCaptions == 1
 
             if keepEnglishOnly {
                 let normalizedLanguage = language ?? "und"
                 guard normalizedLanguage == "eng" || normalizedLanguage == "und" else {
                     return nil
                 }
-                return (index: stream.index, language: normalizedLanguage)
+                return (
+                    index: stream.index,
+                    language: normalizedLanguage,
+                    title: title,
+                    sourceDefault: stream.disposition?.isDefault == 1,
+                    forced: forced,
+                    hearingImpaired: hearingImpaired,
+                    captions: captions
+                )
             }
 
-            return (index: stream.index, language: language)
+            return (
+                index: stream.index,
+                language: language,
+                title: title,
+                sourceDefault: stream.disposition?.isDefault == 1,
+                forced: forced,
+                hearingImpaired: hearingImpaired,
+                captions: captions
+            )
+        }
+
+        // MP4 will otherwise promote the first mapped subtitle to Default. Prefer
+        // a plain English dialogue track over Forced or SDH/caption tracks.
+        let preferredDefaultOffset = candidates.firstIndex {
+            $0.language == "eng" && !$0.forced && !$0.hearingImpaired && !$0.captions
+        } ?? candidates.firstIndex {
+            $0.language == "und" && !$0.forced && !$0.hearingImpaired && !$0.captions
+        } ?? candidates.firstIndex {
+            $0.sourceDefault && !$0.forced && !$0.hearingImpaired && !$0.captions
+        } ?? candidates.firstIndex {
+            !$0.forced && !$0.hearingImpaired && !$0.captions
+        } ?? candidates.firstIndex(where: { $0.sourceDefault })
+            ?? candidates.indices.first
+
+        return candidates.enumerated().map { offset, candidate in
+            SubtitleMapping(
+                index: candidate.index,
+                language: candidate.language,
+                title: candidate.title,
+                isDefault: offset == preferredDefaultOffset,
+                isForced: candidate.forced,
+                isHearingImpaired: candidate.hearingImpaired,
+                isCaptions: candidate.captions
+            )
         }
     }
 
@@ -2392,7 +2482,7 @@ class VideoProcessor: ObservableObject {
         videoWidth: Int?,
         videoHeight: Int?,
         audioMappings: [AudioMapping],
-        subtitleMappings: [(index: Int, language: String?)]
+        subtitleMappings: [SubtitleMapping]
     ) -> [String] {
         var cmd: [String] = []
 
@@ -2530,9 +2620,11 @@ class VideoProcessor: ObservableObject {
         for (outputIndex, subtitle) in subtitleMappings.enumerated() {
             cmd.append(contentsOf: ["-map", "0:\(subtitle.index)"])
             cmd.append(contentsOf: ["-c:s:\(outputIndex)", "mov_text"])
-            if let language = subtitle.language {
-                cmd.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "language=\(language)"])
-            }
+            appendSubtitleMetadataAndDisposition(
+                subtitle,
+                outputIndex: outputIndex,
+                to: &cmd
+            )
         }
 
         cmd.append(tempFile)
@@ -2546,7 +2638,7 @@ class VideoProcessor: ObservableObject {
         outputFile: String,
         videoCodec: String?,
         audioMappings: [AudioMapping],
-        subtitleMappings: [(index: Int, language: String?)]
+        subtitleMappings: [SubtitleMapping]
     ) -> [String] {
         var cmd = [
             "-nostdin",
@@ -2583,9 +2675,11 @@ class VideoProcessor: ObservableObject {
         for (outputIndex, subtitle) in subtitleMappings.enumerated() {
             cmd.append(contentsOf: ["-map", "1:\(subtitle.index)"])
             cmd.append(contentsOf: ["-c:s:\(outputIndex)", "mov_text"])
-            if let language = subtitle.language {
-                cmd.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "language=\(language)"])
-            }
+            appendSubtitleMetadataAndDisposition(
+                subtitle,
+                outputIndex: outputIndex,
+                to: &cmd
+            )
         }
 
         cmd.append(contentsOf: [
@@ -2597,6 +2691,30 @@ class VideoProcessor: ObservableObject {
             outputFile
         ])
         return cmd
+    }
+
+    private func appendSubtitleMetadataAndDisposition(
+        _ subtitle: SubtitleMapping,
+        outputIndex: Int,
+        to arguments: inout [String]
+    ) {
+        if let language = subtitle.language {
+            arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "language=\(language)"])
+        }
+        if let title = subtitle.title, !title.isEmpty {
+            arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "title=\(title)"])
+            arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "handler_name=\(title)"])
+        }
+
+        var dispositions: [String] = []
+        if subtitle.isDefault { dispositions.append("default") }
+        if subtitle.isForced { dispositions.append("forced") }
+        if subtitle.isHearingImpaired { dispositions.append("hearing_impaired") }
+        if subtitle.isCaptions { dispositions.append("captions") }
+        arguments.append(contentsOf: [
+            "-disposition:s:\(outputIndex)",
+            dispositions.isEmpty ? "0" : dispositions.joined(separator: "+")
+        ])
     }
 
     private func runCommand(arguments: [String]) async -> (success: Bool, errorMessage: String) {

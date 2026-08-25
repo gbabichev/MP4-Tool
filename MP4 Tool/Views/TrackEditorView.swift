@@ -332,7 +332,7 @@ private struct TrackEditorTrackRow: View {
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 } else {
-                    Text(track.isExternal ? "Added track" : "Source stream \(track.streamIndex)")
+                    Text(trackDetailDescription)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -379,6 +379,36 @@ private struct TrackEditorTrackRow: View {
                 .buttonStyle(.plain)
                 .controlSize(.small)
                 .disabled(controlsDisabled || !track.isIncluded)
+
+                if track.kind == .subtitle {
+                    Menu {
+                        subtitleFlagButton(
+                            "Forced",
+                            isEnabled: track.isForced
+                        ) {
+                            track.isForced.toggle()
+                        }
+                        subtitleFlagButton(
+                            "Hearing Impaired",
+                            isEnabled: track.isHearingImpaired
+                        ) {
+                            track.isHearingImpaired.toggle()
+                        }
+                        subtitleFlagButton(
+                            "Captions",
+                            isEnabled: track.isCaptions
+                        ) {
+                            track.isCaptions.toggle()
+                        }
+                    } label: {
+                        Label("Flags", systemImage: "tag")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .controlSize(.small)
+                    .disabled(controlsDisabled || !track.isIncluded)
+                    .help("Edit subtitle flags shown by media players")
+                }
             }
 
             if track.isExternal {
@@ -404,6 +434,28 @@ private struct TrackEditorTrackRow: View {
             )
         }
         return options
+    }
+
+    private var trackDetailDescription: String {
+        var parts = [track.isExternal ? "Added track" : "Source stream \(track.streamIndex)"]
+        if let disposition = track.subtitleDispositionDescription {
+            parts.append(disposition)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func subtitleFlagButton(
+        _ title: String,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            if isEnabled {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
     }
 }
 

@@ -44,6 +44,9 @@ struct TrackEditorTrack: Identifiable, Equatable {
     var language: String
     var title: String
     var isDefault: Bool
+    var isForced: Bool
+    var isHearingImpaired: Bool
+    var isCaptions: Bool
 
     var technicalDescription: String {
         var parts = [codec.uppercased()]
@@ -61,6 +64,15 @@ struct TrackEditorTrack: Identifiable, Equatable {
             parts.append(URL(fileURLWithPath: sourcePath).lastPathComponent)
         }
         return parts.joined(separator: " · ")
+    }
+
+    var subtitleDispositionDescription: String? {
+        guard kind == .subtitle else { return nil }
+        var labels: [String] = []
+        if isForced { labels.append("Forced") }
+        if isHearingImpaired { labels.append("Hearing Impaired") }
+        if isCaptions { labels.append("Captions") }
+        return labels.isEmpty ? nil : labels.joined(separator: " · ")
     }
 }
 
@@ -97,9 +109,15 @@ private struct TrackEditorProbeStream: Decodable {
 
 private struct TrackEditorProbeDisposition: Decodable {
     let isDefault: Int?
+    let isForced: Int?
+    let isHearingImpaired: Int?
+    let isCaptions: Int?
 
     enum CodingKeys: String, CodingKey {
         case isDefault = "default"
+        case isForced = "forced"
+        case isHearingImpaired = "hearing_impaired"
+        case isCaptions = "captions"
     }
 }
 
@@ -500,7 +518,7 @@ final class TrackEditorViewModel: ObservableObject {
                 ])
                 appendMetadata(for: track, kindSpecifier: "s", outputIndex: outputIndex, to: &arguments)
                 arguments.append(contentsOf: [
-                    "-disposition:s:\(outputIndex)", track.isDefault ? "default" : "0"
+                    "-disposition:s:\(outputIndex)", subtitleDispositionValue(for: track)
                 ])
             }
         }
@@ -831,8 +849,20 @@ final class TrackEditorViewModel: ObservableObject {
             isIncluded: muxable,
             language: language,
             title: title,
-            isDefault: isExternal ? false : stream.disposition?.isDefault == 1
+            isDefault: isExternal ? false : stream.disposition?.isDefault == 1,
+            isForced: stream.disposition?.isForced == 1,
+            isHearingImpaired: stream.disposition?.isHearingImpaired == 1,
+            isCaptions: stream.disposition?.isCaptions == 1
         )
+    }
+
+    private func subtitleDispositionValue(for track: TrackEditorTrack) -> String {
+        var values: [String] = []
+        if track.isDefault { values.append("default") }
+        if track.isForced { values.append("forced") }
+        if track.isHearingImpaired { values.append("hearing_impaired") }
+        if track.isCaptions { values.append("captions") }
+        return values.isEmpty ? "0" : values.joined(separator: "+")
     }
 
     private func meaningfulTrackTitle(from tags: [String: String]?) -> String {
