@@ -298,12 +298,12 @@ class VideoProcessor: ObservableObject {
     @Published var hasSystemFFmpeg: Bool = false
     @Published var isUsingSystemFFmpeg: Bool = false
 
-    private static let ffmpegTimeRegex: NSRegularExpression = {
+    private nonisolated static let ffmpegTimeRegex: NSRegularExpression = {
         let pattern = #"(?:time|out_time)=\s*([0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?)"#
         return try! NSRegularExpression(pattern: pattern)
     }()
 
-    private static let ffmpegFrameRegex: NSRegularExpression = {
+    private nonisolated static let ffmpegFrameRegex: NSRegularExpression = {
         try! NSRegularExpression(pattern: #"(?:^|[\r\n])frame=\s*([0-9]+)"#)
     }()
 
@@ -598,6 +598,31 @@ class VideoProcessor: ObservableObject {
         return lines.last ?? "FFmpeg exited with code \(exitCode)"
     }
 
+    private nonisolated static func latestFFmpegProgressValue(
+        _ key: String,
+        in output: String
+    ) -> String? {
+        let prefix = "\(key)="
+        return output
+            .split(whereSeparator: \.isNewline)
+            .reversed()
+            .first(where: { $0.hasPrefix(prefix) })
+            .map { String($0.dropFirst(prefix.count)) }
+    }
+
+    private nonisolated static func terminationReasonDescription(
+        _ reason: Process.TerminationReason
+    ) -> String {
+        switch reason {
+        case .exit:
+            return "exit"
+        case .uncaughtSignal:
+            return "uncaught signal"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
     private func toolVersion(path: String) async -> String {
         guard !path.isEmpty,
               let output = await runCommandWithOutput(path: path, arguments: ["-version"]),
@@ -624,7 +649,7 @@ class VideoProcessor: ObservableObject {
         addLog("═════════════════════")
     }
 
-    private static func latestFFmpegMediaTimeSeconds(in text: String) -> TimeInterval? {
+    private nonisolated static func latestFFmpegMediaTimeSeconds(in text: String) -> TimeInterval? {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         let matches = ffmpegTimeRegex.matches(in: text, range: range)
         guard let match = matches.last,
@@ -643,7 +668,7 @@ class VideoProcessor: ObservableObject {
         return TimeInterval(hours * 3600) + TimeInterval(minutes * 60) + seconds
     }
 
-    private static func latestFFmpegFrame(in text: String) -> Int? {
+    private nonisolated static func latestFFmpegFrame(in text: String) -> Int? {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         let matches = ffmpegFrameRegex.matches(in: text, range: range)
         guard let match = matches.last,
@@ -1860,10 +1885,31 @@ class VideoProcessor: ObservableObject {
             addLog("Selected Subtitles: \(descriptions.joined(separator: ", "))")
         }
 
-        // Build ffmpeg command
+        // FFmpeg 9 can let sparse subtitle streams run far ahead of a slow video
+        // encode. On affected Matroska files it may then report progress=end and
+        // exit 0 while the encoded video is still incomplete. Keep subtitles out
+        // of the expensive encode and add them afterward with a fast stream-copy
+        // remux. The final validation still protects the source/output duration.
+        let usesSeparateSubtitleMux = mode != .remux && !subtitleMappings.isEmpty
+        let encodedAVFile: String? = usesSeparateSubtitleMux
+            ? (tempFile as NSString).deletingPathExtension + "-av.mp4"
+            : nil
+        let primaryOutputFile = encodedAVFile ?? tempFile
+
+        if let encodedAVFile {
+            try? FileManager.default.removeItem(atPath: encodedAVFile)
+        }
+        defer {
+            if let encodedAVFile {
+                try? FileManager.default.removeItem(atPath: encodedAVFile)
+            }
+        }
+
+        // Build the primary ffmpeg command. For affected encode workflows this
+        // produces a complete video/audio MP4 before subtitles are introduced.
         let cmd = buildFFmpegCommand(
             inputFile: inputFile,
-            tempFile: tempFile,
+            tempFile: primaryOutputFile,
             mode: mode,
             crfValue: crfValue,
             resolution: resolution,
@@ -1874,11 +1920,14 @@ class VideoProcessor: ObservableObject {
             videoWidth: videoDimensions?.width,
             videoHeight: videoDimensions?.height,
             audioMappings: audioMappings,
-            subtitleMappings: subtitleMappings
+            subtitleMappings: usesSeparateSubtitleMux ? [] : subtitleMappings
         )
 
         // Log the ffmpeg command being run
         addLog("􀅴 Running in \(mode.rawValue) mode")
+        if usesSeparateSubtitleMux {
+            addLog("􀅴 Encoding video and audio first; subtitles will be added in a separate remux")
+        }
         addLog("􀅴 FFmpeg command:")
         let commandString = shellCommand(executable: ffmpegPath, arguments: cmd)
         addLog("  \(commandString)")
@@ -1907,7 +1956,7 @@ class VideoProcessor: ObservableObject {
                         self.elapsedTime = Date().timeIntervalSince(start)
                     }
                     // Update output file size
-                    if let size = try? FileManager.default.attributesOfItem(atPath: tempFile)[.size] as? Int64 {
+                    if let size = try? FileManager.default.attributesOfItem(atPath: primaryOutputFile)[.size] as? Int64 {
                         self.newSize = size
                     }
                 }
@@ -1931,6 +1980,45 @@ class VideoProcessor: ObservableObject {
 
         guard !shouldCancelProcessing else {
             return .failed(reason: "Cancelled by user")
+        }
+
+        if usesSeparateSubtitleMux {
+            addLog("􀐱 Validating encoded video and audio before adding subtitles...")
+            if let validationFailure = await outputValidationFailure(
+                outputFile: primaryOutputFile,
+                expectedAudioTrackCount: audioMappings.count,
+                expectedAudioLayouts: encodeAudio
+                    ? audioMappings.map(\.channelLayout)
+                    : [],
+                sourceDuration: sourceDuration
+            ) {
+                addLog("􀁡 Intermediate output validation failed: \(validationFailure)")
+                return .failed(reason: "Encoded video/audio validation failed: \(validationFailure)")
+            }
+
+            guard let encodedAVFile else {
+                return .failed(reason: "Could not prepare subtitle remux")
+            }
+
+            let subtitleMuxCommand = buildSubtitleMuxCommand(
+                encodedAVFile: encodedAVFile,
+                sourceFile: inputFile,
+                outputFile: tempFile,
+                videoCodec: mode == .encodeH265 ? "hevc" : videoCodec,
+                audioMappings: audioMappings,
+                subtitleMappings: subtitleMappings
+            )
+            addLog("􀐱 Adding \(subtitleMappings.count) subtitle track(s)...")
+            addLog("􀅴 Subtitle remux command:")
+            addLog("  \(shellCommand(executable: ffmpegPath, arguments: subtitleMuxCommand))")
+
+            let (muxSucceeded, muxError) = await runCommand(arguments: subtitleMuxCommand)
+            guard muxSucceeded else {
+                return .failed(reason: "Subtitle remux failed: \(muxError)")
+            }
+            guard !shouldCancelProcessing else {
+                return .failed(reason: "Cancelled by user")
+            }
         }
 
         addLog("􀐱 Validating temporary output...")
@@ -2310,14 +2398,14 @@ class VideoProcessor: ObservableObject {
 
         if mode == .encodeH265 {
             cmd = [
-                "-i", inputFile, "-y",
+                "-nostdin", "-i", inputFile, "-y",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-movflags", "+faststart",
                 "-loglevel", "error", "-nostats", "-progress", "pipe:2"
             ]
             if let insertIndex = cmd.firstIndex(of: "-map") {
                 if encodeVideo {
-                    cmd.insert(contentsOf: ["-c:v", "libx265", "-x265-params", "log-level=0:threads=0", "-preset", preset.rawValue, "-crf", "\(crfValue)"], at: insertIndex)
+                    cmd.insert(contentsOf: ["-c:v", "libx265", "-x265-params", "log-level=0", "-preset", preset.rawValue, "-crf", "\(crfValue)"], at: insertIndex)
                 } else {
                     cmd.insert(contentsOf: ["-c:v", "copy"], at: insertIndex)
                 }
@@ -2348,7 +2436,7 @@ class VideoProcessor: ObservableObject {
             }
         } else if mode == .encodeH264 {
             cmd = [
-                "-i", inputFile, "-y",
+                "-nostdin", "-i", inputFile, "-y",
                 "-map", "0:v:0", "-map_metadata", "-1",
                 "-movflags", "+faststart",
                 "-loglevel", "error", "-nostats", "-progress", "pipe:2"
@@ -2386,7 +2474,7 @@ class VideoProcessor: ObservableObject {
             }
         } else { // remux
             cmd = [
-                "-i", inputFile, "-y",
+                "-nostdin", "-i", inputFile, "-y",
                 "-c:v", "copy", "-map", "0:v:0", "-map_metadata", "-1",
                 "-movflags", "+faststart",
                 "-loglevel", "error", "-nostats", "-progress", "pipe:2"
@@ -2452,7 +2540,68 @@ class VideoProcessor: ObservableObject {
         return cmd
     }
 
+    private func buildSubtitleMuxCommand(
+        encodedAVFile: String,
+        sourceFile: String,
+        outputFile: String,
+        videoCodec: String?,
+        audioMappings: [AudioMapping],
+        subtitleMappings: [(index: Int, language: String?)]
+    ) -> [String] {
+        var cmd = [
+            "-nostdin",
+            "-i", encodedAVFile,
+            "-i", sourceFile,
+            "-y",
+            "-map", "0:v:0",
+            "-c:v", "copy"
+        ]
+
+        if videoCodec == "hevc" {
+            cmd.append(contentsOf: ["-tag:v", "hvc1"])
+        }
+
+        for (outputIndex, mapping) in audioMappings.enumerated() {
+            // The intermediate file contains only the selected tracks, in this
+            // same order, so map its compact audio indexes rather than the
+            // original input's absolute stream indexes.
+            cmd.append(contentsOf: ["-map", "0:a:\(outputIndex)"])
+            cmd.append(contentsOf: ["-c:a:\(outputIndex)", "copy"])
+            if let language = mapping.language {
+                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "language=\(language)"])
+            }
+            if let title = mapping.title, !title.isEmpty {
+                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title=\(title)"])
+                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name=\(title)"])
+            }
+            cmd.append(contentsOf: [
+                "-disposition:a:\(outputIndex)",
+                outputIndex == 0 ? "default" : "0"
+            ])
+        }
+
+        for (outputIndex, subtitle) in subtitleMappings.enumerated() {
+            cmd.append(contentsOf: ["-map", "1:\(subtitle.index)"])
+            cmd.append(contentsOf: ["-c:s:\(outputIndex)", "mov_text"])
+            if let language = subtitle.language {
+                cmd.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "language=\(language)"])
+            }
+        }
+
+        cmd.append(contentsOf: [
+            "-map_metadata", "-1",
+            "-movflags", "+faststart",
+            "-loglevel", "error",
+            "-nostats",
+            "-progress", "pipe:2",
+            outputFile
+        ])
+        return cmd
+    }
+
     private func runCommand(arguments: [String]) async -> (success: Bool, errorMessage: String) {
+        let expectedDuration = currentInputDurationSeconds
+        let expectedFrameRate = currentInputFrameRate
         return await withCheckedContinuation { continuation in
             let ffmpegPath = self.ffmpegPath
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -2467,10 +2616,12 @@ class VideoProcessor: ObservableObject {
 
                 let errorPipe = Pipe()
                 let outputPipe = Pipe()
+                process.standardInput = FileHandle.nullDevice
                 process.standardError = errorPipe
                 process.standardOutput = outputPipe
 
                 let capturedErrorData = ThreadSafeDataBuffer()
+                let capturedOutputData = ThreadSafeDataBuffer()
 
                 errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
                     let chunkData = handle.availableData
@@ -2490,6 +2641,12 @@ class VideoProcessor: ObservableObject {
                     }
                 }
 
+                outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let chunkData = handle.availableData
+                    guard !chunkData.isEmpty else { return }
+                    capturedOutputData.append(chunkData)
+                }
+
                 // Store process reference so we can monitor it
                 DispatchQueue.main.async {
                     self.currentProcess = process
@@ -2507,50 +2664,95 @@ class VideoProcessor: ObservableObject {
                     process.waitUntilExit()
 
                     errorPipe.fileHandleForReading.readabilityHandler = nil
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
                     let remainingErrorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     capturedErrorData.append(remainingErrorData)
+                    let remainingOutputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    capturedOutputData.append(remainingOutputData)
                     let finalErrorData = capturedErrorData.snapshot()
+                    let finalOutputData = capturedOutputData.snapshot()
+
+                    let errorOutput = String(data: finalErrorData, encoding: .utf8) ?? ""
+                    let stdoutOutput = String(data: finalOutputData, encoding: .utf8) ?? ""
+                    let combinedOutput = errorOutput + "\n" + stdoutOutput
+                    let exitCode = process.terminationStatus
+                    let terminationReason = Self.terminationReasonDescription(process.terminationReason)
+                    let finalFrame = Self.latestFFmpegFrame(in: combinedOutput)
+                    let finalMediaTime = Self.latestFFmpegMediaTimeSeconds(in: combinedOutput)
+                    let finalProgress = Self.latestFFmpegProgressValue("progress", in: combinedOutput)
+                    let finalSpeed = Self.latestFFmpegProgressValue("speed", in: combinedOutput)
+                    let diagnosticLines = Self.diagnosticLines(from: combinedOutput)
+
+                    var exitSummary = "FFmpeg process ended: status \(exitCode) · reason \(terminationReason)"
+                    if let finalFrame {
+                        exitSummary += " · frame \(finalFrame)"
+                    }
+                    if let finalMediaTime {
+                        exitSummary += String(format: " · media time %.2fs", finalMediaTime)
+                    }
+                    if let finalSpeed, !finalSpeed.isEmpty {
+                        exitSummary += " · speed \(finalSpeed)"
+                    }
+                    if let finalProgress, !finalProgress.isEmpty {
+                        exitSummary += " · progress \(finalProgress)"
+                    }
 
                     // Stop monitoring
                     DispatchQueue.main.async {
+                        self.addLog(exitSummary)
+                        if !diagnosticLines.isEmpty {
+                            self.addLog("FFmpeg diagnostic output (last \(diagnosticLines.count) meaningful lines):")
+                            for line in diagnosticLines {
+                                self.addLog("  \(line)")
+                            }
+                        }
                         self.stopEncodingProgress()
                         self.currentProcess = nil
                     }
 
-                    if process.terminationStatus == 0 {
+                    if exitCode == 0 {
+                        if let expectedDuration,
+                           let expectedFrameRate,
+                           let finalFrame {
+                            let tolerance = max(5, min(30, expectedDuration * 0.005))
+                            let videoTime = TimeInterval(finalFrame) / expectedFrameRate
+                            if expectedDuration - videoTime > tolerance {
+                                let message = String(
+                                    format: "FFmpeg exited successfully but video ended prematurely at frame %d (%.2fs of %.2fs)",
+                                    finalFrame,
+                                    videoTime,
+                                    expectedDuration
+                                )
+                                DispatchQueue.main.async {
+                                    self.addLog("􀁡 \(message)")
+                                }
+                                continuation.resume(returning: (false, message))
+                                return
+                            }
+                        } else if let expectedDuration, let finalMediaTime {
+                            let tolerance = max(5, min(30, expectedDuration * 0.005))
+                            if expectedDuration - finalMediaTime > tolerance {
+                                let message = String(
+                                    format: "FFmpeg exited successfully but ended prematurely at %.2fs of %.2fs",
+                                    finalMediaTime,
+                                    expectedDuration
+                                )
+                                DispatchQueue.main.async {
+                                    self.addLog("􀁡 \(message)")
+                                }
+                                continuation.resume(returning: (false, message))
+                                return
+                            }
+                        }
                         continuation.resume(returning: (true, ""))
                     } else if self.shouldCancelProcessing {
                         continuation.resume(returning: (false, "Cancelled by user"))
                     } else {
-                        // Capture both stderr and stdout for error details
-                        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-
-                        let exitCode = process.terminationStatus
                         var errorMessage = "FFmpeg exited with code \(exitCode)"
 
                         // Try stderr first, then stdout
-                        if let errorOutput = String(data: finalErrorData, encoding: .utf8), !errorOutput.isEmpty {
-                            let lines = Self.diagnosticLines(from: errorOutput)
-
-                            DispatchQueue.main.async {
-                                self.addLog("FFmpeg failed with exit code \(exitCode)")
-                                self.addLog("FFmpeg diagnostic output (last \(lines.count) meaningful lines):")
-                                for line in lines {
-                                    self.addLog("  \(line)")
-                                }
-                            }
-                            errorMessage = Self.mostMeaningfulError(in: lines, exitCode: exitCode)
-                        } else if let stdoutOutput = String(data: outputData, encoding: .utf8), !stdoutOutput.isEmpty {
-                            let lines = Self.diagnosticLines(from: stdoutOutput)
-
-                            DispatchQueue.main.async {
-                                self.addLog("FFmpeg failed with exit code \(exitCode)")
-                                self.addLog("FFmpeg diagnostic output (last \(lines.count) meaningful lines):")
-                                for line in lines {
-                                    self.addLog("  \(line)")
-                                }
-                            }
-                            errorMessage = Self.mostMeaningfulError(in: lines, exitCode: exitCode)
+                        if !diagnosticLines.isEmpty {
+                            errorMessage = Self.mostMeaningfulError(in: diagnosticLines, exitCode: exitCode)
                         } else {
                             DispatchQueue.main.async {
                                 self.addLog("FFmpeg failed with exit code \(exitCode) and produced no diagnostic output")
@@ -2562,6 +2764,7 @@ class VideoProcessor: ObservableObject {
                 } catch {
                     let errorMsg = error.localizedDescription
                     errorPipe.fileHandleForReading.readabilityHandler = nil
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
                     DispatchQueue.main.async {
                         self.stopEncodingProgress()
                         self.currentProcess = nil
@@ -2655,6 +2858,7 @@ class VideoProcessor: ObservableObject {
     ) async -> Data? {
         let executable = ffmpegPath
         let arguments = [
+            "-nostdin",
             "-ss", String(format: "%.3f", max(timestamp, 0)),
             "-i", inputFile,
             "-map", "0:v:0",
@@ -2682,6 +2886,7 @@ class VideoProcessor: ObservableObject {
 
                 let outputPipe = Pipe()
                 let errorPipe = Pipe()
+                process.standardInput = FileHandle.nullDevice
                 process.standardOutput = outputPipe
                 process.standardError = errorPipe
 
@@ -2751,6 +2956,7 @@ class VideoProcessor: ObservableObject {
 
                 let outputPipe = Pipe()
                 let errorPipe = Pipe()
+                process.standardInput = FileHandle.nullDevice
                 process.standardOutput = outputPipe
                 process.standardError = errorPipe
 
