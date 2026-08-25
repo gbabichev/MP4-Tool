@@ -66,7 +66,6 @@ struct FFProbeOutput: Codable {
 private struct AudioMapping {
     let index: Int
     let language: String?
-    let title: String?
     let channels: Int?
     let channelLayout: String?
 }
@@ -74,7 +73,6 @@ private struct AudioMapping {
 private struct SubtitleMapping {
     let index: Int
     let language: String?
-    let title: String?
     let isDefault: Bool
     let isForced: Bool
     let isHearingImpaired: Bool
@@ -1876,8 +1874,7 @@ class VideoProcessor: ObservableObject {
             let descriptions = audioMappings.map { mapping in
                 let language = mapping.language ?? "und"
                 let layout = mapping.channelLayout ?? "unknown layout"
-                let title = mapping.title.map { " · \($0)" } ?? ""
-                return "0:\(mapping.index) (\(language) · \(layout)\(title))"
+                return "0:\(mapping.index) (\(language) · \(layout))"
             }
             addLog("Selected Audio: \(descriptions.joined(separator: ", "))")
         }
@@ -2206,7 +2203,6 @@ class VideoProcessor: ObservableObject {
                 return AudioMapping(
                     index: stream.index,
                     language: language,
-                    title: stream.tags?["title"],
                     channels: stream.channels,
                     channelLayout: resolvedAudioChannelLayout(for: stream)
                 )
@@ -2217,7 +2213,6 @@ class VideoProcessor: ObservableObject {
                 return AudioMapping(
                     index: stream.index,
                     language: language,
-                    title: stream.tags?["title"],
                     channels: stream.channels,
                     channelLayout: resolvedAudioChannelLayout(for: stream)
                 )
@@ -2460,7 +2455,6 @@ class VideoProcessor: ObservableObject {
             SubtitleMapping(
                 index: candidate.index,
                 language: candidate.language,
-                title: candidate.title,
                 isDefault: offset == preferredDefaultOffset,
                 isForced: candidate.forced,
                 isHearingImpaired: candidate.hearingImpaired,
@@ -2585,16 +2579,21 @@ class VideoProcessor: ObservableObject {
             }
         }
 
+        // Strip source-provided video titles/handlers just as we do for audio.
+        // MP4 may replace an empty handler with its generic VideoHandler label.
+        cmd.append(contentsOf: ["-metadata:s:v:0", "title="])
+        cmd.append(contentsOf: ["-metadata:s:v:0", "handler_name="])
+
         // Map audio tracks respecting language metadata when available
         for (outputIndex, mapping) in audioMappings.enumerated() {
             cmd.append(contentsOf: ["-map", "0:\(mapping.index)"])
             if let language = mapping.language {
                 cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "language=\(language)"])
             }
-            if let title = mapping.title, !title.isEmpty {
-                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title=\(title)"])
-                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name=\(title)"])
-            }
+            // Do not carry release-group, codec, or ripper labels into the MP4.
+            // FFmpeg may still emit its generic SoundHandler container fallback.
+            cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title="])
+            cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name="])
             if encodeAudio,
                mode != .remux,
                let channelLayout = mapping.channelLayout {
@@ -2652,6 +2651,8 @@ class VideoProcessor: ObservableObject {
         if videoCodec == "hevc" {
             cmd.append(contentsOf: ["-tag:v", "hvc1"])
         }
+        cmd.append(contentsOf: ["-metadata:s:v:0", "title="])
+        cmd.append(contentsOf: ["-metadata:s:v:0", "handler_name="])
 
         for (outputIndex, mapping) in audioMappings.enumerated() {
             // The intermediate file contains only the selected tracks, in this
@@ -2662,10 +2663,8 @@ class VideoProcessor: ObservableObject {
             if let language = mapping.language {
                 cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "language=\(language)"])
             }
-            if let title = mapping.title, !title.isEmpty {
-                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title=\(title)"])
-                cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name=\(title)"])
-            }
+            cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title="])
+            cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name="])
             cmd.append(contentsOf: [
                 "-disposition:a:\(outputIndex)",
                 outputIndex == 0 ? "default" : "0"
@@ -2701,10 +2700,9 @@ class VideoProcessor: ObservableObject {
         if let language = subtitle.language {
             arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "language=\(language)"])
         }
-        if let title = subtitle.title, !title.isEmpty {
-            arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "title=\(title)"])
-            arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "handler_name=\(title)"])
-        }
+        let title = standardizedSubtitleTitle(subtitle)
+        arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "title=\(title)"])
+        arguments.append(contentsOf: ["-metadata:s:s:\(outputIndex)", "handler_name=\(title)"])
 
         var dispositions: [String] = []
         if subtitle.isDefault { dispositions.append("default") }
@@ -2715,6 +2713,37 @@ class VideoProcessor: ObservableObject {
             "-disposition:s:\(outputIndex)",
             dispositions.isEmpty ? "0" : dispositions.joined(separator: "+")
         ])
+    }
+
+    private func standardizedSubtitleTitle(_ subtitle: SubtitleMapping) -> String {
+        let languageName = languageDisplayName(subtitle.language)
+        var qualifiers: [String] = []
+        if subtitle.isForced { qualifiers.append("Forced") }
+        if subtitle.isHearingImpaired || subtitle.isCaptions { qualifiers.append("SDH") }
+        return qualifiers.isEmpty
+            ? languageName
+            : "\(languageName) (\(qualifiers.joined(separator: ", ")))"
+    }
+
+    private func languageDisplayName(_ language: String?) -> String {
+        let normalized = language?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "und"
+        let knownNames = [
+            "und": "Undefined", "eng": "English", "spa": "Spanish",
+            "fra": "French", "fre": "French", "deu": "German", "ger": "German",
+            "ita": "Italian", "por": "Portuguese", "nld": "Dutch", "dut": "Dutch",
+            "pol": "Polish", "rus": "Russian", "ukr": "Ukrainian",
+            "ces": "Czech", "cze": "Czech", "ara": "Arabic", "bul": "Bulgarian",
+            "dan": "Danish", "est": "Estonian", "fin": "Finnish", "heb": "Hebrew",
+            "hin": "Hindi", "hun": "Hungarian", "lav": "Latvian", "lit": "Lithuanian",
+            "ell": "Greek", "gre": "Greek", "nor": "Norwegian",
+            "ron": "Romanian", "rum": "Romanian", "slv": "Slovenian",
+            "swe": "Swedish", "tur": "Turkish"
+        ]
+        return knownNames[normalized]
+            ?? Locale(identifier: "en").localizedString(forLanguageCode: normalized)
+            ?? normalized.uppercased()
     }
 
     private func runCommand(arguments: [String]) async -> (success: Bool, errorMessage: String) {
