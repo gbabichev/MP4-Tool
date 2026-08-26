@@ -501,7 +501,8 @@ private struct PostProcessScriptSettingsSection: View {
             panel.directoryURL = URL(fileURLWithPath: scriptPath).deletingLastPathComponent()
         }
 
-        if panel.runModal() == .OK, let url = panel.url {
+        CleanFilePanelPresenter.present(panel) { response in
+            guard response == .OK, let url = panel.url else { return }
             guard preflightScriptAccess(url) else { return }
             scriptPath = url.path
         }

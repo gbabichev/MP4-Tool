@@ -158,8 +158,10 @@ struct MainContentView: View {
             : "Choose videos to process"
         panel.prompt = "Add"
 
-        guard panel.runModal() == .OK else { return }
-        addURLsToQueue(panel.urls)
+        CleanFilePanelPresenter.present(panel) { response in
+            guard response == .OK else { return }
+            addURLsToQueue(panel.urls)
+        }
     }
 
     private func addURLsToQueue(_ urls: [URL]) {

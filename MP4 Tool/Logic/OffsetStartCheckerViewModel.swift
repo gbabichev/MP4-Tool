@@ -106,8 +106,9 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         panel.canCreateDirectories = false
         panel.message = "Select folder containing MP4 files to check"
 
-        if panel.runModal() == .OK, let url = panel.url {
-            inputFolderPath = url.path
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.inputFolderPath = url.path
         }
     }
 

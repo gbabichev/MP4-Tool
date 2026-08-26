@@ -57,8 +57,9 @@ final class NonMP4ScannerViewModel: ObservableObject {
         panel.canCreateDirectories = false
         panel.message = "Select folder to scan for non-MP4 files"
 
-        if panel.runModal() == .OK, let url = panel.url {
-            inputFolderPath = url.path
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.inputFolderPath = url.path
         }
     }
 

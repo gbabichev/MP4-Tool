@@ -219,6 +219,12 @@ struct MP4_ToolApp: App {
                 }
                 .keyboardShortcut("V", modifiers: [.command, .shift])
 
+                Button(action: {
+                    openWindow(id: "metadataCleaner")
+                }) {
+                    Label("Metadata Cleaner...", systemImage: "tag.slash")
+                }
+
                 Divider()
 
                 Button(action: {
@@ -265,6 +271,11 @@ struct MP4_ToolApp: App {
         Window("Validate MP4 Files", id: "mp4Validation") {
             MP4ValidationView()
         }
+
+        Window("Metadata Cleaner", id: "metadataCleaner") {
+            MetadataCleanerView()
+        }
+        .defaultSize(width: 980, height: 620)
 
         Window("Run History", id: "runHistory") {
             RunHistoryView()

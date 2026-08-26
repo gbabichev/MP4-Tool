@@ -100,16 +100,17 @@ final class SubtitleMuxerViewModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.message = "Select an MP4 file"
 
-        if panel.runModal() == .OK, let url = panel.url {
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
             guard url.pathExtension.lowercased() == "mp4" else {
-                statusMessage = "Please select a .mp4 file."
+                self.statusMessage = "Please select a .mp4 file."
                 return
             }
 
-            inputMP4Path = url.path
-            outputFolderPath = url.deletingLastPathComponent().path
+            self.inputMP4Path = url.path
+            self.outputFolderPath = url.deletingLastPathComponent().path
 
-            outputFileName = AutomaticVideoFileNamer.suggestedOutputFileName(
+            self.outputFileName = AutomaticVideoFileNamer.suggestedOutputFileName(
                 fromInputFileName: url.lastPathComponent,
                 outputExtension: "mp4",
                 fallbackSuffix: "_remux"
@@ -124,13 +125,14 @@ final class SubtitleMuxerViewModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.message = "Select an SRT subtitle file"
 
-        if panel.runModal() == .OK, let url = panel.url {
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
             guard url.pathExtension.lowercased() == "srt" else {
-                statusMessage = "Please select a .srt file."
+                self.statusMessage = "Please select a .srt file."
                 return
             }
 
-            inputSRTPath = url.path
+            self.inputSRTPath = url.path
         }
     }
 
@@ -142,8 +144,9 @@ final class SubtitleMuxerViewModel: ObservableObject {
         panel.canCreateDirectories = true
         panel.message = "Select output folder for muxed file"
 
-        if panel.runModal() == .OK, let url = panel.url {
-            outputFolderPath = url.path
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.outputFolderPath = url.path
         }
     }
 

@@ -96,11 +96,12 @@ final class VideoSplitterViewModel: ObservableObject {
         panel.canCreateDirectories = true
         panel.message = isInput ? "Select folder containing video files to analyze" : "Select output folder for split files"
 
-        if panel.runModal() == .OK, let url = panel.url {
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
             if isInput {
-                inputFolderPath = url.path
+                self.inputFolderPath = url.path
             } else {
-                outputFolderPath = url.path
+                self.outputFolderPath = url.path
             }
         }
     }

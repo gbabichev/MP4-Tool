@@ -50,13 +50,12 @@ class ContentViewModel: ObservableObject {
         panel.canCreateDirectories = true
         panel.message = isInput ? "Select folder containing video files to encode" : "Select folder where encoded files will be saved"
 
-        if panel.runModal() == .OK {
-            if let url = panel.url {
-                if isInput {
-                    setInputFolder(path: url.path)
-                } else {
-                    setOutputFolder(path: url.path)
-                }
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            if isInput {
+                self.setInputFolder(path: url.path)
+            } else {
+                self.setOutputFolder(path: url.path)
             }
         }
     }

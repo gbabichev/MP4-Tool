@@ -250,8 +250,9 @@ final class TrackEditorViewModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = Self.contentTypes(for: ["mp4", "m4v", "mov"])
         panel.message = "Choose an MP4 file to inspect"
-        if panel.runModal() == .OK, let url = panel.url {
-            inspect(path: url.path)
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.inspect(path: url.path)
         }
     }
 
@@ -309,8 +310,9 @@ final class TrackEditorViewModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.message = "Choose where the edited MP4 should be saved"
-        if panel.runModal() == .OK, let url = panel.url {
-            outputFolderPath = url.path
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.outputFolderPath = url.path
         }
     }
 
@@ -398,9 +400,13 @@ final class TrackEditorViewModel: ObservableObject {
         } else {
             panel.allowedContentTypes = Self.contentTypes(for: ["srt", "vtt", "ass", "ssa", "mks"])
         }
-        guard panel.runModal() == .OK else { return }
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK else { return }
+            self.inspectExternalTracks(at: panel.urls, kind: kind)
+        }
+    }
 
-        let urls = panel.urls
+    private func inspectExternalTracks(at urls: [URL], kind: TrackEditorTrackKind) {
         statusMessage = "Inspecting added tracks…"
         isInspecting = true
         operationTask?.cancel()

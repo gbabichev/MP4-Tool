@@ -175,17 +175,18 @@ final class MP4ValidationViewModel: ObservableObject {
         panel.allowedContentTypes = [.mpeg4Movie]
         panel.message = "Choose one MP4 file or a folder containing MP4 files"
 
-        if panel.runModal() == .OK, let url = panel.url {
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
                 return
             }
             if isDirectory.boolValue {
-                _ = setInputFolder(url: url)
+                _ = self.setInputFolder(url: url)
             } else {
-                droppedFilePaths = []
-                if setDroppedFiles(urls: [url]) {
-                    scanAlertText = "Ready to validate the selected MP4 file."
+                self.droppedFilePaths = []
+                if self.setDroppedFiles(urls: [url]) {
+                    self.scanAlertText = "Ready to validate the selected MP4 file."
                 }
             }
         }

@@ -370,7 +370,8 @@ struct MP4ValidationView: View {
             panel.directoryURL = URL(fileURLWithPath: customRepairFolderPath, isDirectory: true)
         }
 
-        if panel.runModal() == .OK, let url = panel.url {
+        CleanFilePanelPresenter.present(panel) { response in
+            guard response == .OK, let url = panel.url else { return }
             customRepairFolderPath = url.path
         }
     }
