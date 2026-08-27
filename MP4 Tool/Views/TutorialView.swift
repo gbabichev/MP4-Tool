@@ -91,7 +91,7 @@ struct TutorialView: View {
                         TutorialStep(
                             icon: "wrench.and.screwdriver",
                             title: "5. Extra Built-In Tools",
-                            description: "Open Tools from the menu bar to split videos, edit tracks, validate MP4 files, scan your library, and clean unwanted metadata. These tools are included in MP4 Tool at no extra cost."
+                            description: "Open Tools from the menu bar to split videos, edit audio and subtitle tracks, inspect and repair MP4 files, or scan your library for non-MP4 media. These tools are included in MP4 Tool at no extra cost."
                         )
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

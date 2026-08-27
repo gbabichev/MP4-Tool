@@ -112,6 +112,10 @@ final class MP4ValidationViewModel: ObservableObject {
     @Published var isRepairing = false
     @Published var scanProgress = ""
     @Published var scanAlertText = ""
+    @Published var operationProgressFraction: Double = 0
+    @Published var operationCurrentItem = 0
+    @Published var operationTotalItems = 0
+    @Published var operationEstimatedRemaining: TimeInterval?
     @Published var results: [MP4ValidationResult] = []
     @Published private(set) var droppedFilePaths: [String] = []
 
@@ -219,6 +223,19 @@ final class MP4ValidationViewModel: ObservableObject {
         return true
     }
 
+    func setInput(url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return false
+        }
+        if isDirectory.boolValue {
+            return setInputFolder(url: url)
+        }
+
+        droppedFilePaths = []
+        return setDroppedFiles(urls: [url])
+    }
+
     func setDroppedFiles(urls: [URL]) -> Bool {
         let paths = urls.compactMap { url -> String? in
             var isDirectory: ObjCBool = false
@@ -251,6 +268,7 @@ final class MP4ValidationViewModel: ObservableObject {
         results = []
         scanProgress = "Preparing validation..."
         scanAlertText = ""
+        resetOperationProgress()
         isScanning = true
 
         scanTask?.cancel()
@@ -306,6 +324,7 @@ final class MP4ValidationViewModel: ObservableObject {
 
         isRepairing = true
         scanAlertText = ""
+        resetOperationProgress(totalItems: selectedResults.count)
         repairTask?.cancel()
         repairTask = Task {
             await runRepairs(
@@ -334,6 +353,7 @@ final class MP4ValidationViewModel: ObservableObject {
 
         var repairedCount = 0
         var skippedCount = 0
+        let operationStartedAt = Date()
 
         for (index, result) in selectedResults.enumerated() {
             if Task.isCancelled {
@@ -342,6 +362,11 @@ final class MP4ValidationViewModel: ObservableObject {
                 return
             }
 
+            updateOperationProgress(
+                currentItem: index + 1,
+                totalItems: selectedResults.count,
+                startedAt: operationStartedAt
+            )
             scanProgress = "Repairing \(index + 1)/\(selectedResults.count): \(result.fileName)"
             if result.repairCandidates.isEmpty {
                 updateRepairMessage(for: result.id, message: "Preparing audio metadata repair…")
@@ -818,6 +843,7 @@ final class MP4ValidationViewModel: ObservableObject {
         }
 
         let scanStartDate = Date()
+        resetOperationProgress(totalItems: files.count)
         for (index, fileInfo) in files.enumerated() {
             if Task.isCancelled || token != scanToken {
                 scanProgress = "Validation canceled."
@@ -825,7 +851,12 @@ final class MP4ValidationViewModel: ObservableObject {
                 return
             }
 
-            scanProgress = "Validating \(index + 1)/\(files.count): \(fileInfo.relativePath) \(validationETA(elapsed: Date().timeIntervalSince(scanStartDate), completedCount: index, totalCount: files.count))"
+            updateOperationProgress(
+                currentItem: index + 1,
+                totalItems: files.count,
+                startedAt: scanStartDate
+            )
+            scanProgress = "Validating \(index + 1)/\(files.count): \(fileInfo.relativePath)"
 
             let finding = await validationFinding(filePath: fileInfo.fullPath)
             results.append(
@@ -862,6 +893,27 @@ final class MP4ValidationViewModel: ObservableObject {
         scanAlertText = parts.joined(separator: ". ") + "."
 
         isScanning = false
+    }
+
+    private func resetOperationProgress(totalItems: Int = 0) {
+        operationProgressFraction = 0
+        operationCurrentItem = 0
+        operationTotalItems = totalItems
+        operationEstimatedRemaining = nil
+    }
+
+    private func updateOperationProgress(currentItem: Int, totalItems: Int, startedAt: Date) {
+        operationCurrentItem = currentItem
+        operationTotalItems = totalItems
+        operationProgressFraction = totalItems > 0 ? Double(currentItem) / Double(totalItems) : 0
+
+        let completedBeforeCurrent = currentItem - 1
+        guard completedBeforeCurrent > 0 else {
+            operationEstimatedRemaining = nil
+            return
+        }
+        let averageDuration = Date().timeIntervalSince(startedAt) / Double(completedBeforeCurrent)
+        operationEstimatedRemaining = averageDuration * Double(totalItems - completedBeforeCurrent)
     }
 
     private func validationFinding(filePath: String) async -> MP4ValidationFinding? {

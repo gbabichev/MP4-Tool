@@ -1,25 +1,43 @@
 import SwiftUI
 
 struct OffsetStartCheckerView: View {
+    let isActive: Bool
+    let navigationContent: AnyView?
+    let sharedInputURL: Binding<URL?>?
     @StateObject private var viewModel = OffsetStartCheckerViewModel()
-    @State private var showFailuresOnly = false
     @State private var showNeedsActionOnly = false
-    @Environment(\.openWindow) private var openWindow
+    @State private var selectedResultIDs: Set<UUID> = []
+    @State private var lastAppliedSharedInputPath: String?
+
+    init(
+        isActive: Bool = true,
+        navigationContent: AnyView? = nil,
+        sharedInputURL: Binding<URL?>? = nil
+    ) {
+        self.isActive = isActive
+        self.navigationContent = navigationContent
+        self.sharedInputURL = sharedInputURL
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            statusContent
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let navigationContent {
+                        navigationContent
+                    }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Check Offset Starts scans MP4 files to make sure playback begins at 00:00 and can try to repair files in place.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("If a file still needs full re-encoding, use the \(Image(systemName: "arrowshape.turn.up.right")) toolbar button to send it to the main app queue.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Check Offset Starts scans MP4 files to make sure playback begins at 00:00 and can try to repair files in place.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("If a file still needs full re-encoding, use the \(Image(systemName: "arrowshape.turn.up.right")) toolbar button to send it to the main app queue.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
-            GroupBox("Input") {
+                    if sharedInputURL == nil {
+                    GroupBox("Input") {
                 ToolSelectionRow(
                     title: viewModel.inputFolderPath.isEmpty ? "No Folder Selected" : "Input Folder",
                     detail: viewModel.inputFolderPath.isEmpty
@@ -30,14 +48,67 @@ struct OffsetStartCheckerView: View {
                     chooseLabel: "Choose…",
                     openLabel: "Open",
                     chooseDisabled: viewModel.isScanning || viewModel.isFixing,
+                    compactLayout: navigationContent != nil,
                     openAction: viewModel.openInputFolderInFinder,
                     chooseAction: viewModel.selectInputFolder
                 )
                 .padding(.vertical, 4)
-            }
+                    }
+                    }
 
-            GroupBox("Scan Results") {
-                if viewModel.results.isEmpty {
+                    GroupBox("Repair Output") {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Replace In Place")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                Text("A repaired remux replaces the original only after validation succeeds.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .frame(minWidth: 340, idealWidth: 380, maxWidth: 420)
+            .background(Color.secondary.opacity(0.035))
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 0) {
+                GroupBox {
+                if viewModel.isScanning || viewModel.isFixing {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.large)
+                        Text(viewModel.isFixing ? "Repairing timing offsets…" : "Scanning timing offsets…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        InspectRepairProgressDetails(
+                            fraction: viewModel.operationProgressFraction,
+                            currentItem: viewModel.operationCurrentItem,
+                            totalItems: viewModel.operationTotalItems,
+                            estimatedRemaining: viewModel.operationEstimatedRemaining
+                        )
+                        let detail = viewModel.isFixing ? viewModel.fixProgress : viewModel.scanProgress
+                        if !detail.isEmpty {
+                            Text(detail)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+                } else if viewModel.results.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "waveform.path.ecg.rectangle")
                             .font(.system(size: 40, weight: .light))
@@ -51,21 +122,47 @@ struct OffsetStartCheckerView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
-                            Button(showNeedsActionOnly ? "Show All" : "Show Needs Action") {
-                                showNeedsActionOnly.toggle()
-                            }
-                            .controlSize(.small)
-                            .disabled(showFailuresOnly || viewModel.results.isEmpty)
+                            Label(offsetResultsSummary, systemImage: "list.bullet")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
 
-                            Button(showFailuresOnly ? "Show All" : "Show Failures") {
-                                showFailuresOnly.toggle()
-                                if showFailuresOnly {
-                                    showNeedsActionOnly = false
+                            Spacer()
+
+                            ControlGroup {
+                                Button {
+                                    showNeedsActionOnly.toggle()
+                                } label: {
+                                    Label(
+                                        showNeedsActionOnly ? "Show All" : "Needs Action",
+                                        systemImage: showNeedsActionOnly
+                                            ? "list.bullet" : "exclamationmark.circle"
+                                    )
                                 }
+                                .disabled(viewModel.results.isEmpty)
+
+                                Button {
+                                    if allRepairableSelected {
+                                        selectedResultIDs.subtract(repairableResultIDs)
+                                    } else {
+                                        selectedResultIDs.formUnion(repairableResultIDs)
+                                    }
+                                } label: {
+                                    Label(
+                                        allRepairableSelected ? "Deselect All" : "Select All",
+                                        systemImage: allRepairableSelected
+                                            ? "checkmark.circle.fill" : "checkmark.circle"
+                                    )
+                                }
+                                .disabled(
+                                    repairableResultIDs.isEmpty
+                                        || viewModel.isScanning
+                                        || viewModel.isFixing
+                                )
                             }
                             .controlSize(.small)
-                            .disabled(viewModel.results.isEmpty || (!viewModel.hasCompletedFixPass && !showFailuresOnly))
                         }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
 
                         if displayedResults.isEmpty {
                             Text(emptyResultsMessage)
@@ -76,8 +173,16 @@ struct OffsetStartCheckerView: View {
                         } else {
                             List(displayedResults) { result in
                                 HStack(spacing: 12) {
+                                    if result.hasOffsetStart {
+                                        Toggle("Repair", isOn: repairSelectionBinding(for: result.id))
+                                            .labelsHidden()
+                                            .toggleStyle(.checkbox)
+                                            .disabled(viewModel.isScanning || viewModel.isFixing)
+                                            .help("Include this file in Fix Offsets")
+                                    }
+
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(result.fileName)
+                                        Text(URL(fileURLWithPath: result.filePath).lastPathComponent)
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         Text(result.filePath)
@@ -105,73 +210,83 @@ struct OffsetStartCheckerView: View {
                         }
                     }
                 }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .frame(minWidth: 760, minHeight: 560)
+        .frame(minWidth: 860, minHeight: 560)
         .toolbarBackground(.hidden, for: .windowToolbar)
+        .onChange(of: sharedInputURL?.wrappedValue?.path) { _, _ in
+            applySharedInput()
+        }
+        .onChange(of: viewModel.isScanning) { _, isScanning in
+            if !isScanning { applySharedInput() }
+        }
+        .onChange(of: viewModel.isFixing) { _, isFixing in
+            if !isFixing { applySharedInput() }
+        }
+        .onAppear(perform: applySharedInput)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    sendFailuresToMainApp()
-                } label: {
-                    Label("Send Failed to Main", systemImage: "arrowshape.turn.up.right")
-                }
-                .disabled(!viewModel.canSendFailuresToMainApp)
-            }
-
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    viewModel.exportFailuresToFile()
-                } label: {
-                    Label("Export Failures...", systemImage: "square.and.arrow.up")
-                }
-                .disabled(!viewModel.canExportFailures)
-            }
-
-            ToolbarItemGroup(placement: .primaryAction) {
-                if viewModel.isScanning || viewModel.isFixing {
+            if isActive {
+                ToolbarItem(placement: .navigation) {
                     Button {
-                        if viewModel.isScanning {
-                            viewModel.cancelScan()
-                        } else {
-                            viewModel.cancelFix()
+                        viewModel.exportCSVReport()
+                    } label: {
+                        Label("Export CSV…", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(!viewModel.canExportReport)
+                }
+
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if viewModel.isScanning || viewModel.isFixing {
+                        Button {
+                            if viewModel.isScanning {
+                                viewModel.cancelScan()
+                            } else {
+                                viewModel.cancelFix()
+                            }
+                        } label: {
+                            Label("Stop", systemImage: "stop.fill")
                         }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .keyboardShortcut(".", modifiers: .command)
-                } else {
-                    Button {
-                        showFailuresOnly = false
-                        showNeedsActionOnly = false
-                        viewModel.scanOffsetStarts()
-                    } label: {
-                        Label("Scan", systemImage: "magnifyingglass")
-                    }
-                    .disabled(!viewModel.canScan)
-                    .keyboardShortcut("r", modifiers: .command)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .keyboardShortcut(".", modifiers: .command)
+                    } else {
+                        if !repairableResultIDs.isEmpty {
+                            Button {
+                                viewModel.fixOffsetStartsInPlace(resultIDs: selectedResultIDs)
+                            } label: {
+                                Label(
+                                    selectedResultIDs.isEmpty
+                                        ? "Fix Selected" : "Fix Selected (\(selectedResultIDs.count))",
+                                    systemImage: "wrench.and.screwdriver"
+                                )
+                            }
+                            .disabled(!viewModel.canFix || selectedResultIDs.isEmpty)
+                        }
 
-                    Button {
-                        viewModel.fixOffsetStartsInPlace()
-                    } label: {
-                        Label("Fix Offsets", systemImage: "wrench.and.screwdriver")
+                        Button {
+                            showNeedsActionOnly = false
+                            selectedResultIDs = []
+                            viewModel.scanOffsetStarts()
+                        } label: {
+                            Label("Scan", systemImage: "magnifyingglass")
+                        }
+                        .disabled(!viewModel.canScan)
+                        .keyboardShortcut("r", modifiers: .command)
                     }
-                    .disabled(!viewModel.canFix)
                 }
             }
+        }
+        .onChange(of: repairableResultIDs) { _, newIDs in
+            selectedResultIDs.formIntersection(newIDs)
         }
     }
 
     private var displayedResults: [OffsetStartCheckResult] {
-        if showFailuresOnly {
-            return viewModel.failureResults
-        }
-
         if showNeedsActionOnly {
             return viewModel.actionRequiredResults
         }
@@ -180,10 +295,6 @@ struct OffsetStartCheckerView: View {
     }
 
     private var emptyResultsMessage: String {
-        if showFailuresOnly {
-            return "No failures to display."
-        }
-
         if showNeedsActionOnly {
             return "No files need action."
         }
@@ -191,11 +302,29 @@ struct OffsetStartCheckerView: View {
         return "No results to display."
     }
 
-    private func sendFailuresToMainApp() {
-        openWindow(id: "main")
-        DispatchQueue.main.async {
-            viewModel.sendFailuresToMainApp()
+    private var offsetResultsSummary: String {
+        if showNeedsActionOnly {
+            return "\(displayedResults.count) need action"
         }
+        return "\(viewModel.results.count) file\(viewModel.results.count == 1 ? "" : "s")"
+    }
+
+    private var repairableResultIDs: Set<UUID> {
+        Set(viewModel.results.filter(\.hasOffsetStart).map(\.id))
+    }
+
+    private var allRepairableSelected: Bool {
+        !repairableResultIDs.isEmpty && repairableResultIDs.isSubset(of: selectedResultIDs)
+    }
+
+    private func repairSelectionBinding(for id: UUID) -> Binding<Bool> {
+        Binding(
+            get: { selectedResultIDs.contains(id) },
+            set: { selected in
+                if selected { selectedResultIDs.insert(id) }
+                else { selectedResultIDs.remove(id) }
+            }
+        )
     }
 
     private func ptsLabel(for result: OffsetStartCheckResult) -> String {
@@ -232,74 +361,13 @@ struct OffsetStartCheckerView: View {
         }
     }
 
-    @ViewBuilder
-    private var statusContent: some View {
-        if viewModel.isScanning {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .scaleEffect(0.9)
-                Text(viewModel.scanProgress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if !viewModel.scanAlertText.isEmpty {
-                    Text(viewModel.scanAlertText)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-        } else if viewModel.isFixing {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .scaleEffect(0.9)
-                Text(viewModel.fixProgress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if !viewModel.scanAlertText.isEmpty {
-                    Text(viewModel.scanAlertText)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-        } else if !viewModel.scanProgress.isEmpty {
-            HStack(spacing: 8) {
-                Text(viewModel.scanProgress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !viewModel.scanAlertText.isEmpty {
-                    Text(viewModel.scanAlertText)
-                        .font(.caption)
-                        .foregroundStyle(
-                            viewModel.scanAlertText.contains("FAIL: Please Re-Encode")
-                                ? Color.red
-                                : Color.secondary
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-        } else {
-            if !viewModel.scanAlertText.isEmpty {
-                HStack(spacing: 8) {
-                    Text(viewModel.scanAlertText)
-                        .font(.caption)
-                        .foregroundStyle(
-                            viewModel.scanAlertText.hasPrefix("Exported ")
-                                || viewModel.scanAlertText.hasPrefix("Sent ")
-                                ? Color.secondary
-                                : Color.red
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-        }
+    private func applySharedInput() {
+        guard let url = sharedInputURL?.wrappedValue,
+              url.path != lastAppliedSharedInputPath,
+              !viewModel.isScanning,
+              !viewModel.isFixing else { return }
+        lastAppliedSharedInputPath = url.path
+        viewModel.acceptInput(url: url)
     }
+
 }

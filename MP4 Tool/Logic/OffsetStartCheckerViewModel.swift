@@ -55,6 +55,10 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     @Published var fixProgress = ""
     @Published var scanAlertText = ""
     @Published var results: [OffsetStartCheckResult] = []
+    @Published var operationProgressFraction: Double = 0
+    @Published var operationCurrentItem = 0
+    @Published var operationTotalItems = 0
+    @Published var operationEstimatedRemaining: TimeInterval?
     @Published var ffprobeAvailable = false
     @Published var ffmpegAvailable = false
 
@@ -94,6 +98,10 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         !isScanning && !isFixing && !failureResults.isEmpty
     }
 
+    var canExportReport: Bool {
+        !isScanning && !isFixing && !actionRequiredResults.isEmpty
+    }
+
     var canSendFailuresToMainApp: Bool {
         !isScanning && !isFixing && hasCompletedFixPass && !failureResults.isEmpty
     }
@@ -112,9 +120,37 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         }
     }
 
+    func acceptInput(url: URL) {
+        guard !isScanning, !isFixing else { return }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue || url.pathExtension.lowercased() == "mp4" else {
+            scanAlertText = "Choose an MP4 file or a folder containing MP4 files."
+            return
+        }
+
+        inputFolderPath = url.path
+        results = []
+        scanProgress = ""
+        fixProgress = ""
+        scanAlertText = isDirectory.boolValue
+            ? "Ready to scan this folder and its subfolders."
+            : "Ready to inspect this MP4 file."
+    }
+
     func openInputFolderInFinder() {
         guard !inputFolderPath.isEmpty else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: inputFolderPath, isDirectory: &isDirectory),
+           isDirectory.boolValue {
+            NSWorkspace.shared.open(URL(fileURLWithPath: inputFolderPath, isDirectory: true))
+        } else {
+            NSWorkspace.shared.selectFile(
+                inputFolderPath,
+                inFileViewerRootedAtPath: URL(fileURLWithPath: inputFolderPath)
+                    .deletingLastPathComponent().path
+            )
+        }
     }
 
     func scanOffsetStarts() {
@@ -124,6 +160,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         scanProgress = "Preparing scan..."
         fixProgress = ""
         scanAlertText = ""
+        resetOperationProgress()
         isScanning = true
 
         scanTask?.cancel()
@@ -143,17 +180,18 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         isScanning = false
     }
 
-    func fixOffsetStartsInPlace() {
-        guard canFix else { return }
+    func fixOffsetStartsInPlace(resultIDs: Set<UUID>) {
+        guard canFix, !resultIDs.isEmpty else { return }
         fixProgress = "Preparing fixes..."
         scanAlertText = ""
+        resetOperationProgress()
         isFixing = true
 
         fixTask?.cancel()
         fixToken = UUID()
         let token = fixToken
         fixTask = Task {
-            await runFix(token: token)
+            await runFix(token: token, resultIDs: resultIDs)
         }
     }
 
@@ -206,6 +244,55 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         }
     }
 
+    func exportCSVReport() {
+        let reportRows = actionRequiredResults.map { result in
+            (
+                itemName: URL(fileURLWithPath: result.filePath).lastPathComponent,
+                path: result.filePath,
+                issue: timingIssueDescription(for: result)
+            )
+        }
+        guard !reportRows.isEmpty else {
+            scanAlertText = "No timing issues to export."
+            return
+        }
+
+        let hostWindow = makeHiddenChromeHostWindow()
+        exportDialogHostWindow = hostWindow
+        hostWindow.makeKeyAndOrderFront(nil)
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = "mp4-timing-report.csv"
+
+        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+            Task { @MainActor in
+                guard let self else { return }
+                defer {
+                    self.exportDialogHostWindow?.orderOut(nil)
+                    self.exportDialogHostWindow = nil
+                }
+                guard response == .OK, let url = panel.url else { return }
+
+                let header = ["Item Name", "Path", "Timing Issue"]
+                    .map(self.csvField).joined(separator: ",")
+                let rows = reportRows.map { row in
+                    [row.itemName, row.path, row.issue]
+                        .map(self.csvField).joined(separator: ",")
+                }
+                let body = "\u{FEFF}" + ([header] + rows).joined(separator: "\r\n") + "\r\n"
+
+                do {
+                    try body.write(to: url, atomically: true, encoding: .utf8)
+                    self.scanAlertText = "Exported \(reportRows.count) timing issue(s) to \(url.path)."
+                } catch {
+                    self.scanAlertText = "Failed to export CSV report: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     func sendFailuresToMainApp() {
         let failedPaths = failureResults.map(\.filePath)
         guard !failedPaths.isEmpty else {
@@ -241,6 +328,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
             return
         }
 
+        let operationStartedAt = Date()
+        resetOperationProgress(totalItems: videoFiles.count)
         for (index, fileInfo) in videoFiles.enumerated() {
             if Task.isCancelled || token != scanToken {
                 scanProgress = "Scan canceled."
@@ -248,6 +337,11 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                 return
             }
 
+            updateOperationProgress(
+                currentItem: index + 1,
+                totalItems: videoFiles.count,
+                startedAt: operationStartedAt
+            )
             scanProgress = "Checking \(index + 1)/\(videoFiles.count): \(fileInfo.relativePath)"
             let filePath = fileInfo.fullPath
             let firstPTS = await firstVideoPacketPTS(filePath: filePath)
@@ -276,7 +370,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         isScanning = false
     }
 
-    private func runFix(token: UUID) async {
+    private func runFix(token: UUID, resultIDs: Set<UUID>) async {
         let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is repairing video start offsets")
         defer { sleepAssertion.invalidate() }
 
@@ -287,7 +381,7 @@ final class OffsetStartCheckerViewModel: ObservableObject {
             return
         }
 
-        let targets = results.filter { $0.hasOffsetStart }
+        let targets = results.filter { resultIDs.contains($0.id) && $0.hasOffsetStart }
         if targets.isEmpty {
             fixProgress = ""
             scanAlertText = "No offset starts to fix."
@@ -299,6 +393,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         var failedNeedsReencode: [String] = []
         var outcomeByPath: [String: OffsetFixOutcome] = [:]
         var resultingPTSByPath: [String: Double] = [:]
+        let operationStartedAt = Date()
+        resetOperationProgress(totalItems: targets.count)
 
         for (index, result) in targets.enumerated() {
             if Task.isCancelled || token != fixToken {
@@ -307,6 +403,11 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                 return
             }
 
+            updateOperationProgress(
+                currentItem: index + 1,
+                totalItems: targets.count,
+                startedAt: operationStartedAt
+            )
             fixProgress = "Fixing \(index + 1)/\(targets.count): \(result.fileName)"
 
             let fixResult = await fixOffsetForFileInPlace(
@@ -358,6 +459,27 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         scanAlertText = statusParts.joined(separator: ". ") + "."
         hasCompletedFixPass = true
         isFixing = false
+    }
+
+    private func resetOperationProgress(totalItems: Int = 0) {
+        operationProgressFraction = 0
+        operationCurrentItem = 0
+        operationTotalItems = totalItems
+        operationEstimatedRemaining = nil
+    }
+
+    private func updateOperationProgress(currentItem: Int, totalItems: Int, startedAt: Date) {
+        operationCurrentItem = currentItem
+        operationTotalItems = totalItems
+        operationProgressFraction = totalItems > 0 ? Double(currentItem) / Double(totalItems) : 0
+
+        let completedBeforeCurrent = currentItem - 1
+        guard completedBeforeCurrent > 0 else {
+            operationEstimatedRemaining = nil
+            return
+        }
+        let averageDuration = Date().timeIntervalSince(startedAt) / Double(completedBeforeCurrent)
+        operationEstimatedRemaining = averageDuration * Double(totalItems - completedBeforeCurrent)
     }
 
     private func fixOffsetForFileInPlace(filePath: String) async -> FileFixResult {
@@ -436,6 +558,20 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         return false
     }
 
+    private func timingIssueDescription(for result: OffsetStartCheckResult) -> String {
+        if result.fixOutcome == .failedNeedsReencode {
+            return "Timing repair failed; full re-encode required"
+        }
+        guard let firstPTS = result.firstPTS else {
+            return "Unable to read the first video packet timestamp"
+        }
+        return String(format: "Video starts at %.3f seconds", firstPTS)
+    }
+
+    private func csvField(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
+
     private func makeHiddenChromeHostWindow() -> NSWindow {
         let size = NSSize(width: 640, height: 480)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
@@ -463,6 +599,14 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     }
 
     private func collectVideoFilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: rootPath, isDirectory: &isDirectory),
+           !isDirectory.boolValue {
+            let url = URL(fileURLWithPath: rootPath)
+            guard url.pathExtension.lowercased() == "mp4" else { return [] }
+            return [(relativePath: url.lastPathComponent, fullPath: rootPath)]
+        }
+
         let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
         let keys: [URLResourceKey] = [.isRegularFileKey]
         let options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]

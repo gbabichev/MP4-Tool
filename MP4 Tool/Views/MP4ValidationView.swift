@@ -20,23 +20,41 @@ private final class MP4ValidationDroppedURLCollector: @unchecked Sendable {
 }
 
 struct MP4ValidationView: View {
+    let isActive: Bool
+    let navigationContent: AnyView?
+    let sharedInputURL: Binding<URL?>?
     @StateObject private var viewModel = MP4ValidationViewModel()
     @State private var showFlaggedOnly = false
     @State private var selectedRepairResultIDs = Set<UUID>()
+    @State private var lastAppliedSharedInputPath: String?
     @AppStorage("mp4ValidatorReplaceOriginal") private var useOriginalRepairFilename = false
     @AppStorage("mp4ValidatorUseCustomRepairFolder") private var useCustomRepairFolder = false
     @AppStorage("mp4ValidatorRepairFolderPath") private var customRepairFolderPath = ""
-    @Environment(\.openWindow) private var openWindow
+
+    init(
+        isActive: Bool = true,
+        navigationContent: AnyView? = nil,
+        sharedInputURL: Binding<URL?>? = nil
+    ) {
+        self.isActive = isActive
+        self.navigationContent = navigationContent
+        self.sharedInputURL = sharedInputURL
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            statusContent
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let navigationContent {
+                        navigationContent
+                    }
 
-            Text("Validate dropped MP4 files or MP4 files in a folder and its subfolders. Finds compatibility failures and suspicious audio authoring such as multiple default tracks or inactive multichannel audio.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    Text("Validate dropped MP4 files or MP4 files in a folder and its subfolders. Finds compatibility failures and suspicious audio authoring such as multiple default tracks or inactive multichannel audio.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-            GroupBox("Input") {
+                    if sharedInputURL == nil {
+                    GroupBox("Input") {
                 ToolSelectionRow(
                     title: inputSelectionTitle,
                     detail: viewModel.inputSelectionDescription,
@@ -47,13 +65,15 @@ struct MP4ValidationView: View {
                     chooseLabel: "Choose…",
                     openLabel: viewModel.droppedFilePaths.isEmpty ? "Open" : "Reveal",
                     chooseDisabled: viewModel.isScanning || viewModel.isRepairing,
+                    compactLayout: navigationContent != nil,
                     openAction: viewModel.openInputFolderInFinder,
                     chooseAction: viewModel.selectInput
                 )
                 .padding(.vertical, 4)
             }
+                    }
 
-            GroupBox("Repair Output") {
+                    GroupBox("Repair Output") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
                         Image(systemName: useOriginalRepairFilename ? "doc" : "doc.badge.plus")
@@ -75,6 +95,7 @@ struct MP4ValidationView: View {
                                 useOriginalRepairFilename && !useCustomRepairFolder
                                     ? Color.orange : Color.secondary
                             )
+                            .fixedSize(horizontal: false, vertical: true)
                         }
 
                         Spacer()
@@ -108,7 +129,16 @@ struct MP4ValidationView: View {
 
                         Spacer(minLength: 8)
 
-                        if useCustomRepairFolder {
+                        Toggle("Save to Another Folder", isOn: $useCustomRepairFolder)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .disabled(viewModel.isScanning || viewModel.isRepairing)
+                    }
+
+                    if useCustomRepairFolder {
+                        HStack(spacing: 8) {
+                            Spacer()
                             Button("Choose…", action: chooseCustomRepairFolder)
                                 .controlSize(.small)
                                 .disabled(viewModel.isRepairing)
@@ -117,19 +147,46 @@ struct MP4ValidationView: View {
                                 .controlSize(.small)
                                 .disabled(customRepairFolderPath.isEmpty)
                         }
-
-                        Toggle("Save to Another Folder", isOn: $useCustomRepairFolder)
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-                            .disabled(viewModel.isScanning || viewModel.isRepairing)
                     }
                 }
                 .padding(.vertical, 4)
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .frame(minWidth: 340, idealWidth: 380, maxWidth: 420)
+            .background(Color.secondary.opacity(0.035))
 
-            GroupBox("Scan Results") {
-                if viewModel.results.isEmpty {
+            Divider()
+
+            VStack(alignment: .leading, spacing: 0) {
+                GroupBox {
+                if viewModel.isScanning || viewModel.isRepairing {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.large)
+                        Text(viewModel.isRepairing ? "Repairing MP4 files…" : "Validating MP4 files…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        InspectRepairProgressDetails(
+                            fraction: viewModel.operationProgressFraction,
+                            currentItem: viewModel.operationCurrentItem,
+                            totalItems: viewModel.operationTotalItems,
+                            estimatedRemaining: viewModel.operationEstimatedRemaining
+                        )
+                        if !viewModel.scanProgress.isEmpty {
+                            Text(viewModel.scanProgress)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+                } else if viewModel.results.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "checkmark.shield")
                             .font(.system(size: 40, weight: .light))
@@ -143,26 +200,46 @@ struct MP4ValidationView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
-                            Button(showFlaggedOnly ? "Show All" : "Show Flagged") {
-                                showFlaggedOnly.toggle()
-                            }
-                            .controlSize(.small)
-                            .disabled(viewModel.results.isEmpty)
+                            Label(resultsSummary, systemImage: "list.bullet")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
 
-                            Button(allRepairableResultsSelected ? "Deselect All" : "Select All") {
-                                if allRepairableResultsSelected {
-                                    selectedRepairResultIDs.subtract(repairableResultIDs)
-                                } else {
-                                    selectedRepairResultIDs.formUnion(repairableResultIDs)
+                            Spacer()
+
+                            ControlGroup {
+                                Button {
+                                    showFlaggedOnly.toggle()
+                                } label: {
+                                    Label(
+                                        showFlaggedOnly ? "Show All" : "Flagged Only",
+                                        systemImage: showFlaggedOnly ? "list.bullet" : "exclamationmark.triangle"
+                                    )
                                 }
+                                .disabled(viewModel.results.isEmpty)
+
+                                Button {
+                                    if allRepairableResultsSelected {
+                                        selectedRepairResultIDs.subtract(repairableResultIDs)
+                                    } else {
+                                        selectedRepairResultIDs.formUnion(repairableResultIDs)
+                                    }
+                                } label: {
+                                    Label(
+                                        allRepairableResultsSelected ? "Deselect All" : "Select All",
+                                        systemImage: allRepairableResultsSelected
+                                            ? "checkmark.circle.fill" : "checkmark.circle"
+                                    )
+                                }
+                                .disabled(
+                                    repairableResultIDs.isEmpty
+                                        || viewModel.isScanning
+                                        || viewModel.isRepairing
+                                )
                             }
                             .controlSize(.small)
-                            .disabled(
-                                repairableResultIDs.isEmpty
-                                    || viewModel.isScanning
-                                    || viewModel.isRepairing
-                            )
                         }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
 
                         if displayedResults.isEmpty {
                             Text(showFlaggedOnly ? "No flagged files to display." : "No results to display.")
@@ -182,7 +259,7 @@ struct MP4ValidationView: View {
                                     }
 
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(result.fileName)
+                                        Text(URL(fileURLWithPath: result.filePath).lastPathComponent)
                                             .lineLimit(1)
                                             .truncationMode(.middle)
 
@@ -216,95 +293,90 @@ struct MP4ValidationView: View {
                         }
                     }
                 }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .frame(minWidth: 760, minHeight: 560)
+        .frame(minWidth: 860, minHeight: 560)
         .contentShape(Rectangle())
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleFolderDrop(providers: providers)
         }
+        .onChange(of: sharedInputURL?.wrappedValue?.path) { _, _ in
+            applySharedInput()
+        }
+        .onChange(of: viewModel.isScanning) { _, isScanning in
+            if !isScanning { applySharedInput() }
+        }
+        .onChange(of: viewModel.isRepairing) { _, isRepairing in
+            if !isRepairing { applySharedInput() }
+        }
+        .onAppear(perform: applySharedInput)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    sendFlaggedToMainApp()
-                } label: {
-                    Label("Send Flagged to Main", systemImage: "arrowshape.turn.up.right")
-                }
-                .disabled(!viewModel.canSendFlaggedToMainApp)
-            }
-
-            ToolbarItem(placement: .navigation) {
-                Menu {
-                    Button {
-                        viewModel.exportFlaggedToFile()
-                    } label: {
-                        Label("File Paths…", systemImage: "doc.plaintext")
-                    }
-
+            if isActive {
+                ToolbarItem(placement: .navigation) {
                     Button {
                         viewModel.exportCSVReport()
                     } label: {
-                        Label("CSV Report…", systemImage: "tablecells")
+                        Label("Export CSV…", systemImage: "square.and.arrow.up")
                     }
-                } label: {
-                    Label("Export…", systemImage: "square.and.arrow.up")
+                    .disabled(!viewModel.canExportFlagged)
                 }
-                .disabled(!viewModel.canExportFlagged)
-            }
 
-            ToolbarItemGroup(placement: .primaryAction) {
-                if viewModel.isRepairing {
-                    Button {
-                        viewModel.cancelRepair()
-                    } label: {
-                        Label("Stop Repair", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .keyboardShortcut(".", modifiers: .command)
-                } else if viewModel.isScanning {
-                    Button {
-                        viewModel.cancelScan()
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .keyboardShortcut(".", modifiers: .command)
-                } else {
-                    if !repairableResultIDs.isEmpty {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if viewModel.isRepairing {
                         Button {
-                            viewModel.repairSelected(
-                                resultIDs: selectedRepairResultIDs,
-                                useOriginalFilename: useOriginalRepairFilename,
-                                customOutputFolderPath: useCustomRepairFolder
-                                    ? customRepairFolderPath : nil
-                            )
+                            viewModel.cancelRepair()
                         } label: {
-                            Label(
-                                selectedRepairCount > 0
-                                    ? "Repair Selected (\(selectedRepairCount))"
-                                    : "Repair Selected",
-                                systemImage: "wrench.and.screwdriver"
-                            )
+                            Label("Stop Repair", systemImage: "stop.fill")
                         }
-                        .disabled(selectedRepairCount == 0 || !repairDestinationIsReady)
-                        .help(repairActionHelp)
-                    }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .keyboardShortcut(".", modifiers: .command)
+                    } else if viewModel.isScanning {
+                        Button {
+                            viewModel.cancelScan()
+                        } label: {
+                            Label("Stop", systemImage: "stop.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .keyboardShortcut(".", modifiers: .command)
+                    } else {
+                        if !repairableResultIDs.isEmpty {
+                            Button {
+                                viewModel.repairSelected(
+                                    resultIDs: selectedRepairResultIDs,
+                                    useOriginalFilename: useOriginalRepairFilename,
+                                    customOutputFolderPath: useCustomRepairFolder
+                                        ? customRepairFolderPath : nil
+                                )
+                            } label: {
+                                Label(
+                                    selectedRepairCount > 0
+                                        ? "Repair Selected (\(selectedRepairCount))"
+                                        : "Repair Selected",
+                                    systemImage: "wrench.and.screwdriver"
+                                )
+                            }
+                            .disabled(selectedRepairCount == 0 || !repairDestinationIsReady)
+                            .help(repairActionHelp)
+                        }
 
-                    Button {
-                        showFlaggedOnly = false
-                        selectedRepairResultIDs.removeAll()
-                        viewModel.scan()
-                    } label: {
-                        Label("Validate", systemImage: "checkmark.circle")
+                        Button {
+                            showFlaggedOnly = false
+                            selectedRepairResultIDs.removeAll()
+                            viewModel.scan()
+                        } label: {
+                            Label("Validate", systemImage: "checkmark.circle")
+                        }
+                        .disabled(!viewModel.canScan)
+                        .keyboardShortcut("r", modifiers: .command)
                     }
-                    .disabled(!viewModel.canScan)
-                    .keyboardShortcut("r", modifiers: .command)
                 }
             }
         }
@@ -385,6 +457,13 @@ struct MP4ValidationView: View {
         showFlaggedOnly ? viewModel.flaggedResults : viewModel.results
     }
 
+    private var resultsSummary: String {
+        if showFlaggedOnly {
+            return "\(displayedResults.count) flagged of \(viewModel.results.count)"
+        }
+        return "\(viewModel.results.count) file\(viewModel.results.count == 1 ? "" : "s")"
+    }
+
     private var selectedRepairCount: Int {
         viewModel.results.filter {
             selectedRepairResultIDs.contains($0.id) && $0.isRepairable
@@ -421,13 +500,6 @@ struct MP4ValidationView: View {
         }
     }
 
-    private func sendFlaggedToMainApp() {
-        openWindow(id: "main")
-        DispatchQueue.main.async {
-            viewModel.sendFlaggedToMainApp()
-        }
-    }
-
     private func handleFolderDrop(providers: [NSItemProvider]) -> Bool {
         guard !viewModel.isScanning, !viewModel.isRepairing else { return false }
         let fileProviders = providers.filter {
@@ -455,6 +527,11 @@ struct MP4ValidationView: View {
             let urls = collector.snapshot()
             guard !urls.isEmpty else { return }
 
+            if let sharedInputURL, let firstURL = urls.first {
+                sharedInputURL.wrappedValue = firstURL
+                return
+            }
+
             if urls.count == 1 {
                 var isDirectory: ObjCBool = false
                 if FileManager.default.fileExists(
@@ -472,44 +549,15 @@ struct MP4ValidationView: View {
         return true
     }
 
-    @ViewBuilder
-    private var statusContent: some View {
-        if viewModel.isScanning || viewModel.isRepairing {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .scaleEffect(0.9)
-                Text(viewModel.scanProgress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if !viewModel.scanAlertText.isEmpty {
-                    Text(viewModel.scanAlertText)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-        } else if !viewModel.scanProgress.isEmpty {
-            HStack(spacing: 8) {
-                Text(viewModel.scanProgress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !viewModel.scanAlertText.isEmpty {
-                    Text(viewModel.scanAlertText)
-                        .font(.caption)
-                        .foregroundStyle(
-                            viewModel.scanAlertText.hasPrefix("Exported ")
-                                || viewModel.scanAlertText.hasPrefix("Sent ")
-                                || viewModel.scanAlertText.hasPrefix("Repaired files ")
-                                ? Color.secondary
-                                : (viewModel.flaggedResults.isEmpty ? Color.secondary : Color.red)
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
+    private func applySharedInput() {
+        guard let url = sharedInputURL?.wrappedValue,
+              url.path != lastAppliedSharedInputPath,
+              !viewModel.isScanning,
+              !viewModel.isRepairing else { return }
+
+        if viewModel.setInput(url: url) {
+            lastAppliedSharedInputPath = url.path
         }
     }
+
 }

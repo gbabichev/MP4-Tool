@@ -86,6 +86,10 @@ final class MetadataCleanerViewModel: ObservableObject {
     @Published var isCleaning = false
     @Published var statusMessage = ""
     @Published var results: [MetadataCleanerResult] = []
+    @Published var operationProgressFraction: Double = 0
+    @Published var operationCurrentItem = 0
+    @Published var operationTotalItems = 0
+    @Published var operationEstimatedRemaining: TimeInterval?
 
     private var ffmpegPath = ""
     private var ffprobePath = ""
@@ -204,7 +208,11 @@ final class MetadataCleanerViewModel: ObservableObject {
     func exportCSV() {
         guard canExport else { return }
         let reportRows = results.map {
-            (itemName: $0.fileName, path: $0.filePath, metadata: $0.issues.joined(separator: "; "))
+            (
+                itemName: URL(fileURLWithPath: $0.filePath).lastPathComponent,
+                path: $0.filePath,
+                metadata: $0.issues.joined(separator: "; ")
+            )
         }
 
         let hostWindow = makeHiddenChromeHostWindow()
@@ -264,8 +272,15 @@ final class MetadataCleanerViewModel: ObservableObject {
 
         var flagged: [MetadataCleanerResult] = []
         var unreadableCount = 0
+        let operationStartedAt = Date()
+        resetOperationProgress(totalItems: files.count)
         for (offset, file) in files.enumerated() {
             guard !Task.isCancelled else { return }
+            updateOperationProgress(
+                currentItem: offset + 1,
+                totalItems: files.count,
+                startedAt: operationStartedAt
+            )
             statusMessage = "Scanning \(offset + 1) of \(files.count): \(file.relativePath)"
             guard let probe = await probe(path: file.fullPath) else {
                 unreadableCount += 1
@@ -302,9 +317,16 @@ final class MetadataCleanerViewModel: ObservableObject {
         defer { assertion.invalidate() }
         var cleaned = 0
         var failed = 0
+        let operationStartedAt = Date()
+        resetOperationProgress(totalItems: selected.count)
 
         for (offset, result) in selected.enumerated() {
             guard !Task.isCancelled else { return }
+            updateOperationProgress(
+                currentItem: offset + 1,
+                totalItems: selected.count,
+                startedAt: operationStartedAt
+            )
             statusMessage = "Cleaning \(offset + 1) of \(selected.count): \(result.fileName)"
             updateResult(result.id, message: "Creating validated replacement…")
             if await cleanFile(result) {
@@ -320,6 +342,27 @@ final class MetadataCleanerViewModel: ObservableObject {
         statusMessage = "Metadata cleanup finished: \(cleaned) cleaned"
         if failed > 0 { statusMessage += ", \(failed) failed" }
         statusMessage += "."
+    }
+
+    private func resetOperationProgress(totalItems: Int = 0) {
+        operationProgressFraction = 0
+        operationCurrentItem = 0
+        operationTotalItems = totalItems
+        operationEstimatedRemaining = nil
+    }
+
+    private func updateOperationProgress(currentItem: Int, totalItems: Int, startedAt: Date) {
+        operationCurrentItem = currentItem
+        operationTotalItems = totalItems
+        operationProgressFraction = totalItems > 0 ? Double(currentItem) / Double(totalItems) : 0
+
+        let completedBeforeCurrent = currentItem - 1
+        guard completedBeforeCurrent > 0 else {
+            operationEstimatedRemaining = nil
+            return
+        }
+        let averageDuration = Date().timeIntervalSince(startedAt) / Double(completedBeforeCurrent)
+        operationEstimatedRemaining = averageDuration * Double(totalItems - completedBeforeCurrent)
     }
 
     private func cleanFile(_ result: MetadataCleanerResult) async -> Bool {

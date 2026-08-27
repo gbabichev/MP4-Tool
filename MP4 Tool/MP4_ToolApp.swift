@@ -171,13 +171,21 @@ struct MP4_ToolApp: App {
                 .keyboardShortcut("p", modifiers: .command)
                 .disabled(!windowCommandRegistry.activeAvailability.canStartProcessing || windowCommandRegistry.activeAvailability.isProcessing)
 
-                Button(action: {
-                    openWindow(id: "runHistory")
-                }) {
-                    Label("Run History", systemImage: "clock.arrow.circlepath")
-                }
-
                 Divider()
+
+                Button(action: {
+                    openWindow(id: "inspectRepair")
+                }) {
+                    Label("Inspect & Repair...", systemImage: "stethoscope")
+                }
+                .keyboardShortcut("V", modifiers: [.command, .shift])
+
+                Button(action: {
+                    openWindow(id: "trackEditor")
+                }) {
+                    Label("Track Editor...", systemImage: "list.bullet.rectangle")
+                }
+                .help("Inspect, add, remove, and edit audio or subtitle tracks")
 
                 Button(action: {
                     openWindow(id: "videoSplitter")
@@ -186,46 +194,19 @@ struct MP4_ToolApp: App {
                 }
 
                 Button(action: {
-                    openWindow(id: "offsetStartChecker")
-                }) {
-                    Label("Check Offset Starts", systemImage: "clock.arrow.2.circlepath")
-                }
-
-                Button(action: {
-                    openWindow(id: "subtitleMuxer")
-                }) {
-                    Label("Subtitle Merger", systemImage: "captions.bubble.fill")
-                }
-
-                Button(action: {
-                    openWindow(id: "trackEditor")
-                }) {
-                    Label("Track Editor", systemImage: "list.bullet.rectangle")
-                }
-
-                Divider()
-                
-                Button(action: {
                     openWindow(id: "nonMP4Scanner")
                 }) {
                     Label("Scan for Non-MP4 Files...", systemImage: "magnifyingglass")
                 }
                 .keyboardShortcut("S", modifiers: [.command, .shift])
 
-                Button(action: {
-                    openWindow(id: "mp4Validation")
-                }) {
-                    Label("Validate MP4 Files...", systemImage: "checkmark.circle")
-                }
-                .keyboardShortcut("V", modifiers: [.command, .shift])
-
-                Button(action: {
-                    openWindow(id: "metadataCleaner")
-                }) {
-                    Label("Metadata Cleaner...", systemImage: "tag.slash")
-                }
-
                 Divider()
+
+                Button(action: {
+                    openWindow(id: "runHistory")
+                }) {
+                    Label("Run History", systemImage: "clock.arrow.circlepath")
+                }
 
                 Button(action: {
                     windowCommandRegistry.activeActions?.exportLog()
@@ -251,13 +232,10 @@ struct MP4_ToolApp: App {
             VideoSplitterView()
         }
 
-        Window("Check Offset Starts", id: "offsetStartChecker") {
-            OffsetStartCheckerView()
+        Window("Inspect & Repair", id: "inspectRepair") {
+            InspectRepairView()
         }
-
-        Window("Subtitle Merger", id: "subtitleMuxer") {
-            SubtitleMuxerView()
-        }
+        .defaultSize(width: 980, height: 720)
 
         Window("Track Editor", id: "trackEditor") {
             TrackEditorView()
@@ -267,15 +245,6 @@ struct MP4_ToolApp: App {
         Window("Scan for Non-MP4 Files", id: "nonMP4Scanner") {
             NonMP4ScannerView()
         }
-
-        Window("Validate MP4 Files", id: "mp4Validation") {
-            MP4ValidationView()
-        }
-
-        Window("Metadata Cleaner", id: "metadataCleaner") {
-            MetadataCleanerView()
-        }
-        .defaultSize(width: 980, height: 620)
 
         Window("Run History", id: "runHistory") {
             RunHistoryView()
