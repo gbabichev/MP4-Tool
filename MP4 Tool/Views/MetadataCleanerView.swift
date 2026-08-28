@@ -239,8 +239,19 @@ struct MetadataCleanerView: View {
         .toolbar {
             if isActive {
                 ToolbarItem(placement: .navigation) {
-                    Button {
-                        viewModel.exportCSV()
+                    Menu {
+                        Button {
+                            viewModel.exportCSV(includeAll: true)
+                        } label: {
+                            Label("Export All…", systemImage: "list.bullet")
+                        }
+
+                        Button {
+                            viewModel.exportCSV(includeAll: false)
+                        } label: {
+                            Label("Export Issues…", systemImage: "exclamationmark.triangle")
+                        }
+                        .disabled(!viewModel.canExportIssues)
                     } label: {
                         Label("Export CSV…", systemImage: "square.and.arrow.up")
                     }

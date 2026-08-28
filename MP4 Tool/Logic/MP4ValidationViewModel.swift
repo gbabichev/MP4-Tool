@@ -162,6 +162,10 @@ final class MP4ValidationViewModel: ObservableObject {
         !isScanning && !isRepairing && !flaggedResults.isEmpty
     }
 
+    var canExportAll: Bool {
+        !isScanning && !isRepairing && !results.isEmpty
+    }
+
     var canSendFlaggedToMainApp: Bool {
         !isScanning && !isRepairing && !flaggedResults.isEmpty
     }
@@ -736,8 +740,9 @@ final class MP4ValidationViewModel: ObservableObject {
         }
     }
 
-    func exportCSVReport() {
-        let reportRows = flaggedResults.map { result in
+    func exportCSVReport(includeAll: Bool) {
+        let sourceResults = includeAll ? results : flaggedResults
+        let reportRows = sourceResults.map { result in
             (
                 itemName: URL(fileURLWithPath: result.filePath).lastPathComponent,
                 path: result.filePath,
@@ -745,7 +750,7 @@ final class MP4ValidationViewModel: ObservableObject {
             )
         }
         guard !reportRows.isEmpty else {
-            scanAlertText = "No flagged files to export."
+            scanAlertText = includeAll ? "No results to export." : "No issues to export."
             return
         }
 
@@ -756,7 +761,8 @@ final class MP4ValidationViewModel: ObservableObject {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.commaSeparatedText]
-        panel.nameFieldStringValue = "mp4-validation-report.csv"
+        panel.nameFieldStringValue = includeAll
+            ? "mp4-validation-all.csv" : "mp4-validation-issues.csv"
 
         panel.beginSheetModal(for: hostWindow) { [weak self] response in
             Task { @MainActor in
@@ -779,7 +785,8 @@ final class MP4ValidationViewModel: ObservableObject {
 
                 do {
                     try body.write(to: url, atomically: true, encoding: .utf8)
-                    self.scanAlertText = "Exported \(reportRows.count) validation result(s) to \(url.path)."
+                    let scope = includeAll ? "result" : "issue"
+                    self.scanAlertText = "Exported \(reportRows.count) validation \(scope)(s) to \(url.path)."
                 } catch {
                     self.scanAlertText = "Failed to export CSV report: \(error.localizedDescription)"
                 }

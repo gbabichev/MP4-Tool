@@ -38,6 +38,10 @@ struct OffsetStartCheckResult: Identifiable {
         guard let firstPTS else { return false }
         return abs(firstPTS) >= Self.significantOffsetThresholdSeconds
     }
+
+    var needsTimingAttention: Bool {
+        fixOutcome == .failedNeedsReencode || firstPTS == nil || hasOffsetStart
+    }
 }
 
 @MainActor
@@ -100,6 +104,10 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
     var canExportReport: Bool {
         !isScanning && !isFixing && !actionRequiredResults.isEmpty
+    }
+
+    var canExportAll: Bool {
+        !isScanning && !isFixing && !results.isEmpty
     }
 
     var canSendFailuresToMainApp: Bool {
@@ -244,16 +252,17 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         }
     }
 
-    func exportCSVReport() {
-        let reportRows = actionRequiredResults.map { result in
+    func exportCSVReport(includeAll: Bool) {
+        let sourceResults = includeAll ? results : actionRequiredResults
+        let reportRows = sourceResults.map { result in
             (
                 itemName: URL(fileURLWithPath: result.filePath).lastPathComponent,
                 path: result.filePath,
-                issue: timingIssueDescription(for: result)
+                issue: result.needsTimingAttention ? timingIssueDescription(for: result) : ""
             )
         }
         guard !reportRows.isEmpty else {
-            scanAlertText = "No timing issues to export."
+            scanAlertText = includeAll ? "No results to export." : "No timing issues to export."
             return
         }
 
@@ -264,7 +273,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.commaSeparatedText]
-        panel.nameFieldStringValue = "mp4-timing-report.csv"
+        panel.nameFieldStringValue = includeAll
+            ? "mp4-timing-all.csv" : "mp4-timing-issues.csv"
 
         panel.beginSheetModal(for: hostWindow) { [weak self] response in
             Task { @MainActor in
@@ -285,7 +295,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
                 do {
                     try body.write(to: url, atomically: true, encoding: .utf8)
-                    self.scanAlertText = "Exported \(reportRows.count) timing issue(s) to \(url.path)."
+                    let scope = includeAll ? "result" : "issue"
+                    self.scanAlertText = "Exported \(reportRows.count) timing \(scope)(s) to \(url.path)."
                 } catch {
                     self.scanAlertText = "Failed to export CSV report: \(error.localizedDescription)"
                 }

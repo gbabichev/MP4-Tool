@@ -6,6 +6,7 @@ private enum InspectRepairSection: String, CaseIterable, Identifiable {
     case compatibility
     case metadata
     case timing
+    case subtitles
 
     var id: Self { self }
 
@@ -14,6 +15,7 @@ private enum InspectRepairSection: String, CaseIterable, Identifiable {
         case .compatibility: "Compatibility"
         case .metadata: "Metadata"
         case .timing: "Timing"
+        case .subtitles: "Subtitles"
         }
     }
 
@@ -22,6 +24,7 @@ private enum InspectRepairSection: String, CaseIterable, Identifiable {
         case .compatibility: "checkmark.shield"
         case .metadata: "tag.slash"
         case .timing: "clock.arrow.2.circlepath"
+        case .subtitles: "captions.bubble"
         }
     }
 }
@@ -58,6 +61,15 @@ struct InspectRepairView: View {
             .opacity(selectedSection == .timing ? 1 : 0)
             .allowsHitTesting(selectedSection == .timing)
             .accessibilityHidden(selectedSection != .timing)
+
+            SubtitleInspectorView(
+                isActive: selectedSection == .subtitles,
+                navigationContent: AnyView(sharedNavigationContent),
+                sharedInputURL: $sharedInputURL
+            )
+            .opacity(selectedSection == .subtitles ? 1 : 0)
+            .allowsHitTesting(selectedSection == .subtitles)
+            .accessibilityHidden(selectedSection != .subtitles)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 860, minHeight: 640)

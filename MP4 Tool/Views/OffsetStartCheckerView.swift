@@ -232,12 +232,23 @@ struct OffsetStartCheckerView: View {
         .toolbar {
             if isActive {
                 ToolbarItem(placement: .navigation) {
-                    Button {
-                        viewModel.exportCSVReport()
+                    Menu {
+                        Button {
+                            viewModel.exportCSVReport(includeAll: true)
+                        } label: {
+                            Label("Export All…", systemImage: "list.bullet")
+                        }
+
+                        Button {
+                            viewModel.exportCSVReport(includeAll: false)
+                        } label: {
+                            Label("Export Issues…", systemImage: "exclamationmark.triangle")
+                        }
+                        .disabled(!viewModel.canExportReport)
                     } label: {
                         Label("Export CSV…", systemImage: "square.and.arrow.up")
                     }
-                    .disabled(!viewModel.canExportReport)
+                    .disabled(!viewModel.canExportAll)
                 }
 
                 ToolbarItemGroup(placement: .primaryAction) {

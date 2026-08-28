@@ -102,6 +102,7 @@ final class MetadataCleanerViewModel: ObservableObject {
     var isBusy: Bool { isResolvingInput || isScanning || isCleaning }
     var canScan: Bool { hasTools && !inputPath.isEmpty && !isBusy }
     var canExport: Bool { !results.isEmpty && !isBusy }
+    var canExportIssues: Bool { !cleanableResults.isEmpty && !isBusy }
     var cleanableResults: [MetadataCleanerResult] { results.filter(\.needsCleaning) }
 
     var inputTitle: String {
@@ -205,9 +206,10 @@ final class MetadataCleanerViewModel: ObservableObject {
         statusMessage = "Operation canceled."
     }
 
-    func exportCSV() {
-        guard canExport else { return }
-        let reportRows = results.map {
+    func exportCSV(includeAll: Bool) {
+        let sourceResults = includeAll ? results : cleanableResults
+        guard !sourceResults.isEmpty, !isBusy else { return }
+        let reportRows = sourceResults.map {
             (
                 itemName: URL(fileURLWithPath: $0.filePath).lastPathComponent,
                 path: $0.filePath,
@@ -222,7 +224,8 @@ final class MetadataCleanerViewModel: ObservableObject {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.commaSeparatedText]
-        panel.nameFieldStringValue = "mp4-metadata-report.csv"
+        panel.nameFieldStringValue = includeAll
+            ? "mp4-metadata-all.csv" : "mp4-metadata-issues.csv"
         panel.beginSheetModal(for: hostWindow) { [weak self] response in
             Task { @MainActor in
                 guard let self else { return }
@@ -240,7 +243,8 @@ final class MetadataCleanerViewModel: ObservableObject {
                 let body = "\u{FEFF}" + ([header] + rows).joined(separator: "\r\n") + "\r\n"
                 do {
                     try body.write(to: url, atomically: true, encoding: .utf8)
-                    self.statusMessage = "Exported \(reportRows.count) result(s) to \(url.path)."
+                    let scope = includeAll ? "result" : "issue"
+                    self.statusMessage = "Exported \(reportRows.count) metadata \(scope)(s) to \(url.path)."
                 } catch {
                     self.statusMessage = "CSV export failed: \(error.localizedDescription)"
                 }
