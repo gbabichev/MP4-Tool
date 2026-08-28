@@ -9,6 +9,7 @@ struct SubtitleInspectorView: View {
     @State private var showNeedsAttentionOnly = false
     @State private var selectedResultIDs: Set<UUID> = []
     @State private var lastAppliedSharedInputPath: String?
+    @AppStorage("subtitleInspectorRequireEnglish") private var requireEnglishSubtitles = false
 
     init(
         isActive: Bool = true,
@@ -28,9 +29,36 @@ struct SubtitleInspectorView: View {
                         navigationContent
                     }
 
-                    Text("Find MP4 files that do not contain any subtitle tracks. Files that cannot be inspected are called out separately rather than being reported as missing subtitles.")
+                    Text(subtitleScanDescription)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    GroupBox("Scan Options") {
+                        HStack(spacing: 10) {
+                            Image(systemName: "character.book.closed")
+                                .foregroundStyle(requireEnglishSubtitles ? Color.accentColor : Color.secondary)
+                                .frame(width: 20)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Scan for English Subtitles")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                Text("Require at least one subtitle track explicitly tagged English.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer(minLength: 8)
+
+                            Toggle("Scan for English Subtitles", isOn: $requireEnglishSubtitles)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .disabled(viewModel.isScanning)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -91,7 +119,7 @@ struct SubtitleInspectorView: View {
                                         showNeedsAttentionOnly.toggle()
                                     } label: {
                                         Label(
-                                            showNeedsAttentionOnly ? "Show All" : "Missing Only",
+                                            showNeedsAttentionOnly ? "Show All" : "Issues Only",
                                             systemImage: showNeedsAttentionOnly
                                                 ? "list.bullet" : "captions.bubble.fill"
                                         )
@@ -119,7 +147,7 @@ struct SubtitleInspectorView: View {
                             .padding(.top, 4)
 
                             if displayedResults.isEmpty {
-                                Text("No files without subtitles to display.")
+                                Text("No subtitle issues to display.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -132,7 +160,7 @@ struct SubtitleInspectorView: View {
                                                 .labelsHidden()
                                                 .toggleStyle(.checkbox)
                                                 .disabled(viewModel.isScanning)
-                                                .help("Include this file in the CSV export")
+                                                .help("Select this subtitle issue")
                                         }
 
                                         VStack(alignment: .leading, spacing: 4) {
@@ -175,6 +203,11 @@ struct SubtitleInspectorView: View {
         .onChange(of: attentionResultIDs) { _, newIDs in
             selectedResultIDs.formIntersection(newIDs)
         }
+        .onChange(of: requireEnglishSubtitles) { _, _ in
+            selectedResultIDs = []
+            showNeedsAttentionOnly = false
+            viewModel.resetResultsForOptionChange()
+        }
         .onAppear(perform: applySharedInput)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
@@ -211,7 +244,7 @@ struct SubtitleInspectorView: View {
                     } else {
                         Button {
                             selectedResultIDs = []
-                            viewModel.scan()
+                            viewModel.scan(requireEnglish: requireEnglishSubtitles)
                         } label: {
                             Label("Scan", systemImage: "magnifyingglass")
                         }
@@ -242,10 +275,19 @@ struct SubtitleInspectorView: View {
     }
 
     private var emptyResultsMessage: String {
-        if viewModel.statusMessage.contains("0 have no subtitles") {
-            return "Every inspected MP4 contains subtitles."
+        if viewModel.statusMessage.contains("Scan option changed") {
+            return "Run a new scan using the selected subtitle rule."
         }
-        return "Run a scan to find MP4 files without subtitle tracks."
+        return requireEnglishSubtitles
+            ? "Run a scan to find MP4 files without English-tagged subtitles."
+            : "Run a scan to find MP4 files without subtitle tracks."
+    }
+
+    private var subtitleScanDescription: String {
+        if requireEnglishSubtitles {
+            return "Find MP4 files that do not contain a subtitle track explicitly tagged English. Files with subtitles in other languages are distinguished from files with no subtitle tracks."
+        }
+        return "Find MP4 files that do not contain any subtitle tracks. Files that cannot be inspected are called out separately rather than being reported as missing subtitles."
     }
 
     private func selectionBinding(for id: UUID) -> Binding<Bool> {
@@ -260,7 +302,8 @@ struct SubtitleInspectorView: View {
 
     private func resultColor(_ result: SubtitleInspectionResult) -> Color {
         switch result.status {
-        case .subtitlesPresent: .secondary
+        case .subtitlesPresent(_, let englishCount, let requiresEnglish):
+            requiresEnglish && englishCount == 0 ? .orange : .secondary
         case .missing: .orange
         case .unreadable: .red
         }

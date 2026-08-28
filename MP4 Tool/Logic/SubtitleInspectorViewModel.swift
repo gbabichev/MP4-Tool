@@ -9,6 +9,7 @@ private struct SubtitleInspectorProbeOutput: Decodable {
 
 private struct SubtitleInspectorProbeStream: Decodable {
     let index: Int
+    let tags: [String: String]?
 }
 
 private nonisolated final class SubtitleInspectorProcessCapture: @unchecked Sendable {
@@ -40,7 +41,7 @@ private nonisolated final class SubtitleInspectorProcessCapture: @unchecked Send
 }
 
 enum SubtitleInspectionStatus {
-    case subtitlesPresent(count: Int)
+    case subtitlesPresent(totalCount: Int, englishCount: Int, requiresEnglish: Bool)
     case missing
     case unreadable
 }
@@ -52,15 +53,22 @@ struct SubtitleInspectionResult: Identifiable {
 
     var needsAttention: Bool {
         switch status {
-        case .subtitlesPresent: false
+        case .subtitlesPresent(_, let englishCount, let requiresEnglish):
+            requiresEnglish && englishCount == 0
         case .missing, .unreadable: true
         }
     }
 
     var issue: String {
         switch status {
-        case .subtitlesPresent(let count):
-            return "\(count) subtitle track\(count == 1 ? "" : "s")"
+        case .subtitlesPresent(let totalCount, let englishCount, let requiresEnglish):
+            if requiresEnglish {
+                guard englishCount > 0 else {
+                    return "Subtitle tracks exist, but none are tagged English"
+                }
+                return "\(englishCount) English subtitle track\(englishCount == 1 ? "" : "s") (\(totalCount) total)"
+            }
+            return "\(totalCount) subtitle track\(totalCount == 1 ? "" : "s")"
         case .missing:
             return "No subtitle tracks found"
         case .unreadable:
@@ -112,14 +120,22 @@ final class SubtitleInspectorViewModel: ObservableObject {
             : "Ready to inspect this MP4 file."
     }
 
-    func scan() {
+    func scan(requireEnglish: Bool) {
         guard canScan else { return }
         results = []
         statusMessage = inputIsFolder ? "Discovering MP4 files…" : "Preparing MP4 file…"
         resetOperationProgress()
         isScanning = true
         scanTask?.cancel()
-        scanTask = Task { await runScan() }
+        scanTask = Task { await runScan(requireEnglish: requireEnglish) }
+    }
+
+    func resetResultsForOptionChange() {
+        guard !isScanning else { return }
+        results = []
+        statusMessage = inputPath.isEmpty
+            ? ""
+            : "Scan option changed. Run a new subtitle scan."
     }
 
     func cancel() {
@@ -177,7 +193,7 @@ final class SubtitleInspectorViewModel: ObservableObject {
         }
     }
 
-    private func runScan() async {
+    private func runScan(requireEnglish: Bool) async {
         let assertion = SystemSleepAssertion(reason: "MP4 Tool is inspecting subtitle tracks")
         defer { assertion.invalidate() }
 
@@ -203,7 +219,7 @@ final class SubtitleInspectorViewModel: ObservableObject {
                 startedAt: startedAt
             )
             statusMessage = "Scanning \(index + 1) of \(files.count): \(URL(fileURLWithPath: filePath).lastPathComponent)"
-            let status = await subtitleStatus(filePath: filePath)
+            let status = await subtitleStatus(filePath: filePath, requireEnglish: requireEnglish)
             results.append(SubtitleInspectionResult(filePath: filePath, status: status))
         }
 
@@ -216,18 +232,30 @@ final class SubtitleInspectorViewModel: ObservableObject {
             if case .unreadable = $0.status { return true }
             return false
         }.count
+        let noEnglishCount = results.filter {
+            if case .subtitlesPresent(_, let englishCount, true) = $0.status {
+                return englishCount == 0
+            }
+            return false
+        }.count
         statusMessage = "Checked \(results.count) MP4 file(s). \(missingCount) have no subtitles."
+        if requireEnglish {
+            statusMessage += " \(noEnglishCount) have subtitles but none tagged English."
+        }
         if unreadableCount > 0 {
             statusMessage += " \(unreadableCount) could not be inspected."
         }
         isScanning = false
     }
 
-    private func subtitleStatus(filePath: String) async -> SubtitleInspectionStatus {
+    private func subtitleStatus(
+        filePath: String,
+        requireEnglish: Bool
+    ) async -> SubtitleInspectionStatus {
         guard let result = await runProcess(path: ffprobePath, arguments: [
             "-v", "error",
             "-select_streams", "s",
-            "-show_entries", "stream=index",
+            "-show_entries", "stream=index:stream_tags=language",
             "-print_format", "json",
             filePath
         ]), result.exitCode == 0,
@@ -235,7 +263,20 @@ final class SubtitleInspectorViewModel: ObservableObject {
               let output = try? JSONDecoder().decode(SubtitleInspectorProbeOutput.self, from: data) else {
             return .unreadable
         }
-        return output.streams.isEmpty ? .missing : .subtitlesPresent(count: output.streams.count)
+        guard !output.streams.isEmpty else { return .missing }
+        let englishCount = output.streams.filter { stream in
+            guard let language = stream.tags?.first(where: {
+                $0.key.caseInsensitiveCompare("language") == .orderedSame
+            })?.value.lowercased() else { return false }
+            return ["eng", "en", "english"].contains(language)
+                || language.hasPrefix("en-")
+                || language.hasPrefix("en_")
+        }.count
+        return .subtitlesPresent(
+            totalCount: output.streams.count,
+            englishCount: englishCount,
+            requiresEnglish: requireEnglish
+        )
     }
 
     private func resetOperationProgress(totalItems: Int = 0) {
