@@ -75,6 +75,18 @@ final class ProcessingHistoryStore: ObservableObject {
         }
     }
 
+    func remove(ids: Set<ProcessingHistoryEntry.ID>) {
+        guard !ids.isEmpty else { return }
+
+        let previousEntries = entries
+        entries.removeAll { ids.contains($0.id) }
+
+        guard persist() else {
+            entries = previousEntries
+            return
+        }
+    }
+
     private func load() {
         guard fileManager.fileExists(atPath: historyFileURL.path) else { return }
 

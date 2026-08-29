@@ -7,6 +7,7 @@ import SwiftUI
 
 struct RunHistoryView: View {
     @ObservedObject private var history = ProcessingHistoryStore.shared
+    @State private var selection: Set<ProcessingHistoryEntry.ID> = []
     @State private var showingClearConfirmation = false
 
     var body: some View {
@@ -18,7 +19,7 @@ struct RunHistoryView: View {
                     description: Text("Successfully processed files will appear here.")
                 )
             } else {
-                Table(history.entries) {
+                Table(history.entries, selection: $selection) {
                     TableColumn("File Name") { entry in
                         Text(entry.fileName)
                             .lineLimit(1)
@@ -56,7 +57,19 @@ struct RunHistoryView: View {
                     }
                     .width(min: 145, ideal: 170)
                 }
+                .contextMenu(forSelectionType: ProcessingHistoryEntry.ID.self) { selectedIDs in
+                    Button("Delete", role: .destructive) {
+                        delete(selectedIDs)
+                    }
+                    .disabled(selectedIDs.isEmpty)
+                }
             }
+        }
+        .onDeleteCommand {
+            delete(selection)
+        }
+        .onChange(of: history.entries.map(\.id)) { _, entryIDs in
+            selection.formIntersection(entryIDs)
         }
         .overlay(alignment: .bottom) {
             if let errorMessage = history.errorMessage {
@@ -70,13 +83,22 @@ struct RunHistoryView: View {
         }
         .frame(minWidth: 760, minHeight: 420)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(role: .destructive) {
-                    showingClearConfirmation = true
+            ToolbarItemGroup(placement: .primaryAction) {
+                Menu {
+                    Button("Clear History…", role: .destructive) {
+                        showingClearConfirmation = true
+                    }
+                    .disabled(history.entries.isEmpty)
                 } label: {
-                    Label("Clear History", systemImage: "trash")
+                    Label("More", systemImage: "ellipsis.circle")
                 }
-                .disabled(history.entries.isEmpty)
+
+                Button(role: .destructive) {
+                    delete(selection)
+                } label: {
+                    Label("Delete Selected", systemImage: "trash")
+                }
+                .disabled(selection.isEmpty)
             }
         }
         .confirmationDialog(
@@ -94,5 +116,11 @@ struct RunHistoryView: View {
 
     private func formattedBytes(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func delete(_ ids: Set<ProcessingHistoryEntry.ID>) {
+        guard !ids.isEmpty else { return }
+        history.remove(ids: ids)
+        selection.subtract(ids)
     }
 }
