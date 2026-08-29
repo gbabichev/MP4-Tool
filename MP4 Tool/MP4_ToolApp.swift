@@ -11,7 +11,27 @@ import AppKit
 @MainActor
 private final class MP4ToolAppDelegate: NSObject, NSApplicationDelegate {
     weak var videoProcessor: VideoProcessor?
+    var reopenMainWindow: (() -> Void)?
+    var isMainWindowVisible = false
     private var terminationTask: Task<Void, Never>?
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        guard !isMainWindowVisible, let reopenMainWindow else {
+            return true
+        }
+
+        // A tool window can keep the app visible after the primary window is
+        // closed. Treat a Dock/Finder reopen as a request for that primary
+        // singleton rather than relying on AppKit's all-windows visibility.
+        Task { @MainActor in
+            reopenMainWindow()
+            sender.activate(ignoringOtherApps: true)
+        }
+        return false
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let videoProcessor, videoProcessor.isProcessing else {
@@ -100,6 +120,13 @@ struct MP4_ToolApp: App {
             .environmentObject(windowCommandRegistry)
             .onAppear {
                 appDelegate.videoProcessor = sharedCLIViewModel.processor
+                appDelegate.reopenMainWindow = {
+                    openWindow(id: "main")
+                }
+                appDelegate.isMainWindowVisible = true
+            }
+            .onDisappear {
+                appDelegate.isMainWindowVisible = false
             }
         }
         .commands {
