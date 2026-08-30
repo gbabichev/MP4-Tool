@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProcessingCompletionOverlayView: View {
   let summary: ProcessingCompletionSummary
+  let onOpenInFinder: () -> Void
   let onDismiss: () -> Void
 
   private static let dateFormatter: DateFormatter = {
@@ -152,12 +153,19 @@ struct ProcessingCompletionOverlayView: View {
             }
             .completionSectionStyle()
 
-            Button("Done") {
-              onDismiss()
+            HStack(spacing: 10) {
+              Button(action: onOpenInFinder) {
+                Label("Open in Finder", systemImage: "folder")
+              }
+              .controlSize(.large)
+
+              Button("Done") {
+                onDismiss()
+              }
+              .buttonStyle(.borderedProminent)
+              .controlSize(.large)
+              .keyboardShortcut(.defaultAction)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .keyboardShortcut(.defaultAction)
           }
           .padding(24)
           .frame(width: 600)
