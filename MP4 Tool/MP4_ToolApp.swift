@@ -42,6 +42,18 @@ private final class MP4ToolAppDelegate: NSObject, NSApplicationDelegate {
             return .terminateLater
         }
 
+        let alert = NSAlert()
+        alert.messageText = "Quit While Processing?"
+        alert.informativeText = "An encode or remux is still running. Quitting now will stop the active operation and discard its unfinished output."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Keep Processing")
+        alert.addButton(withTitle: "Quit and Stop")
+        alert.buttons.last?.hasDestructiveAction = true
+
+        guard alert.runModal() == .alertSecondButtonReturn else {
+            return .terminateCancel
+        }
+
         terminationTask = Task { [weak self, weak videoProcessor, weak sender] in
             guard let videoProcessor else {
                 sender?.reply(toApplicationShouldTerminate: true)
