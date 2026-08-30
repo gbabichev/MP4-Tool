@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source srcset="Documentation/icon-dark.png" media="(prefers-color-scheme: dark)">
-  <source srcset="Documentation/icon-light.png" media="(prefers-color-scheme: light)">
-  <img src="Documentation/icon-light.png" alt="App Icon" width="100">
+  <source srcset="docs/icon-dark.png" media="(prefers-color-scheme: dark)">
+  <source srcset="docs/icon-light.png" media="(prefers-color-scheme: light)">
+  <img src="docs/icon-light.png" alt="App Icon" width="100">
 </picture>
 <br/><br/>
 
@@ -13,17 +13,15 @@
 </div>
 
 <p align="center">
-    <a href="Documentation/App1.png"><img src="Documentation/App1.png" width="35%"></a>
-    <a href="Documentation/App2.png"><img src="Documentation/App2.png" width="35%"></a>
-    <a href="Documentation/App3.png"><img src="Documentation/App3.png" width="35%"></a>
-    <a href="Documentation/App4.png"><img src="Documentation/App4.png" width="35%"></a>
-
+    <a href="docs/App1.png"><img src="docs/App1.png" width="35%"></a>
+    <a href="docs/App2.png"><img src="docs/App2.png" width="35%"></a>
+    <a href="docs/App3.png"><img src="docs/App3.png" width="35%"></a>
 </p>
 
 MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files into MP4 containers with a streamlined macOS interface.
 
 <b>You must have ffmpeg & ffprobe in your $PATH</b>, or compile the app with ffmpeg & ffprobe in the Resources directory.
-<a href="Documentation/build-ffmpeg-arm64.sh">FFmpeg ARM64 Build script is in the repo</a>
+<a href="docs/build-ffmpeg-arm64.sh">FFmpeg ARM64 Build script is in the repo</a>
 
 ## Features
 - Batch Processing.
@@ -104,6 +102,32 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 ```
 
 ## 📝 Changelog
+
+### 2.0.0
+#### Interface improvements
+- Redesigned the main window with responsive Settings and Log panes.
+- Added live frame previews, richer progress reporting, ETA, and completion summaries.
+- Modernized the selectable Log inspector with wrapping, semantic colors, and “Jump to Latest.”
+- Standardized selection, filtering, repair, and CSV export controls across tools.
+- Improved file and folder selection throughout the app.
+- Added native Dock behavior for reopening the main window.
+- Improved performance for large tables and file lists.
+#### New tools and features
+- Added the unified Inspect & Repair tool for compatibility, metadata, timing, and subtitle checks.
+- Added Track Editor to inspect, add, remove, and edit media tracks.
+- Added Metadata Cleaner for detecting and removing unwanted attribution metadata.
+- Added subtitle auditing, including missing-subtitle and English-subtitle checks.
+- Added persistent Run History with multi-selection and deletion.
+- Added reusable encoding and remux presets.
+#### Processing improvements
+- Added output validation for stream presence, duration, readability, and truncation.
+- Improved AAC multichannel encoding and Apple playback compatibility.
+- Improved subtitle titles, roles, language metadata, and default-track selection.
+- Added Stop After Current File and faster immediate stopping.
+- Added pending Queue reordering and inline item removal.
+- Added configurable staging storage, disk-space reporting, and abandoned-file cleanup.
+- Prevented system sleep during long-running operations.
+- Improved handling of missing audio tracks and premature FFmpeg completion.
 
 ### 1.8.2
 - Fixed UI lag when adding items to the table.

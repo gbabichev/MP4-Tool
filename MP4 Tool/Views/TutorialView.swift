@@ -31,7 +31,7 @@ struct TutorialView: View {
                         .font(.title)
                         .bold()
 
-                    Text("Convert and remux video files efficiently")
+                    Text("Convert, organize, inspect, and repair your media")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -53,23 +53,22 @@ struct TutorialView: View {
 
                         TutorialStep(
                             icon: "folder",
-                            title: "1. Add Files"
+                            title: "1. Build Your Queue"
                         ) {
-                            Text("• Drag folders onto ") +
-                            Text("Input Folder").bold() +
-                            Text(" to scan all videos\n") +
-                            Text("• Drag individual files into ") +
+                            Text("Drag video files or folders into the ") +
                             Text("Queue").bold() +
-                            Text("\n• Or use toolbar buttons and keyboard shortcuts ⌘O and ⌘⇧O")
+                            Text(", or click ") +
+                            Text("Add Files").bold() +
+                            Text(". Folders are scanned recursively, and pending items can be reordered to choose what runs next.")
                         }
 
                         TutorialStep(
-                            icon: "arrow.left.arrow.right",
-                            title: "2. Choose Mode"
+                            icon: "list.star",
+                            title: "2. Choose a Preset or Mode"
                         ) {
-                            Text("Select ") +
+                            Text("Start with a built-in preset, or customize the workflow. Use ") +
                             Text("H.265").bold() +
-                            Text(" for smallest files, ") +
+                            Text(" for smaller files, ") +
                             Text("H.264").bold() +
                             Text(" for better compatibility, or ") +
                             Text("Remux").bold() +
@@ -78,20 +77,26 @@ struct TutorialView: View {
 
                         TutorialStep(
                             icon: "slider.horizontal.3",
-                            title: "3. Adjust Settings",
-                            description: "In Encode mode, adjust CRF quality (18-28, lower = better quality). Configure audio/subtitle language filtering, subfolders, and deletion options as needed."
+                            title: "3. Configure Processing",
+                            description: "Choose an output folder and adjust quality, resolution, speed, automatic naming, and audio or subtitle filtering. Notifications, live frame previews, and staging storage can also be changed in Processing Setup."
                         )
 
                         TutorialStep(
                             icon: "play.fill",
-                            title: "4. Start Processing",
-                            description: "Click Start Processing or press ⌘P to begin. Monitor progress in the log output below."
+                            title: "4. Process and Monitor",
+                            description: "Click Process or press ⌘P. Follow batch progress, the current file, ETA, and optional frame previews in the center view. Open the Log inspector for detailed FFmpeg output. Every completed output is validated before it is accepted."
+                        )
+
+                        TutorialStep(
+                            icon: "stop.circle",
+                            title: "5. Control the Batch",
+                            description: "You can add files while processing continues. Use Stop After Current File to finish the active item safely, or Stop Now to end processing immediately."
                         )
 
                         TutorialStep(
                             icon: "wrench.and.screwdriver",
-                            title: "5. Extra Built-In Tools",
-                            description: "Open Tools from the menu bar to split videos, edit audio and subtitle tracks, inspect and repair MP4 files, or scan your library for non-MP4 media. These tools are included in MP4 Tool at no extra cost."
+                            title: "6. Inspect and Manage Your Library",
+                            description: "Open Tools for Inspect & Repair checks covering compatibility, metadata, timing, and subtitles. You can also edit tracks, split videos, find non-MP4 files, and review Run History."
                         )
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

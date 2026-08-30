@@ -621,12 +621,12 @@ struct ContentView: View {
     
     var body: some View {
         mainContent
-#if DEBUG
-            .overlay(alignment: .bottomTrailing) {
-                BetaTag()
-                    .padding(12)
-            }
-#endif
+//#if DEBUG
+//            .overlay(alignment: .bottomTrailing) {
+//                BetaTag()
+//                    .padding(12)
+//            }
+//#endif
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button {
