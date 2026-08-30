@@ -218,7 +218,6 @@ struct OffsetStartCheckerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(minWidth: 860, minHeight: 560)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .onChange(of: sharedInputURL?.wrappedValue?.path) { _, _ in
             applySharedInput()
         }

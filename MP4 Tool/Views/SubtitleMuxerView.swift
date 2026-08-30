@@ -101,7 +101,6 @@ struct SubtitleMuxerView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(minWidth: 760, minHeight: 460)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if viewModel.isMuxing {

@@ -554,9 +554,7 @@ struct ContentView: View {
                         )
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: 600, minHeight: 500)
         .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
         .inspector(isPresented: $isLogExpanded) {
@@ -1385,7 +1383,6 @@ private struct LogInspectorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
         .overlay(alignment: .bottom) {
             if isShowingCopyConfirmation {
                 Label("Copied to Clipboard", systemImage: "checkmark.circle.fill")
@@ -1443,7 +1440,6 @@ struct ExpandedSettingsPanel: View {
             )
             .frame(width: 400)
         }
-        .background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
     }
 }
 

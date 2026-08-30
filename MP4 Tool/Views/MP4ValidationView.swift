@@ -315,7 +315,6 @@ struct MP4ValidationView: View {
             if !isRepairing { applySharedInput() }
         }
         .onAppear(perform: applySharedInput)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             if isActive {
                 ToolbarItem(placement: .navigation) {

@@ -86,7 +86,6 @@ struct NonMP4ScannerView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(minWidth: 760, minHeight: 560)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {

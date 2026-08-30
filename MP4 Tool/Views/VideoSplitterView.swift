@@ -222,7 +222,6 @@ struct VideoSplitterView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(minWidth: 760, minHeight: 800)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {

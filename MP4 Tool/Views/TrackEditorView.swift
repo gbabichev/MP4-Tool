@@ -162,7 +162,6 @@ struct TrackEditorView: View {
             viewModel.inspect(path: url.path)
             return true
         }
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {

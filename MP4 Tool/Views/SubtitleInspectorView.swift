@@ -209,7 +209,6 @@ struct SubtitleInspectorView: View {
             viewModel.resetResultsForOptionChange()
         }
         .onAppear(perform: applySharedInput)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             if isActive {
                 ToolbarItem(placement: .navigation) {
