@@ -1368,6 +1368,8 @@ private struct ProcessingSetupToggle: View {
 private struct LogInspectorView: View {
     let logText: String
     let isShowingCopyConfirmation: Bool
+    @State private var isAtBottom = true
+    @State private var scrollToEndRequest = 0
     
     var body: some View {
         Group {
@@ -1379,10 +1381,29 @@ private struct LogInspectorView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                LogView(logText: logText)
+                LogView(
+                    logText: logText,
+                    isAtBottom: $isAtBottom,
+                    scrollToEndRequest: scrollToEndRequest
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .bottomTrailing) {
+            if !logText.isEmpty && !isAtBottom {
+                Button {
+                    scrollToEndRequest += 1
+                } label: {
+                    Label("Jump to Latest", systemImage: "arrow.down.to.line")
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .background(.regularMaterial, in: Capsule())
+                .padding(12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .overlay(alignment: .bottom) {
             if isShowingCopyConfirmation {
                 Label("Copied to Clipboard", systemImage: "checkmark.circle.fill")
@@ -1471,6 +1492,12 @@ struct LogDocument: FileDocument {
 // High-performance log view using NSTextView
 struct LogView: NSViewRepresentable {
     let logText: String
+    @Binding var isAtBottom: Bool
+    let scrollToEndRequest: Int
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isAtBottom: $isAtBottom)
+    }
     
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -1478,54 +1505,197 @@ struct LogView: NSViewRepresentable {
         
         textView.isEditable = false
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.isHorizontallyResizable = true
+        textView.drawsBackground = false
+        textView.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         textView.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude
         )
-        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude
         )
         
         scrollView.documentView = textView
+        scrollView.drawsBackground = false
+        scrollView.contentView.drawsBackground = false
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        scrollView.hasHorizontalScroller = false
         scrollView.autoresizingMask = [.width, .height]
-        
-        // Add rounded corners
-        scrollView.wantsLayer = true
-        scrollView.layer?.cornerRadius = 8
-        scrollView.layer?.masksToBounds = true
+
+        context.coordinator.observe(scrollView)
         
         return scrollView
     }
     
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        context.coordinator.isAtBottom = $isAtBottom
         
         // Only update if text changed
         if textView.string != logText {
-            let wasAtBottom = isScrolledToBottom(scrollView)
-            
-            textView.string = logText
+            let wasAtBottom = Self.isScrolledToBottom(scrollView)
+            let selectedRanges = textView.selectedRanges
+
+            textView.textStorage?.setAttributedString(Self.styledLog(logText))
+
+            let textLength = (logText as NSString).length
+            let validSelections = selectedRanges.filter { value in
+                let range = value.rangeValue
+                return range.location <= textLength && NSMaxRange(range) <= textLength
+            }
+            if !validSelections.isEmpty {
+                textView.selectedRanges = validSelections
+            }
             
             // Auto-scroll to bottom if we were already at the bottom
             if wasAtBottom {
                 textView.scrollToEndOfDocument(nil)
             }
         }
+
+        if context.coordinator.lastScrollToEndRequest != scrollToEndRequest {
+            context.coordinator.lastScrollToEndRequest = scrollToEndRequest
+            textView.scrollToEndOfDocument(nil)
+        }
+
+        context.coordinator.scheduleScrollPositionPublication()
+    }
+
+    private static func styledLog(_ text: String) -> NSAttributedString {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 2
+        paragraphStyle.lineBreakMode = .byWordWrapping
+
+        let regularFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let emphasizedFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: regularFont,
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        let result = NSMutableAttributedString()
+        let lines = text.components(separatedBy: "\n")
+
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let lowercase = trimmed.lowercased()
+            var attributes = baseAttributes
+
+            if trimmed.hasPrefix("══") || trimmed.hasPrefix("━━") {
+                attributes[.font] = emphasizedFont
+            } else if Self.isErrorLine(trimmed, lowercase: lowercase) {
+                attributes[.foregroundColor] = NSColor.systemRed
+            } else if Self.isWarningLine(trimmed, lowercase: lowercase) {
+                attributes[.foregroundColor] = NSColor.systemOrange
+            } else if Self.isSuccessLine(trimmed, lowercase: lowercase) {
+                attributes[.foregroundColor] = NSColor.systemGreen
+            } else if Self.isDetailLine(trimmed) {
+                attributes[.foregroundColor] = NSColor.secondaryLabelColor
+            }
+
+            result.append(NSAttributedString(string: line, attributes: attributes))
+            if index < lines.count - 1 {
+                result.append(NSAttributedString(string: "\n", attributes: baseAttributes))
+            }
+        }
+
+        return result
+    }
+
+    private static func isErrorLine(_ line: String, lowercase: String) -> Bool {
+        line.hasPrefix("❌")
+            || line.hasPrefix("[X]")
+            || line.contains("􀁡")
+            || lowercase.hasPrefix("failed:")
+            || lowercase.hasPrefix("reason:")
+            || (lowercase.contains(" failed") && !lowercase.contains("0 failed"))
+            || lowercase.contains("validation failed")
+    }
+
+    private static func isWarningLine(_ line: String, lowercase: String) -> Bool {
+        line.hasPrefix("⚠")
+            || line.hasPrefix("[!]")
+            || lowercase.hasPrefix("warning:")
+            || lowercase.hasPrefix("skipped ")
+    }
+
+    private static func isSuccessLine(_ line: String, lowercase: String) -> Bool {
+        line.hasPrefix("✅")
+            || line.hasPrefix("✓")
+            || lowercase.hasPrefix("success:")
+            || lowercase.hasPrefix("validated:")
+    }
+
+    private static func isDetailLine(_ line: String) -> Bool {
+        let prefixes = [
+            "Started:", "Finished:", "Start time:", "End time:",
+            "Input:", "Output:", "FFmpeg Path:", "FFprobe Path:",
+            "Source Duration:", "Source Video:", "Selected Audio:",
+            "Selected Subtitles:"
+        ]
+        return prefixes.contains { line.hasPrefix($0) }
     }
     
-    private func isScrolledToBottom(_ scrollView: NSScrollView) -> Bool {
+    private static func isScrolledToBottom(_ scrollView: NSScrollView) -> Bool {
         guard let documentView = scrollView.documentView else { return false }
         let visibleRect = scrollView.contentView.documentVisibleRect
         let documentHeight = documentView.bounds.height
-        return visibleRect.maxY >= documentHeight - 10 // 10px threshold
+        return visibleRect.maxY >= documentHeight - 12
+    }
+
+    final class Coordinator: NSObject {
+        var isAtBottom: Binding<Bool>
+        var lastScrollToEndRequest = 0
+        private weak var scrollView: NSScrollView?
+        private var scrollPositionPublicationScheduled = false
+
+        init(isAtBottom: Binding<Bool>) {
+            self.isAtBottom = isAtBottom
+            super.init()
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        func observe(_ scrollView: NSScrollView) {
+            self.scrollView = scrollView
+            scrollView.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(boundsDidChange),
+                name: NSView.boundsDidChangeNotification,
+                object: scrollView.contentView
+            )
+        }
+
+        @objc private func boundsDidChange() {
+            scheduleScrollPositionPublication()
+        }
+
+        func scheduleScrollPositionPublication() {
+            guard !scrollPositionPublicationScheduled else { return }
+            scrollPositionPublicationScheduled = true
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.scrollPositionPublicationScheduled = false
+                self.publishScrollPosition()
+            }
+        }
+
+        private func publishScrollPosition() {
+            guard let scrollView else { return }
+            let newValue = LogView.isScrolledToBottom(scrollView)
+            guard isAtBottom.wrappedValue != newValue else { return }
+            isAtBottom.wrappedValue = newValue
+        }
     }
 }
