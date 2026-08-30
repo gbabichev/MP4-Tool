@@ -109,8 +109,7 @@ struct SubtitleMuxerView: View {
                     } label: {
                         Label("Stop", systemImage: "stop.fill")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
+                    .toolbarStopActionStyle()
                     .keyboardShortcut(".", modifiers: .command)
                 } else {
                     Button {

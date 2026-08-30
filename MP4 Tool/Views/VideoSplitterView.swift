@@ -239,8 +239,7 @@ struct VideoSplitterView: View {
                     } label: {
                         Label("Stop", systemImage: "stop.fill")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
+                    .toolbarStopActionStyle()
                     .keyboardShortcut(".", modifiers: .command)
                 } else {
                     Button {
@@ -284,10 +283,6 @@ private extension VideoSplitterView {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Button("Stop") {
-                viewModel.cancelScan()
-            }
-            .disabled(!viewModel.canCancelScan)
             if !viewModel.scanAlertText.isEmpty {
                 Text(viewModel.scanAlertText)
                     .font(.caption)

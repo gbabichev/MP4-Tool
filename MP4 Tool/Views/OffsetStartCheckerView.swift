@@ -261,8 +261,7 @@ struct OffsetStartCheckerView: View {
                         } label: {
                             Label("Stop", systemImage: "stop.fill")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
+                        .toolbarStopActionStyle()
                         .keyboardShortcut(".", modifiers: .command)
                     } else {
                         if !repairableResultIDs.isEmpty {

@@ -710,18 +710,25 @@ struct ContentView: View {
                             }
                         } label: {
                             Label(
-                                viewModel.processor.stopAfterCurrentFileRequested
-                                    ? "Stopping After Current File"
-                                    : "Stop",
-                                systemImage: viewModel.processor.stopAfterCurrentFileRequested
-                                    ? "hourglass"
-                                    : "stop.fill"
+                                title: {
+                                    Text(
+                                        viewModel.processor.stopAfterCurrentFileRequested
+                                            ? "Stopping After Current File"
+                                            : "Stop"
+                                    )
+                                },
+                                icon: {
+                                    Image(
+                                        systemName: viewModel.processor.stopAfterCurrentFileRequested
+                                            ? "hourglass"
+                                            : "stop.fill"
+                                    )
+                                    .foregroundStyle(.red)
+                                }
                             )
                         } primaryAction: {
                             viewModel.processor.cancelScan()
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
                         .help(
                             viewModel.processor.stopAfterCurrentFileRequested
                                 ? "The current file will finish, then the batch will stop"

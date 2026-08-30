@@ -264,8 +264,7 @@ struct MetadataCleanerView: View {
                         } label: {
                             Label("Stop", systemImage: "stop.fill")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
+                        .toolbarStopActionStyle()
                     } else {
                         if !cleanableIDs.isEmpty {
                             Button {
