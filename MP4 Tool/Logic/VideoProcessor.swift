@@ -483,6 +483,7 @@ class VideoProcessor: ObservableObject {
             self.logText += "\n"
         }
         self.logText += message
+        PersistentProcessingLog.shared.append(message)
         print(message)
     }
 

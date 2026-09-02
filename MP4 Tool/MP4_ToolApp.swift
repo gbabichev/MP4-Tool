@@ -124,6 +124,24 @@ struct MP4_ToolApp: App {
         }
     }
 
+    private func openProcessingLog() {
+        let log = PersistentProcessingLog.shared
+        guard log.ensureLogFileExists() else {
+            NSSound.beep()
+            return
+        }
+        NSWorkspace.shared.open(log.logFileURL)
+    }
+
+    private func openProcessingLogFolder() {
+        let log = PersistentProcessingLog.shared
+        guard log.ensureLogFileExists() else {
+            NSSound.beep()
+            return
+        }
+        NSWorkspace.shared.open(log.directoryURL)
+    }
+
     var body: some Scene {
         Window("MP4 Tool", id: "main") {
             MainWindowRootView(
@@ -246,11 +264,23 @@ struct MP4_ToolApp: App {
                 }) {
                     Label("Run History", systemImage: "clock.arrow.circlepath")
                 }
+            }
+
+            CommandMenu("Log") {
+                Button(action: openProcessingLog) {
+                    Label("Open Processing Log", systemImage: "doc.text")
+                }
+
+                Button(action: openProcessingLogFolder) {
+                    Label("Open Log Folder", systemImage: "folder")
+                }
+
+                Divider()
 
                 Button(action: {
                     windowCommandRegistry.activeActions?.exportLog()
                 }) {
-                    Label("Export Log to TXT...", systemImage: "square.and.arrow.up")
+                    Label("Export Current Log to TXT...", systemImage: "square.and.arrow.up")
                 }
                 .keyboardShortcut("E", modifiers: [.command, .shift])
                 .disabled(!windowCommandRegistry.activeAvailability.canExportLog)
