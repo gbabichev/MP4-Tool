@@ -19,6 +19,7 @@ struct SettingsView: View {
     @Binding var automaticRename: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
+    @Binding var keepAllEnglishAudioTracks: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
@@ -33,8 +34,11 @@ struct SettingsView: View {
 
     private var userProcessingPresets: [ProcessingPreset] {
         guard let data = encodedPresets.data(using: .utf8),
-              let presets = try? JSONDecoder().decode([ProcessingPreset].self, from: data) else {
+              var presets = try? JSONDecoder().decode([ProcessingPreset].self, from: data) else {
             return []
+        }
+        for index in presets.indices where presets[index].keepAllEnglishAudioTracks == nil {
+            presets[index].keepAllEnglishAudioTracks = false
         }
         return presets.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -167,6 +171,17 @@ struct SettingsView: View {
 
                         SettingsRow("Keep English Audio Only", subtitle: "Ignore non-English audio tracks during processing") {
                             Toggle("", isOn: $keepEnglishAudioOnly)
+                                .toggleStyle(.switch)
+                                .disabled(isProcessing)
+                        }
+
+                        SettingsRow(
+                            "Keep All English Audio Tracks",
+                            subtitle: keepEnglishAudioOnly
+                                ? "Keep commentary and alternate English mixes instead of choosing one main track"
+                                : "Keep every English track while leaving other languages unchanged"
+                        ) {
+                            Toggle("", isOn: $keepAllEnglishAudioTracks)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
                         }
@@ -329,6 +344,7 @@ struct SettingsView: View {
             automaticRename: automaticRename,
             deleteOriginal: deleteOriginal,
             keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
@@ -416,6 +432,7 @@ struct SettingsView: View {
         automaticRename = preset.automaticRename
         deleteOriginal = preset.deleteOriginal
         keepEnglishAudioOnly = preset.keepEnglishAudioOnly
+        keepAllEnglishAudioTracks = preset.keepAllEnglishAudioTracks ?? false
         keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
         postProcessScriptPath = preset.postProcessScriptPath
         postProcessScriptRunTiming = preset.postProcessScriptRunTiming

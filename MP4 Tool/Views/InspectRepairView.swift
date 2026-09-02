@@ -135,7 +135,7 @@ struct InspectRepairView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
-        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.allowedContentTypes = [.mpeg4Movie, .folder]
         panel.message = "Choose one MP4 file or a folder containing MP4 files"
 
         CleanFilePanelPresenter.present(panel) { response in

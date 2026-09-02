@@ -948,7 +948,7 @@ final class TrackEditorViewModel: ObservableObject {
         arguments: [String]
     ) async -> (exitCode: Int32, stdout: String, stderr: String)? {
         await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            DispatchQueue.global(qos: .userInitiated).async { [self] in
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: path)
                 process.arguments = arguments

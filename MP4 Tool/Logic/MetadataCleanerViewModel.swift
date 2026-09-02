@@ -125,7 +125,7 @@ final class MetadataCleanerViewModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
-        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.allowedContentTypes = [.mpeg4Movie, .folder]
         panel.message = "Choose one MP4 file or a folder to scan recursively"
         CleanFilePanelPresenter.present(panel) { [weak self] response in
             guard let self, response == .OK, let url = panel.url else { return }

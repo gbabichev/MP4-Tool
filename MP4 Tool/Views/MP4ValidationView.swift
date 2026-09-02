@@ -49,7 +49,7 @@ struct MP4ValidationView: View {
                         navigationContent
                     }
 
-                    Text("Validate dropped MP4 files or MP4 files in a folder and its subfolders. Finds compatibility failures and suspicious audio authoring such as multiple default tracks or inactive multichannel audio.")
+                    Text("Validate dropped MP4 files or MP4 files in a folder and its subfolders. Finds compatibility failures, redundant English audio, multiple default tracks, and inactive multichannel audio.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

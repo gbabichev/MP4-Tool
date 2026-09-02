@@ -13,6 +13,7 @@ struct ProcessingPreset: Codable, Identifiable, Equatable {
     var automaticRename: Bool
     var deleteOriginal: Bool
     var keepEnglishAudioOnly: Bool
+    var keepAllEnglishAudioTracks: Bool?
     var keepEnglishSubtitlesOnly: Bool
     var postProcessScriptPath: String
     var postProcessScriptRunTimingRawValue: String
@@ -50,6 +51,7 @@ extension ProcessingPreset {
             automaticRename: true,
             deleteOriginal: false,
             keepEnglishAudioOnly: true,
+            keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
@@ -68,6 +70,7 @@ extension ProcessingPreset {
             automaticRename: true,
             deleteOriginal: false,
             keepEnglishAudioOnly: true,
+            keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
@@ -86,6 +89,7 @@ extension ProcessingPreset {
             automaticRename: true,
             deleteOriginal: false,
             keepEnglishAudioOnly: true,
+            keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
@@ -104,6 +108,7 @@ extension ProcessingPreset {
             automaticRename: true,
             deleteOriginal: false,
             keepEnglishAudioOnly: true,
+            keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
@@ -122,6 +127,7 @@ extension ProcessingPreset {
             automaticRename: true,
             deleteOriginal: false,
             keepEnglishAudioOnly: false,
+            keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: false,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,

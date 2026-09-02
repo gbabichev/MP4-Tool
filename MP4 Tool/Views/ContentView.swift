@@ -21,6 +21,7 @@ private struct ProcessingSettingsSnapshot: Equatable {
     let automaticRename: Bool
     let deleteOriginal: Bool
     let keepEnglishAudioOnly: Bool
+    let keepAllEnglishAudioTracks: Bool
     let keepEnglishSubtitlesOnly: Bool
     let postProcessScriptPath: String
     let postProcessScriptRunTimingRaw: String
@@ -43,6 +44,7 @@ struct ContentView: View {
     @AppStorage("defaultAutomaticRename") private var automaticRename: Bool = false
     @AppStorage("defaultDeleteOriginal") private var deleteOriginal: Bool = false
     @AppStorage("defaultKeepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
+    @AppStorage("defaultKeepAllEnglishAudioTracks") private var keepAllEnglishAudioTracks: Bool = false
     @AppStorage("defaultKeepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
     @AppStorage("defaultPostProcessScriptPath") private var postProcessScriptPath: String = ""
     @AppStorage("defaultPostProcessScriptRunTiming") private var postProcessScriptRunTimingRaw: String = PostProcessScriptRunTiming.afterEachItem.rawValue
@@ -174,6 +176,7 @@ struct ContentView: View {
             automaticRename: automaticRename,
             deleteOriginal: deleteOriginal,
             keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRaw: postProcessScriptRunTimingRaw,
@@ -273,6 +276,7 @@ struct ContentView: View {
             automaticRename: automaticRename,
             deleteOriginal: deleteOriginal,
             keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTiming: postProcessScriptRunTiming,
@@ -414,6 +418,7 @@ struct ContentView: View {
         let automaticRename = automaticRename
         let deleteOriginal = deleteOriginal
         let keepEnglishAudioOnly = keepEnglishAudioOnly
+        let keepAllEnglishAudioTracks = keepAllEnglishAudioTracks
         let keepEnglishSubtitlesOnly = keepEnglishSubtitlesOnly
         let postProcessScriptPath = postProcessScriptPath
         let postProcessScriptRunTiming = postProcessScriptRunTiming
@@ -432,6 +437,7 @@ struct ContentView: View {
                 automaticRename: automaticRename,
                 deleteOriginal: deleteOriginal,
                 keepEnglishAudioOnly: keepEnglishAudioOnly,
+                keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                 postProcessScriptPath: postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTiming,
@@ -534,6 +540,7 @@ struct ContentView: View {
                     automaticRename: $automaticRename,
                     deleteOriginal: $deleteOriginal,
                     keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                    keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
                     keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
                     postProcessScriptPath: $postProcessScriptPath,
                     postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
@@ -586,6 +593,7 @@ struct ContentView: View {
                 automaticRename: $automaticRename,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
                 keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
                 postProcessScriptPath: $postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
@@ -747,6 +755,7 @@ struct ContentView: View {
                                 automaticRename: automaticRename,
                                 deleteOriginal: deleteOriginal,
                                 keepEnglishAudioOnly: keepEnglishAudioOnly,
+                                keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                                 postProcessScriptPath: postProcessScriptPath,
                                 postProcessScriptRunTiming: postProcessScriptRunTiming,
@@ -911,6 +920,7 @@ private struct CompactProcessingSetupView: View {
     @Binding var automaticRename: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
+    @Binding var keepAllEnglishAudioTracks: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
@@ -935,8 +945,11 @@ private struct CompactProcessingSetupView: View {
 
     private var userPresets: [ProcessingPreset] {
         guard let data = encodedPresets.data(using: .utf8),
-              let presets = try? JSONDecoder().decode([ProcessingPreset].self, from: data) else {
+              var presets = try? JSONDecoder().decode([ProcessingPreset].self, from: data) else {
             return []
+        }
+        for index in presets.indices where presets[index].keepAllEnglishAudioTracks == nil {
+            presets[index].keepAllEnglishAudioTracks = false
         }
         return presets.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -1278,6 +1291,7 @@ private struct CompactProcessingSetupView: View {
             automaticRename: automaticRename,
             deleteOriginal: deleteOriginal,
             keepEnglishAudioOnly: keepEnglishAudioOnly,
+            keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
@@ -1298,6 +1312,7 @@ private struct CompactProcessingSetupView: View {
         automaticRename = preset.automaticRename
         deleteOriginal = preset.deleteOriginal
         keepEnglishAudioOnly = preset.keepEnglishAudioOnly
+        keepAllEnglishAudioTracks = preset.keepAllEnglishAudioTracks ?? false
         keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
         postProcessScriptPath = preset.postProcessScriptPath
         postProcessScriptRunTiming = preset.postProcessScriptRunTiming
@@ -1445,6 +1460,7 @@ struct ExpandedSettingsPanel: View {
     @Binding var automaticRename: Bool
     @Binding var deleteOriginal: Bool
     @Binding var keepEnglishAudioOnly: Bool
+    @Binding var keepAllEnglishAudioTracks: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
@@ -1465,6 +1481,7 @@ struct ExpandedSettingsPanel: View {
                 automaticRename: $automaticRename,
                 deleteOriginal: $deleteOriginal,
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
                 keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
                 postProcessScriptPath: $postProcessScriptPath,
                 postProcessScriptRunTiming: $postProcessScriptRunTiming,

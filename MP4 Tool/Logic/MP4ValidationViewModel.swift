@@ -15,8 +15,10 @@ private struct MP4ValidationAudioProbeOutput: Decodable {
 private struct MP4ValidationAudioStream: Decodable {
     let index: Int
     let codecName: String?
+    let profile: String?
     let codecTagString: String?
     let sampleFormat: String?
+    let bitRate: String?
     let channels: Int?
     let channelLayout: String?
     let startTime: String?
@@ -27,8 +29,10 @@ private struct MP4ValidationAudioStream: Decodable {
     enum CodingKeys: String, CodingKey {
         case index
         case codecName = "codec_name"
+        case profile
         case codecTagString = "codec_tag_string"
         case sampleFormat = "sample_fmt"
+        case bitRate = "bit_rate"
         case channels
         case channelLayout = "channel_layout"
         case startTime = "start_time"
@@ -40,9 +44,17 @@ private struct MP4ValidationAudioStream: Decodable {
 
 private struct MP4ValidationStreamDisposition: Decodable {
     let isDefault: Int?
+    let isCommentary: Int?
+    let isVisualImpaired: Int?
+    let isDub: Int?
+    let isOriginal: Int?
 
     enum CodingKeys: String, CodingKey {
         case isDefault = "default"
+        case isCommentary = "comment"
+        case isVisualImpaired = "visual_impaired"
+        case isDub = "dub"
+        case isOriginal = "original"
     }
 }
 
@@ -74,6 +86,7 @@ private struct MP4ValidationAudioAuthoringAnalysis {
     let warnings: [String]
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsMetadataRepair: Bool
+    let audioStreamIndexesToRemove: Set<Int>
 }
 
 private enum MP4AudioChannelScanDepth {
@@ -93,6 +106,7 @@ private struct MP4ValidationFinding {
     let severity: MP4ValidationSeverity
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsAudioMetadataRepair: Bool
+    let audioStreamIndexesToRemove: Set<Int>
 }
 
 struct MP4ValidationResult: Identifiable {
@@ -104,6 +118,7 @@ struct MP4ValidationResult: Identifiable {
     let severity: MP4ValidationSeverity?
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsAudioMetadataRepair: Bool
+    let audioStreamIndexesToRemove: Set<Int>
     var repairMessage: String? = nil
 
     var isFlagged: Bool {
@@ -111,7 +126,7 @@ struct MP4ValidationResult: Identifiable {
     }
 
     var isRepairable: Bool {
-        needsAudioMetadataRepair || !repairCandidates.isEmpty
+        needsAudioMetadataRepair || !repairCandidates.isEmpty || !audioStreamIndexesToRemove.isEmpty
     }
 }
 
@@ -190,7 +205,7 @@ final class MP4ValidationViewModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
-        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.allowedContentTypes = [.mpeg4Movie, .folder]
         panel.message = "Choose one MP4 file or a folder containing MP4 files"
 
         CleanFilePanelPresenter.present(panel) { [weak self] response in
@@ -397,8 +412,24 @@ final class MP4ValidationViewModel: ObservableObject {
                 continue
             }
 
+            let availableStreamIndexes = Set(compatibility.streams.map(\.index))
+            let audioStreamIndexesToRemove = result.audioStreamIndexesToRemove
+                .intersection(availableStreamIndexes)
+            let retainedAudioPairs = compatibility.streams.enumerated().filter {
+                !audioStreamIndexesToRemove.contains($0.element.index)
+            }
+            let retainedAudioIndexes = Set(retainedAudioPairs.map { $0.offset })
+            let retainedRepairCandidates = result.repairCandidates.filter {
+                retainedAudioIndexes.contains($0.audioIndex)
+            }
+            let outputAudioIndexBySourceAudioIndex = Dictionary(
+                uniqueKeysWithValues: retainedAudioPairs.enumerated().map {
+                    ($0.element.offset, $0.offset)
+                }
+            )
+
             var confirmedCandidates: [MP4AudioRepairCandidate] = []
-            for candidate in result.repairCandidates {
+            for candidate in retainedRepairCandidates {
                 guard let stream = compatibility.streams.first(where: { $0.index == candidate.streamIndex }),
                       let activeChannels = await activeAudioChannels(
                         filePath: result.filePath,
@@ -426,7 +457,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 return
             }
 
-            guard confirmedCandidates.count == result.repairCandidates.count else {
+            guard confirmedCandidates.count == retainedRepairCandidates.count else {
                 skippedCount += 1
                 updateRepairMessage(
                     for: result.id,
@@ -461,9 +492,11 @@ final class MP4ValidationViewModel: ObservableObject {
 
             updateRepairMessage(
                 for: result.id,
-                message: confirmedCandidates.isEmpty
-                    ? "Normalizing audio defaults and track titles…"
-                    : "Repairing malformed audio and normalizing its metadata…"
+                message: !audioStreamIndexesToRemove.isEmpty
+                    ? "Keeping the preferred English audio and removing redundant tracks…"
+                    : confirmedCandidates.isEmpty
+                        ? "Normalizing audio defaults and track titles…"
+                        : "Repairing malformed audio and normalizing its metadata…"
             )
             var arguments = [
                 "-hide_banner", "-nostats", "-y",
@@ -474,58 +507,96 @@ final class MP4ValidationViewModel: ObservableObject {
                 "-c", "copy"
             ]
 
-            let repairedTrackNames = repairedAudioTrackNames(
-                compatibility: compatibility,
-                repairedCandidates: confirmedCandidates
-            )
-
-            let defaultAudioIndexes = compatibility.streams.indices.filter {
-                compatibility.streams[$0].disposition?.isDefault == 1
+            for streamIndex in audioStreamIndexesToRemove.sorted() {
+                arguments.append(contentsOf: ["-map", "-0:\(streamIndex)"])
             }
-            if defaultAudioIndexes.count > 1, let retainedDefaultIndex = defaultAudioIndexes.first {
-                for audioIndex in compatibility.streams.indices {
+
+            let repairedTrackNames = audioStreamIndexesToRemove.isEmpty
+                ? repairedAudioTrackNames(
+                    compatibility: compatibility,
+                    repairedCandidates: confirmedCandidates
+                )
+                : [:]
+
+            let preferredRetainedSourceAudioIndex = retainedAudioPairs.first {
+                AudioTrackSelectionPolicy.isEnglish(
+                    audioSelectionCandidate($0.element, audioIndex: $0.offset)
+                )
+            }?.offset
+                ?? retainedAudioPairs.first?.offset
+
+            if !audioStreamIndexesToRemove.isEmpty,
+               let preferredRetainedSourceAudioIndex {
+                for (outputAudioIndex, pair) in retainedAudioPairs.enumerated() {
                     arguments.append(
                         contentsOf: [
-                            "-disposition:a:\(audioIndex)",
-                            audioIndex == retainedDefaultIndex ? "+default" : "-default"
+                            "-disposition:a:\(outputAudioIndex)",
+                            pair.offset == preferredRetainedSourceAudioIndex ? "+default" : "-default"
                         ]
                     )
                 }
+            } else {
+                let defaultAudioIndexes = compatibility.streams.indices.filter {
+                    compatibility.streams[$0].disposition?.isDefault == 1
+                }
+                if defaultAudioIndexes.count > 1, let retainedDefaultIndex = defaultAudioIndexes.first {
+                    for (outputAudioIndex, pair) in retainedAudioPairs.enumerated() {
+                        arguments.append(
+                            contentsOf: [
+                                "-disposition:a:\(outputAudioIndex)",
+                                pair.offset == retainedDefaultIndex ? "+default" : "-default"
+                            ]
+                        )
+                    }
+                }
             }
 
-            for audioIndex in compatibility.streams.indices {
-                if let trackName = repairedTrackNames[audioIndex] {
+            for (outputAudioIndex, pair) in retainedAudioPairs.enumerated() {
+                if !audioStreamIndexesToRemove.isEmpty,
+                   AudioTrackSelectionPolicy.isEnglish(
+                    audioSelectionCandidate(pair.element, audioIndex: pair.offset)
+                   ) {
                     arguments.append(
                         contentsOf: [
-                            "-metadata:s:a:\(audioIndex)", "title=\(trackName)",
-                            "-metadata:s:a:\(audioIndex)", "handler_name=\(trackName)"
+                            "-metadata:s:a:\(outputAudioIndex)", "title=",
+                            "-metadata:s:a:\(outputAudioIndex)", "handler_name="
+                        ]
+                    )
+                } else if let trackName = repairedTrackNames[pair.offset] {
+                    arguments.append(
+                        contentsOf: [
+                            "-metadata:s:a:\(outputAudioIndex)", "title=\(trackName)",
+                            "-metadata:s:a:\(outputAudioIndex)", "handler_name=\(trackName)"
                         ]
                     )
                 }
             }
 
             for candidate in confirmedCandidates {
+                guard let outputAudioIndex = outputAudioIndexBySourceAudioIndex[candidate.audioIndex] else {
+                    continue
+                }
                 switch candidate.kind {
                 case .downmixToStereo:
                     arguments.append(contentsOf: [
-                        "-filter:a:\(candidate.audioIndex)", "pan=stereo|c0=FL|c1=FR",
-                        "-c:a:\(candidate.audioIndex)", "aac",
-                        "-b:a:\(candidate.audioIndex)", "192k",
-                        "-channel_layout:a:\(candidate.audioIndex)", "stereo"
+                        "-filter:a:\(outputAudioIndex)", "pan=stereo|c0=FL|c1=FR",
+                        "-c:a:\(outputAudioIndex)", "aac",
+                        "-b:a:\(outputAudioIndex)", "192k",
+                        "-channel_layout:a:\(outputAudioIndex)", "stereo"
                     ])
                 case .extractChannelToMono(let channel):
                     arguments.append(contentsOf: [
-                        "-filter:a:\(candidate.audioIndex)", "pan=mono|c0=c\(max(channel - 1, 0))",
-                        "-c:a:\(candidate.audioIndex)", "aac",
-                        "-b:a:\(candidate.audioIndex)", "128k",
-                        "-channel_layout:a:\(candidate.audioIndex)", "mono"
+                        "-filter:a:\(outputAudioIndex)", "pan=mono|c0=c\(max(channel - 1, 0))",
+                        "-c:a:\(outputAudioIndex)", "aac",
+                        "-b:a:\(outputAudioIndex)", "128k",
+                        "-channel_layout:a:\(outputAudioIndex)", "mono"
                     ])
                 case .restoreLayout(let layout):
                     let bitrate = layout == "7.1" ? "512k" : "256k"
                     arguments.append(contentsOf: [
-                        "-c:a:\(candidate.audioIndex)", "aac",
-                        "-b:a:\(candidate.audioIndex)", bitrate,
-                        "-channel_layout:a:\(candidate.audioIndex)", layout
+                        "-c:a:\(outputAudioIndex)", "aac",
+                        "-b:a:\(outputAudioIndex)", bitrate,
+                        "-channel_layout:a:\(outputAudioIndex)", layout
                     ])
                 }
             }
@@ -544,13 +615,15 @@ final class MP4ValidationViewModel: ObservableObject {
             }
 
             guard let repairedCompatibility = await probeAudioCompatibility(filePath: temporaryURL.path),
+                  repairedCompatibility.streams.count == retainedAudioPairs.count,
                   repairedCompatibility.streams.filter({ $0.disposition?.isDefault == 1 }).count <= 1,
                   audioTrackNamesAreDistinguishable(repairedCompatibility.streams),
                   confirmedCandidates.allSatisfy({ candidate in
-                    guard repairedCompatibility.streams.indices.contains(candidate.audioIndex) else {
+                    guard let outputAudioIndex = outputAudioIndexBySourceAudioIndex[candidate.audioIndex],
+                          repairedCompatibility.streams.indices.contains(outputAudioIndex) else {
                         return false
                     }
-                    let repairedStream = repairedCompatibility.streams[candidate.audioIndex]
+                    let repairedStream = repairedCompatibility.streams[outputAudioIndex]
                     switch candidate.kind {
                     case .downmixToStereo:
                         return repairedStream.channels == 2
@@ -903,7 +976,8 @@ final class MP4ValidationViewModel: ObservableObject {
                     assessment: finding?.assessment ?? "No action needed.",
                     severity: finding?.severity,
                     repairCandidates: finding?.repairCandidates ?? [],
-                    needsAudioMetadataRepair: finding?.needsAudioMetadataRepair ?? false
+                    needsAudioMetadataRepair: finding?.needsAudioMetadataRepair ?? false,
+                    audioStreamIndexesToRemove: finding?.audioStreamIndexesToRemove ?? []
                 )
             )
         }
@@ -958,6 +1032,7 @@ final class MP4ValidationViewModel: ObservableObject {
         var warnings: [String] = []
         var repairCandidates: [MP4AudioRepairCandidate] = []
         var needsAudioMetadataRepair = false
+        var audioStreamIndexesToRemove = Set<Int>()
         var audioCompatibility: MP4ValidationAudioCompatibility?
 
         if ffprobeAvailable {
@@ -976,6 +1051,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 warnings.append(contentsOf: authoringAnalysis.warnings)
                 repairCandidates = authoringAnalysis.repairCandidates
                 needsAudioMetadataRepair = authoringAnalysis.needsMetadataRepair
+                audioStreamIndexesToRemove = authoringAnalysis.audioStreamIndexesToRemove
             }
         }
 
@@ -999,7 +1075,8 @@ final class MP4ValidationViewModel: ObservableObject {
             reasons: reasons,
             warnings: warnings,
             repairCandidates: repairCandidates,
-            needsAudioMetadataRepair: needsAudioMetadataRepair
+            needsAudioMetadataRepair: needsAudioMetadataRepair,
+            audioStreamIndexesToRemove: audioStreamIndexesToRemove
         )
 
         if !reasons.isEmpty {
@@ -1009,7 +1086,8 @@ final class MP4ValidationViewModel: ObservableObject {
                 assessment: assessment,
                 severity: .error,
                 repairCandidates: repairCandidates,
-                needsAudioMetadataRepair: needsAudioMetadataRepair
+                needsAudioMetadataRepair: needsAudioMetadataRepair,
+                audioStreamIndexesToRemove: audioStreamIndexesToRemove
             )
         }
 
@@ -1019,7 +1097,8 @@ final class MP4ValidationViewModel: ObservableObject {
             assessment: assessment,
             severity: .warning,
             repairCandidates: repairCandidates,
-            needsAudioMetadataRepair: needsAudioMetadataRepair
+            needsAudioMetadataRepair: needsAudioMetadataRepair,
+            audioStreamIndexesToRemove: audioStreamIndexesToRemove
         )
     }
 
@@ -1027,13 +1106,20 @@ final class MP4ValidationViewModel: ObservableObject {
         reasons: [String],
         warnings: [String],
         repairCandidates: [MP4AudioRepairCandidate],
-        needsAudioMetadataRepair: Bool
+        needsAudioMetadataRepair: Bool,
+        audioStreamIndexesToRemove: Set<Int>
     ) -> String {
         let findings = (reasons + warnings).joined(separator: " ").lowercased()
         var actions: [String] = []
 
-        if needsAudioMetadataRepair {
+        if needsAudioMetadataRepair && audioStreamIndexesToRemove.isEmpty {
             actions.append("Automatic repair available: normalize audio defaults and assign distinct track titles.")
+        }
+
+        if !audioStreamIndexesToRemove.isEmpty {
+            actions.append(
+                "Automatic repair available: keep the preferred main English audio and remove \(audioStreamIndexesToRemove.count) redundant English track(s)."
+            )
         }
 
         for candidate in repairCandidates {
@@ -1125,7 +1211,7 @@ final class MP4ValidationViewModel: ObservableObject {
             "-v", "error",
             "-select_streams", "a",
             "-show_entries",
-            "stream=index,codec_name,codec_tag_string,sample_fmt,channels,channel_layout,start_time,duration:stream_disposition=default:stream_tags=language,title,handler_name:format=duration",
+            "stream=index,codec_name,profile,codec_tag_string,sample_fmt,bit_rate,channels,channel_layout,start_time,duration:stream_disposition=default,comment,visual_impaired,dub,original:stream_tags=language,title,handler_name:format=duration",
             "-print_format", "json",
             filePath
         ]
@@ -1189,7 +1275,8 @@ final class MP4ValidationViewModel: ObservableObject {
                 errors: [],
                 warnings: [],
                 repairCandidates: [],
-                needsMetadataRepair: false
+                needsMetadataRepair: false,
+                audioStreamIndexesToRemove: []
             )
         }
 
@@ -1197,6 +1284,7 @@ final class MP4ValidationViewModel: ObservableObject {
         var warnings: [String] = []
         var repairCandidates: [MP4AudioRepairCandidate] = []
         var needsMetadataRepair = false
+        var audioStreamIndexesToRemove = Set<Int>()
 
         let defaultStreams = streams.filter { $0.disposition?.isDefault == 1 }
         if defaultStreams.count > 1 {
@@ -1212,6 +1300,9 @@ final class MP4ValidationViewModel: ObservableObject {
             guard let matchingStreams = languageGroups[language], matchingStreams.count > 1 else {
                 continue
             }
+            if language == "eng" || language == "en" {
+                continue
+            }
             let trackNames = matchingStreams.map(audioTrackName)
             let meaningfulNames = trackNames.filter { !$0.isEmpty && $0 != "soundhandler" }
             if meaningfulNames.count != matchingStreams.count
@@ -1219,6 +1310,24 @@ final class MP4ValidationViewModel: ObservableObject {
                 warnings.append("multiple \(language) audio tracks lack distinguishing titles")
                 needsMetadataRepair = true
             }
+        }
+
+        let selectionCandidates = streams.enumerated().map { audioIndex, stream in
+            audioSelectionCandidate(stream, audioIndex: audioIndex)
+        }
+        let englishCandidates = selectionCandidates.filter(AudioTrackSelectionPolicy.isEnglish)
+        if englishCandidates.count > 1,
+           let preferred = AudioTrackSelectionPolicy.preferredMainTrack(from: englishCandidates) {
+            audioStreamIndexesToRemove = Set(
+                englishCandidates
+                    .filter { $0.streamIndex != preferred.streamIndex }
+                    .map(\.streamIndex)
+            )
+            let preferredSummary = AudioTrackSelectionPolicy.summary(for: preferred)
+            warnings.append(
+                "multiple English audio tracks; preferred main track is \(preferredSummary)"
+            )
+            needsMetadataRepair = true
         }
 
         for (audioIndex, stream) in streams.enumerated() {
@@ -1344,7 +1453,31 @@ final class MP4ValidationViewModel: ObservableObject {
             errors: uniqueErrors,
             warnings: uniqueWarnings,
             repairCandidates: repairCandidates,
-            needsMetadataRepair: needsMetadataRepair
+            needsMetadataRepair: needsMetadataRepair,
+            audioStreamIndexesToRemove: audioStreamIndexesToRemove
+        )
+    }
+
+    private func audioSelectionCandidate(
+        _ stream: MP4ValidationAudioStream,
+        audioIndex: Int
+    ) -> AudioTrackSelectionCandidate {
+        AudioTrackSelectionCandidate(
+            streamIndex: stream.index,
+            audioIndex: audioIndex,
+            language: stream.tags?["language"],
+            title: stream.tags?["title"],
+            handlerName: stream.tags?["handler_name"],
+            codec: stream.codecName,
+            profile: stream.profile,
+            channels: stream.channels,
+            channelLayout: stream.channelLayout,
+            bitRate: stream.bitRate.flatMap(Int.init),
+            duration: stream.duration.flatMap(TimeInterval.init),
+            isDefault: stream.disposition?.isDefault == 1,
+            isCommentary: stream.disposition?.isCommentary == 1,
+            isVisualImpaired: stream.disposition?.isVisualImpaired == 1,
+            isDub: stream.disposition?.isDub == 1
         )
     }
 

@@ -17,8 +17,10 @@ struct VideoStream: Codable {
     let index: Int
     let codecType: String?
     let codecName: String?
+    let profile: String?
     let codecTagString: String?
     let sampleFormat: String?
+    let bitRate: String?
     let channels: Int?
     let channelLayout: String?
     let startTime: String?
@@ -34,8 +36,10 @@ struct VideoStream: Codable {
         case index
         case codecType = "codec_type"
         case codecName = "codec_name"
+        case profile
         case codecTagString = "codec_tag_string"
         case sampleFormat = "sample_fmt"
+        case bitRate = "bit_rate"
         case channels
         case channelLayout = "channel_layout"
         case startTime = "start_time"
@@ -54,12 +58,20 @@ struct VideoStreamDisposition: Codable {
     let isForced: Int?
     let isHearingImpaired: Int?
     let isCaptions: Int?
+    let isCommentary: Int?
+    let isVisualImpaired: Int?
+    let isDub: Int?
+    let isOriginal: Int?
 
     enum CodingKeys: String, CodingKey {
         case isDefault = "default"
         case isForced = "forced"
         case isHearingImpaired = "hearing_impaired"
         case isCaptions = "captions"
+        case isCommentary = "comment"
+        case isVisualImpaired = "visual_impaired"
+        case isDub = "dub"
+        case isOriginal = "original"
     }
 }
 
@@ -932,6 +944,7 @@ class VideoProcessor: ObservableObject {
         automaticRename: Bool = false,
         deleteOriginal: Bool = false,
         keepEnglishAudioOnly: Bool,
+        keepAllEnglishAudioTracks: Bool = false,
         keepEnglishSubtitlesOnly: Bool,
         postProcessScriptPath: String = "",
         postProcessScriptRunTiming: PostProcessScriptRunTiming = .afterEachItem,
@@ -1015,6 +1028,7 @@ class VideoProcessor: ObservableObject {
         addLog("􀈕 Automatic Rename: \(automaticRename)")
         addLog("􀈑 Delete Original: \(deleteOriginal)")
         addLog("􀀁 Keep English Audio Only: \(keepEnglishAudioOnly)")
+        addLog("􀀁 Keep All English Audio Tracks: \(keepAllEnglishAudioTracks)")
         addLog("􀀃 Keep English Subtitles Only: \(keepEnglishSubtitlesOnly)")
         addLog("Enable Notifications: \(notificationsEnabled)")
         addLog("Enable Previews: \(framePreviewsEnabled)")
@@ -1227,6 +1241,7 @@ class VideoProcessor: ObservableObject {
                     encodeVideo: encodeVideo,
                     encodeAudio: encodeAudio,
                     keepEnglishAudioOnly: keepEnglishAudioOnly,
+                    keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                     keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                     sourceDuration: sourceDuration
                 )
@@ -1825,6 +1840,7 @@ class VideoProcessor: ObservableObject {
         encodeVideo: Bool = true,
         encodeAudio: Bool = true,
         keepEnglishAudioOnly: Bool,
+        keepAllEnglishAudioTracks: Bool,
         keepEnglishSubtitlesOnly: Bool,
         sourceDuration: TimeInterval?
     ) async -> ConversionOutcome {
@@ -1837,7 +1853,11 @@ class VideoProcessor: ObservableObject {
         }
 
         // Determine audio stream mappings
-        let audioMappings = getAudioMappings(audioStreams: audioStreams, keepEnglishOnly: keepEnglishAudioOnly)
+        let audioMappings = getAudioMappings(
+            audioStreams: audioStreams,
+            keepEnglishOnly: keepEnglishAudioOnly,
+            keepAllEnglishTracks: keepAllEnglishAudioTracks
+        )
         if keepEnglishAudioOnly, encodeAudio, audioMappings.isEmpty {
             let reason = audioStreams.streams.isEmpty
                 ? "No audio tracks were found"
@@ -1890,7 +1910,7 @@ class VideoProcessor: ObservableObject {
             inputFile: inputFile,
             videoCodec: videoCodec,
             audioStreams: audioStreams,
-            keepEnglishOnly: keepEnglishAudioOnly
+            selectedAudioStreamIndexes: Set(audioMappings.map(\.index))
            ) {
             addLog("􀁡 \(compatibilityIssue). Please use encode mode.")
             return .failed(reason: "\(compatibilityIssue) - use encode mode instead")
@@ -1980,7 +2000,7 @@ class VideoProcessor: ObservableObject {
         }
 
         // Start timer and file size monitoring
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [self] in
             self.startTime = Date()
             self.originalSize = (try? FileManager.default.attributesOfItem(atPath: inputFile)[.size] as? Int64) ?? 0
             self.newSize = 0
@@ -2362,35 +2382,48 @@ class VideoProcessor: ObservableObject {
 
     private func getAudioMappings(
         audioStreams: FFProbeOutput,
-        keepEnglishOnly: Bool
+        keepEnglishOnly: Bool,
+        keepAllEnglishTracks: Bool
     ) -> [AudioMapping] {
         let streams = audioStreams.streams
+        let candidates = streams.enumerated().map { audioIndex, stream in
+            AudioTrackSelectionCandidate(
+                streamIndex: stream.index,
+                audioIndex: audioIndex,
+                language: stream.tags?["language"],
+                title: stream.tags?["title"],
+                handlerName: stream.tags?["handler_name"],
+                codec: stream.codecName,
+                profile: stream.profile,
+                channels: stream.channels,
+                channelLayout: stream.channelLayout,
+                bitRate: stream.bitRate.flatMap(Int.init),
+                duration: streamDurationSeconds(stream),
+                isDefault: stream.disposition?.isDefault == 1,
+                isCommentary: stream.disposition?.isCommentary == 1,
+                isVisualImpaired: stream.disposition?.isVisualImpaired == 1,
+                isDub: stream.disposition?.isDub == 1
+            )
+        }
+        let selectedIndexes = Set(
+            AudioTrackSelectionPolicy.selectedCandidates(
+                from: candidates,
+                keepEnglishOnly: keepEnglishOnly,
+                keepAllEnglishTracks: keepAllEnglishTracks
+            ).map(\.streamIndex)
+        )
 
-        if keepEnglishOnly {
-            return streams.compactMap { stream in
-                let language = (stream.tags?["language"] ?? "und").lowercased()
-                guard language == "eng" || language == "und" else {
-                    return nil
-                }
-                return AudioMapping(
-                    index: stream.index,
-                    language: language,
-                    channels: stream.channels,
-                    channelLayout: resolvedAudioChannelLayout(for: stream),
-                    duration: streamDurationSeconds(stream)
-                )
-            }
-        } else {
-            return streams.map { stream in
-                let language = stream.tags?["language"]?.lowercased()
-                return AudioMapping(
-                    index: stream.index,
-                    language: language,
-                    channels: stream.channels,
-                    channelLayout: resolvedAudioChannelLayout(for: stream),
-                    duration: streamDurationSeconds(stream)
-                )
-            }
+        return streams.compactMap { stream in
+            guard selectedIndexes.contains(stream.index) else { return nil }
+            let language = stream.tags?["language"]?.lowercased()
+                ?? (keepEnglishOnly ? "und" : nil)
+            return AudioMapping(
+                index: stream.index,
+                language: language,
+                channels: stream.channels,
+                channelLayout: resolvedAudioChannelLayout(for: stream),
+                duration: streamDurationSeconds(stream)
+            )
         }
     }
 
@@ -2446,7 +2479,7 @@ class VideoProcessor: ObservableObject {
         inputFile: String,
         videoCodec: String?,
         audioStreams: FFProbeOutput,
-        keepEnglishOnly: Bool
+        selectedAudioStreamIndexes: Set<Int>
     ) async -> String? {
         let normalizedVideoCodec = normalizedProbeValue(videoCodec)
         if !normalizedVideoCodec.isEmpty,
@@ -2454,10 +2487,9 @@ class VideoProcessor: ObservableObject {
             return "Unsupported video codec \(normalizedVideoCodec) detected. Remux requires re-encoding"
         }
 
-        let filteredStreams = remuxCandidateAudioStreams(
-            audioStreams: audioStreams,
-            keepEnglishOnly: keepEnglishOnly
-        )
+        let filteredStreams = audioStreams.streams.filter {
+            selectedAudioStreamIndexes.contains($0.index)
+        }
 
         if filteredStreams.contains(where: { isDtsAudioCodec($0.codecName) }) {
             return "DTS audio detected. Remux requires re-encoding"
@@ -2490,20 +2522,6 @@ class VideoProcessor: ObservableObject {
         }
 
         return nil
-    }
-
-    private func remuxCandidateAudioStreams(audioStreams: FFProbeOutput, keepEnglishOnly: Bool) -> [VideoStream] {
-        let streams = audioStreams.streams
-
-        if keepEnglishOnly {
-            let englishStreams = streams.filter { stream in
-                let language = (stream.tags?["language"] ?? "und").lowercased()
-                return language == "eng" || language == "und"
-            }
-            return englishStreams
-        }
-
-        return streams
     }
 
     private func isAppleMediaContainer(_ inputFile: String) -> Bool {
