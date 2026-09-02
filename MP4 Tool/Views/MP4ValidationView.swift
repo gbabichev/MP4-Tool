@@ -283,11 +283,27 @@ struct MP4ValidationView: View {
 
                                     Spacer()
 
-                                    Text(result.issue ?? "OK")
-                                        .font(.caption2)
-                                        .foregroundStyle(resultColor(result))
-                                        .lineLimit(1)
-                                        .help(result.issue ?? "No issues found")
+                                    VStack(alignment: .trailing, spacing: 3) {
+                                        Text(result.issue ?? "OK")
+                                            .font(.caption2)
+                                            .foregroundStyle(resultColor(result))
+                                            .lineLimit(2)
+
+                                        Text(result.assessment)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(
+                                        minWidth: 240,
+                                        idealWidth: 380,
+                                        maxWidth: 520,
+                                        alignment: .trailing
+                                    )
+                                    .help(
+                                        "\(result.issue ?? "No issues found")\n\nAssessment: \(result.assessment)"
+                                    )
                                 }
                             }
                         }

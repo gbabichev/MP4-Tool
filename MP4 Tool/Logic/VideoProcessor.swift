@@ -21,6 +21,8 @@ struct VideoStream: Codable {
     let sampleFormat: String?
     let channels: Int?
     let channelLayout: String?
+    let startTime: String?
+    let duration: String?
     let tags: [String: String]?
     let width: Int?
     let height: Int?
@@ -36,6 +38,8 @@ struct VideoStream: Codable {
         case sampleFormat = "sample_fmt"
         case channels
         case channelLayout = "channel_layout"
+        case startTime = "start_time"
+        case duration
         case tags
         case width
         case height
@@ -68,6 +72,7 @@ private struct AudioMapping {
     let language: String?
     let channels: Int?
     let channelLayout: String?
+    let duration: TimeInterval?
 }
 
 private struct SubtitleMapping {
@@ -2013,6 +2018,41 @@ class VideoProcessor: ObservableObject {
             return .failed(reason: "Cancelled by user")
         }
 
+        // A long video encode can occasionally leave one AAC stream incomplete
+        // even though FFmpeg exits successfully and the other streams finish.
+        // Re-encode only the affected audio from the source, while stream-copying
+        // the already completed video and healthy audio tracks.
+        if encodeAudio, mode != .remux {
+            let mismatchedAudioIndexes = await audioTrackDurationMismatchIndexes(
+                outputFile: primaryOutputFile,
+                audioMappings: audioMappings
+            )
+            if !mismatchedAudioIndexes.isEmpty {
+                let trackNumbers = mismatchedAudioIndexes.map { String($0 + 1) }.joined(separator: ", ")
+                addLog("􀇾 Audio track duration mismatch detected in track(s) \(trackNumbers). Rebuilding affected audio...")
+                let repaired = await rebuildMismatchedAudioTracks(
+                    outputFile: primaryOutputFile,
+                    sourceFile: inputFile,
+                    audioMappings: audioMappings,
+                    mismatchedIndexes: Set(mismatchedAudioIndexes),
+                    outputVideoCodec: mode == .encodeH265 ? "hevc" : videoCodec
+                )
+                guard repaired else {
+                    return .failed(reason: "Could not rebuild incomplete audio track(s)")
+                }
+
+                let remainingMismatches = await audioTrackDurationMismatchIndexes(
+                    outputFile: primaryOutputFile,
+                    audioMappings: audioMappings
+                )
+                guard remainingMismatches.isEmpty else {
+                    let remainingTracks = remainingMismatches.map { String($0 + 1) }.joined(separator: ", ")
+                    return .failed(reason: "Rebuilt audio track(s) \(remainingTracks) are still incomplete")
+                }
+                addLog("􀁢 Rebuilt audio passed duration validation")
+            }
+        }
+
         if usesSeparateSubtitleMux {
             addLog("􀐱 Validating encoded video and audio before adding subtitles...")
             if let validationFailure = await outputValidationFailure(
@@ -2021,6 +2061,7 @@ class VideoProcessor: ObservableObject {
                 expectedAudioLayouts: encodeAudio
                     ? audioMappings.map(\.channelLayout)
                     : [],
+                expectedAudioDurations: audioMappings.map(\.duration),
                 sourceDuration: sourceDuration
             ) {
                 addLog("􀁡 Intermediate output validation failed: \(validationFailure)")
@@ -2059,6 +2100,7 @@ class VideoProcessor: ObservableObject {
             expectedAudioLayouts: encodeAudio && mode != .remux
                 ? audioMappings.map(\.channelLayout)
                 : [],
+            expectedAudioDurations: audioMappings.map(\.duration),
             sourceDuration: sourceDuration
         ) {
             addLog("􀁡 Output validation failed: \(validationFailure)")
@@ -2116,10 +2158,122 @@ class VideoProcessor: ObservableObject {
         return seconds
     }
 
+    private func audioTrackDurationMismatchIndexes(
+        outputFile: String,
+        audioMappings: [AudioMapping]
+    ) async -> [Int] {
+        guard let output = await probeStreams(inputFile: outputFile, selectStreams: "a") else {
+            return Array(audioMappings.indices)
+        }
+
+        return audioMappings.indices.filter { index in
+            guard index < output.streams.count,
+                  let expectedDuration = audioMappings[index].duration,
+                  let actualDuration = streamDurationSeconds(output.streams[index]) else {
+                return index >= output.streams.count
+            }
+            let tolerance = max(2, min(10, expectedDuration * 0.001))
+            return abs(expectedDuration - actualDuration) > tolerance
+        }
+    }
+
+    private func rebuildMismatchedAudioTracks(
+        outputFile: String,
+        sourceFile: String,
+        audioMappings: [AudioMapping],
+        mismatchedIndexes: Set<Int>,
+        outputVideoCodec: String?
+    ) async -> Bool {
+        let outputURL = URL(fileURLWithPath: outputFile)
+        let repairURL = outputURL
+            .deletingPathExtension()
+            .appendingPathExtension("audio-repair-\(UUID().uuidString).mp4")
+        try? FileManager.default.removeItem(at: repairURL)
+        defer { try? FileManager.default.removeItem(at: repairURL) }
+
+        var arguments = [
+            "-nostdin",
+            "-i", outputFile,
+            "-i", sourceFile,
+            "-y",
+            "-map", "0:v:0",
+            "-c:v", "copy"
+        ]
+
+        if outputVideoCodec == "hevc" {
+            arguments.append(contentsOf: ["-tag:v", "hvc1"])
+        }
+        arguments.append(contentsOf: ["-metadata:s:v:0", "title="])
+        arguments.append(contentsOf: ["-metadata:s:v:0", "handler_name="])
+
+        for (outputIndex, mapping) in audioMappings.enumerated() {
+            if mismatchedIndexes.contains(outputIndex) {
+                arguments.append(contentsOf: ["-map", "1:\(mapping.index)"])
+                arguments.append(contentsOf: ["-c:a:\(outputIndex)", "aac"])
+                if let channelLayout = mapping.channelLayout {
+                    arguments.append(contentsOf: [
+                        "-channel_layout:a:\(outputIndex)", channelLayout
+                    ])
+                }
+                arguments.append(contentsOf: [
+                    "-b:a:\(outputIndex)", aacBitrate(for: mapping)
+                ])
+            } else {
+                arguments.append(contentsOf: ["-map", "0:a:\(outputIndex)"])
+                arguments.append(contentsOf: ["-c:a:\(outputIndex)", "copy"])
+            }
+
+            if let language = mapping.language {
+                arguments.append(contentsOf: [
+                    "-metadata:s:a:\(outputIndex)", "language=\(language)"
+                ])
+            }
+            arguments.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title="])
+            arguments.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name="])
+            arguments.append(contentsOf: [
+                "-disposition:a:\(outputIndex)", outputIndex == 0 ? "default" : "0"
+            ])
+        }
+
+        // This normally runs before subtitles are added, but preserving any
+        // already-present subtitle streams keeps the recovery path safe to reuse.
+        arguments.append(contentsOf: ["-map", "0:s?", "-c:s", "copy"])
+        arguments.append(contentsOf: [
+            "-map_metadata", "-1",
+            // Rebuild chapters from the original source. Copying the temporary
+            // MP4's chapter reference without its hidden chapter track can leave
+            // a "Referenced QT chapter track not found" warning.
+            "-map_chapters", "1",
+            "-movflags", "+faststart",
+            "-loglevel", "error",
+            "-nostats",
+            "-progress", "pipe:2",
+            repairURL.path
+        ])
+
+        addLog("􀅴 Audio recovery command:")
+        addLog("  \(shellCommand(executable: ffmpegPath, arguments: arguments))")
+        let result = await runCommand(arguments: arguments)
+        guard result.success else {
+            addLog("􀁡 Audio recovery failed: \(result.errorMessage)")
+            return false
+        }
+
+        do {
+            try FileManager.default.removeItem(at: outputURL)
+            try FileManager.default.moveItem(at: repairURL, to: outputURL)
+            return true
+        } catch {
+            addLog("􀁡 Could not install rebuilt audio: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     private func outputValidationFailure(
         outputFile: String,
         expectedAudioTrackCount: Int,
         expectedAudioLayouts: [String?],
+        expectedAudioDurations: [TimeInterval?],
         sourceDuration: TimeInterval?
     ) async -> String? {
         guard FileManager.default.fileExists(atPath: outputFile) else {
@@ -2152,6 +2306,23 @@ class VideoProcessor: ObservableObject {
             let actualLayout = outputAudioStreams[audioIndex].channelLayout ?? ""
             guard normalizedProbeValue(actualLayout) == normalizedProbeValue(expectedLayout) else {
                 return "audio track \(audioIndex + 1) is missing its expected \(expectedLayout) channel layout"
+            }
+        }
+
+        for (audioIndex, expectedDuration) in expectedAudioDurations.enumerated() {
+            guard let expectedDuration,
+                  audioIndex < outputAudioStreams.count,
+                  let actualDuration = streamDurationSeconds(outputAudioStreams[audioIndex]) else {
+                continue
+            }
+            let tolerance = max(2, min(10, expectedDuration * 0.001))
+            guard abs(expectedDuration - actualDuration) <= tolerance else {
+                return String(
+                    format: "audio track %d duration mismatch: expected %.2fs, output %.2fs",
+                    audioIndex + 1,
+                    expectedDuration,
+                    actualDuration
+                )
             }
         }
 
@@ -2204,7 +2375,8 @@ class VideoProcessor: ObservableObject {
                     index: stream.index,
                     language: language,
                     channels: stream.channels,
-                    channelLayout: resolvedAudioChannelLayout(for: stream)
+                    channelLayout: resolvedAudioChannelLayout(for: stream),
+                    duration: streamDurationSeconds(stream)
                 )
             }
         } else {
@@ -2214,10 +2386,34 @@ class VideoProcessor: ObservableObject {
                     index: stream.index,
                     language: language,
                     channels: stream.channels,
-                    channelLayout: resolvedAudioChannelLayout(for: stream)
+                    channelLayout: resolvedAudioChannelLayout(for: stream),
+                    duration: streamDurationSeconds(stream)
                 )
             }
         }
+    }
+
+    private func streamDurationSeconds(_ stream: VideoStream) -> TimeInterval? {
+        if let value = stream.duration,
+           let seconds = TimeInterval(value),
+           seconds > 0 {
+            return seconds
+        }
+
+        guard let taggedDuration = stream.tags?["DURATION"]
+                ?? stream.tags?["duration"] else {
+            return nil
+        }
+
+        let components = taggedDuration.split(separator: ":", omittingEmptySubsequences: false)
+        guard components.count == 3,
+              let hours = TimeInterval(components[0]),
+              let minutes = TimeInterval(components[1]),
+              let seconds = TimeInterval(components[2]) else {
+            return nil
+        }
+        let total = (hours * 3_600) + (minutes * 60) + seconds
+        return total > 0 ? total : nil
     }
 
     private func resolvedAudioChannelLayout(for stream: VideoStream) -> String? {
@@ -2683,6 +2879,7 @@ class VideoProcessor: ObservableObject {
 
         cmd.append(contentsOf: [
             "-map_metadata", "-1",
+            "-map_chapters", "1",
             "-movflags", "+faststart",
             "-loglevel", "error",
             "-nostats",

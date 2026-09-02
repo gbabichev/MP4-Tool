@@ -59,6 +59,7 @@ private struct MP4ValidationAudioCompatibility {
 
 enum MP4AudioRepairKind: Equatable {
     case downmixToStereo
+    case extractChannelToMono(Int)
     case restoreLayout(String)
 }
 
@@ -69,9 +70,16 @@ struct MP4AudioRepairCandidate: Equatable {
 }
 
 private struct MP4ValidationAudioAuthoringAnalysis {
+    let errors: [String]
     let warnings: [String]
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsMetadataRepair: Bool
+}
+
+private enum MP4AudioChannelScanDepth {
+    case quick
+    case confirmation
+    case full
 }
 
 enum MP4ValidationSeverity {
@@ -81,6 +89,7 @@ enum MP4ValidationSeverity {
 
 private struct MP4ValidationFinding {
     let message: String
+    let assessment: String
     let severity: MP4ValidationSeverity
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsAudioMetadataRepair: Bool
@@ -91,6 +100,7 @@ struct MP4ValidationResult: Identifiable {
     let fileName: String
     let filePath: String
     let issue: String?
+    let assessment: String
     let severity: MP4ValidationSeverity?
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsAudioMetadataRepair: Bool
@@ -394,12 +404,14 @@ final class MP4ValidationViewModel: ObservableObject {
                         filePath: result.filePath,
                         stream: stream,
                         formatDuration: compatibility.formatDuration,
-                        fullScan: true
+                        scanDepth: .full
                       ) else {
                     continue
                 }
                 switch candidate.kind {
                 case .downmixToStereo where activeChannels == Set([1, 2]):
+                    confirmedCandidates.append(candidate)
+                case .extractChannelToMono(let channel) where activeChannels == Set([channel]):
                     confirmedCandidates.append(candidate)
                 case .restoreLayout where activeChannels.count > 2:
                     confirmedCandidates.append(candidate)
@@ -501,6 +513,13 @@ final class MP4ValidationViewModel: ObservableObject {
                         "-b:a:\(candidate.audioIndex)", "192k",
                         "-channel_layout:a:\(candidate.audioIndex)", "stereo"
                     ])
+                case .extractChannelToMono(let channel):
+                    arguments.append(contentsOf: [
+                        "-filter:a:\(candidate.audioIndex)", "pan=mono|c0=c\(max(channel - 1, 0))",
+                        "-c:a:\(candidate.audioIndex)", "aac",
+                        "-b:a:\(candidate.audioIndex)", "128k",
+                        "-channel_layout:a:\(candidate.audioIndex)", "mono"
+                    ])
                 case .restoreLayout(let layout):
                     let bitrate = layout == "7.1" ? "512k" : "256k"
                     arguments.append(contentsOf: [
@@ -536,6 +555,9 @@ final class MP4ValidationViewModel: ObservableObject {
                     case .downmixToStereo:
                         return repairedStream.channels == 2
                             && normalizedProbeValue(repairedStream.channelLayout) == "stereo"
+                    case .extractChannelToMono:
+                        return repairedStream.channels == 1
+                            && normalizedProbeValue(repairedStream.channelLayout) == "mono"
                     case .restoreLayout(let layout):
                         return normalizedProbeValue(repairedStream.channelLayout)
                             == normalizedProbeValue(layout)
@@ -632,6 +654,8 @@ final class MP4ValidationViewModel: ObservableObject {
                     switch repairedCandidate.kind {
                     case .downmixToStereo:
                         technicalName = "Stereo (Repaired AAC)"
+                    case .extractChannelToMono:
+                        technicalName = "Mono (Repaired AAC)"
                     case .restoreLayout(let layout):
                         technicalName = "\(displayAudioLayout(layout)) (Repaired AAC)"
                     }
@@ -746,7 +770,8 @@ final class MP4ValidationViewModel: ObservableObject {
             (
                 itemName: URL(fileURLWithPath: result.filePath).lastPathComponent,
                 path: result.filePath,
-                error: result.issue ?? ""
+                error: result.issue ?? "",
+                assessment: result.assessment
             )
         }
         guard !reportRows.isEmpty else {
@@ -777,9 +802,13 @@ final class MP4ValidationViewModel: ObservableObject {
                     return
                 }
 
-                let header = ["Item Name", "Path", "Error"].map(self.csvField).joined(separator: ",")
+                let header = ["Item Name", "Path", "Error", "Assessment"]
+                    .map(self.csvField)
+                    .joined(separator: ",")
                 let rows = reportRows.map { row in
-                    [row.itemName, row.path, row.error].map(self.csvField).joined(separator: ",")
+                    [row.itemName, row.path, row.error, row.assessment]
+                        .map(self.csvField)
+                        .joined(separator: ",")
                 }
                 let body = "\u{FEFF}" + ([header] + rows).joined(separator: "\r\n") + "\r\n"
 
@@ -871,6 +900,7 @@ final class MP4ValidationViewModel: ObservableObject {
                     fileName: fileInfo.relativePath,
                     filePath: fileInfo.fullPath,
                     issue: finding?.message,
+                    assessment: finding?.assessment ?? "No action needed.",
                     severity: finding?.severity,
                     repairCandidates: finding?.repairCandidates ?? [],
                     needsAudioMetadataRepair: finding?.needsAudioMetadataRepair ?? false
@@ -942,6 +972,7 @@ final class MP4ValidationViewModel: ObservableObject {
                     filePath: filePath,
                     compatibility: audioCompatibility
                 )
+                reasons.append(contentsOf: authoringAnalysis.errors)
                 warnings.append(contentsOf: authoringAnalysis.warnings)
                 repairCandidates = authoringAnalysis.repairCandidates
                 needsAudioMetadataRepair = authoringAnalysis.needsMetadataRepair
@@ -964,10 +995,18 @@ final class MP4ValidationViewModel: ObservableObject {
             reasons.append("could not be opened")
         }
 
+        let assessment = validationAssessment(
+            reasons: reasons,
+            warnings: warnings,
+            repairCandidates: repairCandidates,
+            needsAudioMetadataRepair: needsAudioMetadataRepair
+        )
+
         if !reasons.isEmpty {
             let allFindings = reasons + warnings
             return MP4ValidationFinding(
                 message: allFindings.joined(separator: ", "),
+                assessment: assessment,
                 severity: .error,
                 repairCandidates: repairCandidates,
                 needsAudioMetadataRepair: needsAudioMetadataRepair
@@ -977,10 +1016,73 @@ final class MP4ValidationViewModel: ObservableObject {
         guard !warnings.isEmpty else { return nil }
         return MP4ValidationFinding(
             message: warnings.joined(separator: ", "),
+            assessment: assessment,
             severity: .warning,
             repairCandidates: repairCandidates,
             needsAudioMetadataRepair: needsAudioMetadataRepair
         )
+    }
+
+    private func validationAssessment(
+        reasons: [String],
+        warnings: [String],
+        repairCandidates: [MP4AudioRepairCandidate],
+        needsAudioMetadataRepair: Bool
+    ) -> String {
+        let findings = (reasons + warnings).joined(separator: " ").lowercased()
+        var actions: [String] = []
+
+        if needsAudioMetadataRepair {
+            actions.append("Automatic repair available: normalize audio defaults and assign distinct track titles.")
+        }
+
+        for candidate in repairCandidates {
+            let action: String
+            switch candidate.kind {
+            case .downmixToStereo:
+                action = "Automatic repair available: convert the malformed multichannel track to stereo AAC."
+            case .extractChannelToMono:
+                action = "Automatic repair available: preserve the only active channel as a proper mono AAC track."
+            case .restoreLayout:
+                action = "Automatic repair available: restore the missing channel layout."
+            }
+            if !actions.contains(action) {
+                actions.append(action)
+            }
+        }
+
+        if findings.contains("appears truncated") {
+            actions.append("Use a complete source or re-encode from the source; missing audio cannot be reconstructed.")
+        } else if findings.contains("unsupported video codec") {
+            actions.append("Send the file to the main queue and re-encode its video to H.264 or H.265.")
+        }
+
+        if findings.contains("dts audio")
+            || findings.contains("pcm float audio")
+            || findings.contains("unsupported audio codec")
+            || findings.contains("audio not readable by apple") {
+            actions.append("Send the file to the main queue and re-encode its audio to AAC.")
+        } else if findings.contains("missing audio") {
+            actions.append("Return to the source or use Track Editor to add a valid audio track.")
+        }
+
+        if findings.contains("not playable") || findings.contains("could not be opened") {
+            actions.append("Remux or re-encode from a known-good source, then validate the new output.")
+        }
+
+        if findings.contains("starts at") || findings.contains("after the file ends") {
+            actions.append("Review synchronization in a player; remux or re-encode from the source if playback is affected.")
+        }
+
+        if findings.contains("contain signal") && repairCandidates.isEmpty {
+            actions.append("Review the suspect track in Track Editor; remove it if redundant, otherwise re-encode from the source.")
+        }
+
+        if actions.isEmpty {
+            actions.append("Review the flagged tracks in Track Editor before deciding whether to keep or remove them.")
+        }
+
+        return actions.joined(separator: " ")
     }
 
     private func unsupportedAppleVideoCodec(filePath: String) async -> String? {
@@ -1084,12 +1186,14 @@ final class MP4ValidationViewModel: ObservableObject {
         let streams = compatibility.streams
         guard !streams.isEmpty else {
             return MP4ValidationAudioAuthoringAnalysis(
+                errors: [],
                 warnings: [],
                 repairCandidates: [],
                 needsMetadataRepair: false
             )
         }
 
+        var errors: [String] = []
         var warnings: [String] = []
         var repairCandidates: [MP4AudioRepairCandidate] = []
         var needsMetadataRepair = false
@@ -1136,31 +1240,67 @@ final class MP4ValidationViewModel: ObservableObject {
                 let audioStartTime = stream.startTime.flatMap(TimeInterval.init) ?? 0
                 let audioEndTime = audioStartTime + audioDuration
                 let durationDifference = formatDuration - audioEndTime
-                let meaningfulDurationTolerance = max(10, formatDuration * 0.01)
+                if durationDifference > 0 {
+                    // Short gaps commonly represent silent lead-outs or credits. Scale the
+                    // tolerance for shorter media while capping it at five minutes for films.
+                    let earlyEndTolerance = min(max(formatDuration * 0.10, 60), 300)
+                    if durationDifference > earlyEndTolerance {
+                        let differenceDescription = String(format: "%.1f", durationDifference)
+                        let percentageDescription = String(
+                            format: "%.1f%%",
+                            (durationDifference / formatDuration) * 100
+                        )
+                        errors.append(
+                            "audio stream \(stream.index) appears truncated, ending \(differenceDescription) seconds (\(percentageDescription)) early"
+                        )
+                    }
+                } else {
+                    let overrun = abs(durationDifference)
+                    let endOverrunTolerance = max(10, formatDuration * 0.01)
+                    if overrun > endOverrunTolerance {
+                        let differenceDescription = String(format: "%.1f", overrun)
+                        warnings.append(
+                            "audio stream \(stream.index) ends \(differenceDescription) seconds after the file ends"
+                        )
+                    }
+                }
+            }
 
-                if abs(durationDifference) > meaningfulDurationTolerance {
-                    let differenceDescription = String(format: "%.1f", abs(durationDifference))
-                    let direction = durationDifference > 0 ? "early" : "after the file ends"
+            if let startTime = stream.startTime.flatMap(TimeInterval.init) {
+                // Brief delayed starts are common around studio cards and silent openings.
+                let startTolerance = compatibility.formatDuration.map {
+                    min(max($0 * 0.01, 5), 30)
+                } ?? 30
+                if startTime > startTolerance {
                     warnings.append(
-                        "audio stream \(stream.index) ends \(differenceDescription) seconds \(direction)"
+                        "audio stream \(stream.index) starts at \(String(format: "%.2f", startTime)) seconds"
                     )
                 }
             }
 
-            if let startTime = stream.startTime.flatMap(TimeInterval.init), abs(startTime) > 0.5 {
-                warnings.append("audio stream \(stream.index) starts at \(String(format: "%.2f", startTime)) seconds")
-            }
-
             guard ffmpegAvailable, channelCount >= 4 else { continue }
-            if let activeChannels = await activeAudioChannels(
+            if var activeChannels = await activeAudioChannels(
                 filePath: filePath,
                 stream: stream,
                 formatDuration: compatibility.formatDuration,
-                fullScan: false
+                scanDepth: .quick
             ), !activeChannels.isEmpty {
+                if activeChannels.count <= 2,
+                   let confirmedChannels = await activeAudioChannels(
+                    filePath: filePath,
+                    stream: stream,
+                    formatDuration: compatibility.formatDuration,
+                    scanDepth: .confirmation
+                   ), !confirmedChannels.isEmpty {
+                    activeChannels = confirmedChannels
+                }
+
                 if activeChannels.count <= 2 {
+                    let activityDescription = activeChannels.count == 1
+                        ? "only 1 channel contains signal"
+                        : "only \(activeChannels.count) channels contain signal"
                     warnings.append(
-                        "audio stream \(stream.index) claims \(channelCount) channels but only \(activeChannels.count) contain signal"
+                        "audio stream \(stream.index) claims \(channelCount) channels but \(activityDescription)"
                     )
                     if activeChannels == Set([1, 2]) {
                         repairCandidates.append(
@@ -1168,6 +1308,14 @@ final class MP4ValidationViewModel: ObservableObject {
                                 streamIndex: stream.index,
                                 audioIndex: audioIndex,
                                 kind: .downmixToStereo
+                            )
+                        )
+                    } else if activeChannels.count == 1, let channel = activeChannels.first {
+                        repairCandidates.append(
+                            MP4AudioRepairCandidate(
+                                streamIndex: stream.index,
+                                audioIndex: audioIndex,
+                                kind: .extractChannelToMono(channel)
                             )
                         )
                     }
@@ -1184,11 +1332,16 @@ final class MP4ValidationViewModel: ObservableObject {
             }
         }
 
+        var uniqueErrors: [String] = []
+        for error in errors where !uniqueErrors.contains(error) {
+            uniqueErrors.append(error)
+        }
         var uniqueWarnings: [String] = []
         for warning in warnings where !uniqueWarnings.contains(warning) {
             uniqueWarnings.append(warning)
         }
         return MP4ValidationAudioAuthoringAnalysis(
+            errors: uniqueErrors,
             warnings: uniqueWarnings,
             repairCandidates: repairCandidates,
             needsMetadataRepair: needsMetadataRepair
@@ -1229,21 +1382,32 @@ final class MP4ValidationViewModel: ObservableObject {
         filePath: String,
         stream: MP4ValidationAudioStream,
         formatDuration: TimeInterval?,
-        fullScan: Bool
+        scanDepth: MP4AudioChannelScanDepth
     ) async -> Set<Int>? {
         let duration = formatDuration ?? stream.duration.flatMap(TimeInterval.init)
         let sampleWindows: [(start: TimeInterval, duration: TimeInterval)]
 
-        if fullScan {
+        switch scanDepth {
+        case .full:
             sampleWindows = [(0, max(duration ?? 86_400, 1))]
-        } else if let duration, duration > 30 {
-            sampleWindows = [
-                (0, 5),
-                (max((duration / 2) - 2.5, 0), 5),
-                (max(duration - 5, 0), 5)
-            ]
-        } else {
-            sampleWindows = [(0, max(min(duration ?? 30, 30), 1))]
+        case .confirmation:
+            if let duration, duration > 90 {
+                sampleWindows = [0.2, 0.5, 0.8].map { position in
+                    (max((duration * position) - 15, 0), 30)
+                }
+            } else {
+                sampleWindows = [(0, max(min(duration ?? 90, 90), 1))]
+            }
+        case .quick:
+            if let duration, duration > 30 {
+                sampleWindows = [
+                    (0, 5),
+                    (max((duration / 2) - 2.5, 0), 5),
+                    (max(duration - 5, 0), 5)
+                ]
+            } else {
+                sampleWindows = [(0, max(min(duration ?? 30, 30), 1))]
+            }
         }
 
         var activeChannels = Set<Int>()
