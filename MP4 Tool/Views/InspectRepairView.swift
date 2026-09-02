@@ -27,6 +27,19 @@ private enum InspectRepairSection: String, CaseIterable, Identifiable {
         case .subtitles: "captions.bubble"
         }
     }
+
+    var description: String {
+        switch self {
+        case .compatibility:
+            "Check MP4 files for Apple playback compatibility, audio-track problems, and other issues that may need repair."
+        case .metadata:
+            "Find release-group names and other unwanted attribution metadata, then safely remove it without changing the media tracks."
+        case .timing:
+            "Check that playback starts at the beginning of each MP4 and repair timing offsets when a safe remux is possible."
+        case .subtitles:
+            "Find MP4 files that have no subtitles, or require at least one subtitle track that is explicitly tagged as English."
+        }
+    }
 }
 
 struct InspectRepairView: View {
@@ -78,18 +91,43 @@ struct InspectRepairView: View {
 
     private var modeSelector: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Inspect & Repair", systemImage: "stethoscope")
-                .font(.headline)
+            Text(selectedSection.title)
+                .font(.title3)
+                .fontWeight(.semibold)
 
-            Picker("Inspection Type", selection: $selectedSection) {
+            HStack(spacing: 2) {
                 ForEach(InspectRepairSection.allCases) { section in
-                    Text(section.title)
-                        .tag(section)
+                    Button {
+                        selectedSection = section
+                    } label: {
+                        Image(systemName: section.systemImage)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(selectedSection == section ? Color.white : Color.primary)
+                    .background {
+                        if selectedSection == section {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.accentColor)
+                        }
+                    }
+                    .accessibilityLabel(section.title)
+                    .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
+                        .help(section.title)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .padding(2)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .frame(maxWidth: .infinity)
+
+            Text(selectedSection.description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sharedNavigationContent: some View {
@@ -113,6 +151,7 @@ struct InspectRepairView: View {
                 .padding(.vertical, 4)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sharedInputIsFolder: Bool {

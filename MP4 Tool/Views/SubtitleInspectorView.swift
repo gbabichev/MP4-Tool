@@ -29,9 +29,11 @@ struct SubtitleInspectorView: View {
                         navigationContent
                     }
 
-                    Text(subtitleScanDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if navigationContent == nil {
+                        Text(subtitleScanDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     GroupBox("Scan Options") {
                         HStack(spacing: 10) {

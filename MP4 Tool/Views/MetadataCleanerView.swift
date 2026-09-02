@@ -45,9 +45,11 @@ struct MetadataCleanerView: View {
                         navigationContent
                     }
 
-                    Text("Find release-group and attribution metadata, then remove only those fields with a validated in-place remux. Ordinary movie metadata, track descriptions, languages, subtitle roles, chapters, and media streams are preserved.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if navigationContent == nil {
+                        Text("Find release-group and attribution metadata, then remove only those fields with a validated in-place remux. Ordinary movie metadata, track descriptions, languages, subtitle roles, chapters, and media streams are preserved.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     if sharedInputURL == nil {
                     GroupBox("Input") {

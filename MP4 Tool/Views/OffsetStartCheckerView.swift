@@ -27,13 +27,15 @@ struct OffsetStartCheckerView: View {
                         navigationContent
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Check Offset Starts scans MP4 files to make sure playback begins at 00:00 and can try to repair files in place.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("If a file still needs full re-encoding, use the \(Image(systemName: "arrowshape.turn.up.right")) toolbar button to send it to the main app queue.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    if navigationContent == nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Check Offset Starts scans MP4 files to make sure playback begins at 00:00 and can try to repair files in place.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("If a file still needs full re-encoding, use the \(Image(systemName: "arrowshape.turn.up.right")) toolbar button to send it to the main app queue.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     if sharedInputURL == nil {

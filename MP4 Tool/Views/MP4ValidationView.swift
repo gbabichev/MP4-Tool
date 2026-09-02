@@ -49,9 +49,11 @@ struct MP4ValidationView: View {
                         navigationContent
                     }
 
-                    Text("Validate dropped MP4 files or MP4 files in a folder and its subfolders. Finds compatibility failures, redundant English audio, multiple default tracks, and inactive multichannel audio.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if navigationContent == nil {
+                        Text("Validate dropped MP4 files or MP4 files in a folder and its subfolders. Finds compatibility failures, redundant English audio, multiple default tracks, and inactive multichannel audio.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     if sharedInputURL == nil {
                     GroupBox("Input") {
@@ -396,7 +398,7 @@ struct MP4ValidationView: View {
                             selectedRepairResultIDs.removeAll()
                             viewModel.scan()
                         } label: {
-                            Label("Validate", systemImage: "checkmark.circle")
+                            Label("Scan", systemImage: "magnifyingglass")
                         }
                         .disabled(!viewModel.canScan)
                         .keyboardShortcut("r", modifiers: .command)
