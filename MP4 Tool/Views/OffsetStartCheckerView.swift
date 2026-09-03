@@ -207,6 +207,27 @@ struct OffsetStartCheckerView: View {
                                                 .foregroundStyle(fixStatusColor(for: result))
                                         }
                                     }
+
+                                    Button(role: .destructive) {
+                                        selectedResultIDs.remove(result.id)
+                                        viewModel.removeResult(id: result.id)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .frame(width: 20, height: 20)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .controlSize(.small)
+                                    .disabled(viewModel.isScanning || viewModel.isFixing)
+                                    .help("Remove from results")
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        selectedResultIDs.remove(result.id)
+                                        viewModel.removeResult(id: result.id)
+                                    } label: {
+                                        Label("Remove from Results", systemImage: "trash")
+                                    }
+                                    .disabled(viewModel.isScanning || viewModel.isFixing)
                                 }
                             }
                         }
@@ -230,6 +251,12 @@ struct OffsetStartCheckerView: View {
             if !isFixing { applySharedInput() }
         }
         .onAppear(perform: applySharedInput)
+        .onReceive(NotificationCenter.default.publisher(for: inspectRepairResetAllNotification)) { _ in
+            showNeedsActionOnly = false
+            selectedResultIDs.removeAll()
+            lastAppliedSharedInputPath = nil
+            viewModel.resetAll()
+        }
         .toolbar {
             if isActive {
                 ToolbarItem(placement: .navigation) {

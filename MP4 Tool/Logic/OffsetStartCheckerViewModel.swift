@@ -212,6 +212,28 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         isFixing = false
     }
 
+    func resetAll() {
+        scanTask?.cancel()
+        fixTask?.cancel()
+        scanToken = UUID()
+        fixToken = UUID()
+        terminateCurrentProcess()
+        inputFolderPath = ""
+        results = []
+        scanProgress = ""
+        fixProgress = ""
+        scanAlertText = ""
+        hasCompletedFixPass = false
+        isScanning = false
+        isFixing = false
+        resetOperationProgress()
+    }
+
+    func removeResult(id: UUID) {
+        guard !isScanning && !isFixing else { return }
+        results.removeAll { $0.id == id }
+    }
+
     func exportFailuresToFile() {
         let failedPaths = failureResults.map(\.filePath)
         guard !failedPaths.isEmpty else {

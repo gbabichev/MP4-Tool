@@ -146,6 +146,22 @@ final class SubtitleInspectorViewModel: ObservableObject {
         isScanning = false
     }
 
+    func resetAll() {
+        scanTask?.cancel()
+        terminateCurrentProcess()
+        inputPath = ""
+        inputIsFolder = false
+        results = []
+        statusMessage = ""
+        isScanning = false
+        resetOperationProgress()
+    }
+
+    func removeResult(id: UUID) {
+        guard !isScanning else { return }
+        results.removeAll { $0.id == id }
+    }
+
     func exportCSV(includeAll: Bool) {
         let sourceResults = includeAll ? results : attentionResults
         let reportRows = sourceResults.map {

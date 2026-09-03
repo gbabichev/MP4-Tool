@@ -372,6 +372,26 @@ final class MP4ValidationViewModel: ObservableObject {
         isRepairing = false
     }
 
+    func resetAll() {
+        scanTask?.cancel()
+        repairTask?.cancel()
+        scanToken = UUID()
+        terminateCurrentProcess()
+        inputFolderPath = ""
+        droppedFilePaths = []
+        results = []
+        scanProgress = ""
+        scanAlertText = ""
+        isScanning = false
+        isRepairing = false
+        resetOperationProgress()
+    }
+
+    func removeResult(id: UUID) {
+        guard !isScanning && !isRepairing else { return }
+        results.removeAll { $0.id == id }
+    }
+
     private func runRepairs(
         _ selectedResults: [MP4ValidationResult],
         useOriginalFilename: Bool,

@@ -206,6 +206,24 @@ final class MetadataCleanerViewModel: ObservableObject {
         statusMessage = "Operation canceled."
     }
 
+    func resetAll() {
+        operationTask?.cancel()
+        terminateCurrentProcess()
+        inputPath = ""
+        inputIsFolder = false
+        results = []
+        statusMessage = ""
+        isResolvingInput = false
+        isScanning = false
+        isCleaning = false
+        resetOperationProgress()
+    }
+
+    func removeResult(id: UUID) {
+        guard !isBusy else { return }
+        results.removeAll { $0.id == id }
+    }
+
     func exportCSV(includeAll: Bool) {
         let sourceResults = includeAll ? results : cleanableResults
         guard !sourceResults.isEmpty, !isBusy else { return }

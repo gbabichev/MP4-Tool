@@ -306,6 +306,27 @@ struct MP4ValidationView: View {
                                     .help(
                                         "\(result.issue ?? "No issues found")\n\nAssessment: \(result.assessment)"
                                     )
+
+                                    Button(role: .destructive) {
+                                        selectedRepairResultIDs.remove(result.id)
+                                        viewModel.removeResult(id: result.id)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .frame(width: 20, height: 20)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .controlSize(.small)
+                                    .disabled(viewModel.isScanning || viewModel.isRepairing)
+                                    .help("Remove from results")
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        selectedRepairResultIDs.remove(result.id)
+                                        viewModel.removeResult(id: result.id)
+                                    } label: {
+                                        Label("Remove from Results", systemImage: "trash")
+                                    }
+                                    .disabled(viewModel.isScanning || viewModel.isRepairing)
                                 }
                             }
                         }
@@ -333,6 +354,12 @@ struct MP4ValidationView: View {
             if !isRepairing { applySharedInput() }
         }
         .onAppear(perform: applySharedInput)
+        .onReceive(NotificationCenter.default.publisher(for: inspectRepairResetAllNotification)) { _ in
+            showFlaggedOnly = false
+            selectedRepairResultIDs.removeAll()
+            lastAppliedSharedInputPath = nil
+            viewModel.resetAll()
+        }
         .toolbar {
             if isActive {
                 ToolbarItem(placement: .navigation) {

@@ -71,9 +71,14 @@ struct ProcessingCompletionOverlayView: View {
       Color.black.opacity(0.3)
         .ignoresSafeArea()
 
-      ScrollView {
-        ZStack(alignment: .topTrailing) {
-          VStack(spacing: 20) {
+      GeometryReader { geometry in
+        let cardWidth = min(600, max(320, geometry.size.width - 80))
+        let cardHeight = min(720, max(320, geometry.size.height - 80))
+
+        VStack {
+          ZStack(alignment: .topTrailing) {
+            ScrollView {
+              VStack(spacing: 20) {
             VStack(spacing: 8) {
               Image(
                 systemName: summary.failedFileCount > 0 || summary.skippedFileCount > 0
@@ -153,45 +158,50 @@ struct ProcessingCompletionOverlayView: View {
             }
             .completionSectionStyle()
 
-            HStack(spacing: 10) {
-              Button(action: onOpenInFinder) {
-                Label("Open in Finder", systemImage: "folder")
-              }
-              .controlSize(.large)
+                HStack(spacing: 10) {
+                  Button(action: onOpenInFinder) {
+                    Label("Open in Finder", systemImage: "folder")
+                  }
+                  .controlSize(.large)
 
-              Button("Done") {
-                onDismiss()
+                  Button("Done") {
+                    onDismiss()
+                  }
+                  .buttonStyle(.borderedProminent)
+                  .controlSize(.large)
+                  .keyboardShortcut(.defaultAction)
+                }
               }
-              .buttonStyle(.borderedProminent)
-              .controlSize(.large)
-              .keyboardShortcut(.defaultAction)
+              .padding(24)
+              .frame(width: cardWidth)
             }
-          }
-          .padding(24)
-          .frame(width: 600)
-          .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-              .fill(Color(NSColor.windowBackgroundColor))
-              .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                  .stroke(Color.white.opacity(0.1), lineWidth: 1)
-              )
-          )
-          .shadow(color: .black.opacity(0.25), radius: 24, x: 0, y: 12)
+            .frame(width: cardWidth, height: cardHeight)
+            .background(
+              RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(NSColor.windowBackgroundColor))
+                .overlay(
+                  RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .scrollIndicators(.automatic)
+            .shadow(color: .black.opacity(0.25), radius: 24, x: 0, y: 12)
 
-          Button(action: onDismiss) {
-            Image(systemName: "xmark.circle.fill")
-              .font(.title2)
-              .symbolRenderingMode(.hierarchical)
-              .foregroundStyle(.secondary)
+            Button(action: onDismiss) {
+              Image(systemName: "xmark.circle.fill")
+                .font(.title2)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .padding(14)
+            .accessibilityLabel("Close completion summary")
           }
-          .buttonStyle(.plain)
-          .padding(14)
-          .accessibilityLabel("Close completion summary")
         }
-        .padding(30)
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
       }
-      .scrollIndicators(.automatic)
     }
     .transition(.opacity)
     .onExitCommand(perform: onDismiss)

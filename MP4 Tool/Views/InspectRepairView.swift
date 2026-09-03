@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+let inspectRepairResetAllNotification = Notification.Name("MP4Tool.InspectRepair.ResetAll")
+
 private enum InspectRepairSection: String, CaseIterable, Identifiable {
     case compatibility
     case metadata
@@ -87,6 +89,15 @@ struct InspectRepairView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 860, minHeight: 640)
         .onDrop(of: [.fileURL], isTargeted: nil, perform: handleSharedDrop)
+        .toolbar {
+            ToolbarItem {
+                Button(action: resetAll) {
+                    Label("Reset All", systemImage: "arrow.counterclockwise")
+                }
+                .disabled(sharedInputURL == nil)
+                .help("Clear the input and results from every Inspect & Repair section")
+            }
+        }
     }
 
     private var modeSelector: some View {
@@ -193,6 +204,11 @@ struct InspectRepairView: View {
                 inFileViewerRootedAtPath: sharedInputURL.deletingLastPathComponent().path
             )
         }
+    }
+
+    private func resetAll() {
+        sharedInputURL = nil
+        NotificationCenter.default.post(name: inspectRepairResetAllNotification, object: nil)
     }
 
     private func handleSharedDrop(providers: [NSItemProvider]) -> Bool {

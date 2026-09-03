@@ -215,6 +215,27 @@ struct MetadataCleanerView: View {
                                     }
                                 }
                                 .frame(maxWidth: 420, alignment: .trailing)
+
+                                Button(role: .destructive) {
+                                    selectedResultIDs.remove(result.id)
+                                    viewModel.removeResult(id: result.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .frame(width: 20, height: 20)
+                                }
+                                .buttonStyle(.borderless)
+                                .controlSize(.small)
+                                .disabled(viewModel.isBusy)
+                                .help("Remove from results")
+                            }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    selectedResultIDs.remove(result.id)
+                                    viewModel.removeResult(id: result.id)
+                                } label: {
+                                    Label("Remove from Results", systemImage: "trash")
+                                }
+                                .disabled(viewModel.isBusy)
                             }
                         }
                         }
@@ -237,6 +258,12 @@ struct MetadataCleanerView: View {
             if !isBusy { applySharedInput() }
         }
         .onAppear(perform: applySharedInput)
+        .onReceive(NotificationCenter.default.publisher(for: inspectRepairResetAllNotification)) { _ in
+            showNeedsCleaningOnly = false
+            selectedResultIDs.removeAll()
+            lastAppliedSharedInputPath = nil
+            viewModel.resetAll()
+        }
         .toolbar {
             if isActive {
                 ToolbarItem(placement: .navigation) {
