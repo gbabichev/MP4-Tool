@@ -30,6 +30,7 @@ struct VideoStream: Codable {
     let height: Int?
     let averageFrameRate: String?
     let realFrameRate: String?
+    let nbReadPackets: String?
     let disposition: VideoStreamDisposition?
 
     enum CodingKeys: String, CodingKey {
@@ -49,6 +50,7 @@ struct VideoStream: Codable {
         case height
         case averageFrameRate = "avg_frame_rate"
         case realFrameRate = "r_frame_rate"
+        case nbReadPackets = "nb_read_packets"
         case disposition
     }
 }
@@ -94,6 +96,7 @@ private struct SubtitleMapping {
     let isForced: Bool
     let isHearingImpaired: Bool
     let isCaptions: Bool
+    let selectionRationale: String?
 }
 
 enum ProcessingMode: String, CaseIterable {
@@ -946,6 +949,7 @@ class VideoProcessor: ObservableObject {
         keepEnglishAudioOnly: Bool,
         keepAllEnglishAudioTracks: Bool = false,
         keepEnglishSubtitlesOnly: Bool,
+        keepAllEnglishSubtitleTracks: Bool = false,
         postProcessScriptPath: String = "",
         postProcessScriptRunTiming: PostProcessScriptRunTiming = .afterEachItem,
         postProcessScriptPassFileNameAsFirstArgument: Bool = false,
@@ -1030,6 +1034,7 @@ class VideoProcessor: ObservableObject {
         addLog("􀀁 Keep English Audio Only: \(keepEnglishAudioOnly)")
         addLog("􀀁 Keep All English Audio Tracks: \(keepAllEnglishAudioTracks)")
         addLog("􀀃 Keep English Subtitles Only: \(keepEnglishSubtitlesOnly)")
+        addLog("􀀃 Keep All English Subtitle Tracks: \(keepAllEnglishSubtitleTracks)")
         addLog("Enable Notifications: \(notificationsEnabled)")
         addLog("Enable Previews: \(framePreviewsEnabled)")
 
@@ -1243,6 +1248,7 @@ class VideoProcessor: ObservableObject {
                     keepEnglishAudioOnly: keepEnglishAudioOnly,
                     keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                     keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                    keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
                     sourceDuration: sourceDuration
                 )
             }
@@ -1842,6 +1848,7 @@ class VideoProcessor: ObservableObject {
         keepEnglishAudioOnly: Bool,
         keepAllEnglishAudioTracks: Bool,
         keepEnglishSubtitlesOnly: Bool,
+        keepAllEnglishSubtitleTracks: Bool,
         sourceDuration: TimeInterval?
     ) async -> ConversionOutcome {
         // Probe streams
@@ -1917,9 +1924,11 @@ class VideoProcessor: ObservableObject {
         }
 
         // Determine subtitle stream mappings
-        let subtitleMappings = getSubtitleMappings(
+        let subtitleMappings = await getSubtitleMappings(
+            inputFile: inputFile,
             subtitleStreams: subtitleStreams,
-            keepEnglishOnly: keepEnglishSubtitlesOnly
+            keepEnglishOnly: keepEnglishSubtitlesOnly,
+            keepAllEnglishTracks: keepAllEnglishSubtitleTracks
         )
 
         if subtitleMappings.isEmpty,
@@ -1940,6 +1949,9 @@ class VideoProcessor: ObservableObject {
                 return "0:\(subtitle.index) (\(subtitle.language ?? "und")\(traitDescription))"
             }
             addLog("Selected Subtitles: \(descriptions.joined(separator: ", "))")
+            if let rationale = subtitleMappings.compactMap(\.selectionRationale).first {
+                addLog("Subtitle Selection: \(rationale)")
+            }
         }
 
         // FFmpeg 9 can let sparse subtitle streams run far ahead of a slow video
@@ -2137,6 +2149,9 @@ class VideoProcessor: ObservableObject {
 
         if let streams = selectStreams {
             arguments.append(contentsOf: ["-select_streams", streams])
+            if streams == "s" {
+                arguments.append("-count_packets")
+            }
         }
 
         arguments.append(inputFile)
@@ -2598,84 +2613,86 @@ class VideoProcessor: ObservableObject {
     }
 
     private func getSubtitleMappings(
+        inputFile: String,
         subtitleStreams: FFProbeOutput,
-        keepEnglishOnly: Bool
-    ) -> [SubtitleMapping] {
+        keepEnglishOnly: Bool,
+        keepAllEnglishTracks: Bool
+    ) async -> [SubtitleMapping] {
         let validCodecs = ["subrip", "ass", "ssa", "mov_text"]
 
-        let candidates = subtitleStreams.streams.compactMap { stream -> (
-            index: Int,
-            language: String?,
-            title: String?,
-            sourceDefault: Bool,
-            forced: Bool,
-            hearingImpaired: Bool,
-            captions: Bool
-        )? in
+        let supportedStreams = subtitleStreams.streams.filter { stream in
+            stream.codecName.map(validCodecs.contains) == true
+        }
+        var candidates: [SubtitleTrackSelectionCandidate] = []
+        for (subtitleIndex, stream) in supportedStreams.enumerated() {
             guard let codec = stream.codecName,
                   validCodecs.contains(codec) else {
-                return nil
+                continue
             }
 
             let language = stream.tags?["language"]?.lowercased()
             let title = stream.tags?["title"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let handlerName = stream.tags?["handler_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
             let normalizedTitle = title?.lowercased() ?? ""
             let forced = stream.disposition?.isForced == 1 || normalizedTitle.contains("forced")
             let hearingImpaired = stream.disposition?.isHearingImpaired == 1
                 || normalizedTitle.contains("hearing impaired")
                 || normalizedTitle.contains("sdh")
             let captions = stream.disposition?.isCaptions == 1
-
-            if keepEnglishOnly {
-                let normalizedLanguage = language ?? "und"
-                guard normalizedLanguage == "eng" || normalizedLanguage == "und" else {
-                    return nil
-                }
-                return (
-                    index: stream.index,
-                    language: normalizedLanguage,
-                    title: title,
-                    sourceDefault: stream.disposition?.isDefault == 1,
-                    forced: forced,
-                    hearingImpaired: hearingImpaired,
-                    captions: captions
-                )
-            }
-
-            return (
-                index: stream.index,
+            let shouldInspectContent = language == "eng" || language == "en"
+                || language == nil || language == "und"
+            let contentMetrics = shouldInspectContent
+                ? await subtitleContentMetrics(inputFile: inputFile, streamIndex: stream.index)
+                : nil
+            candidates.append(
+                SubtitleTrackSelectionCandidate(
+                streamIndex: stream.index,
+                subtitleIndex: subtitleIndex,
                 language: language,
                 title: title,
-                sourceDefault: stream.disposition?.isDefault == 1,
-                forced: forced,
-                hearingImpaired: hearingImpaired,
-                captions: captions
+                handlerName: handlerName,
+                cueCount: contentMetrics?.cueCount ?? stream.nbReadPackets.flatMap(Int.init),
+                accessibilityMarkerCount: contentMetrics?.accessibilityMarkerCount ?? 0,
+                isDefault: stream.disposition?.isDefault == 1,
+                isForced: forced,
+                isHearingImpaired: hearingImpaired,
+                isCaptions: captions
+                )
             )
         }
 
-        // MP4 will otherwise promote the first mapped subtitle to Default. Prefer
-        // a plain English dialogue track over Forced or SDH/caption tracks.
-        let preferredDefaultOffset = candidates.firstIndex {
-            $0.language == "eng" && !$0.forced && !$0.hearingImpaired && !$0.captions
-        } ?? candidates.firstIndex {
-            $0.language == "und" && !$0.forced && !$0.hearingImpaired && !$0.captions
-        } ?? candidates.firstIndex {
-            $0.sourceDefault && !$0.forced && !$0.hearingImpaired && !$0.captions
-        } ?? candidates.firstIndex {
-            !$0.forced && !$0.hearingImpaired && !$0.captions
-        } ?? candidates.firstIndex(where: { $0.sourceDefault })
-            ?? candidates.indices.first
-
-        return candidates.enumerated().map { offset, candidate in
+        let selection = SubtitleTrackSelectionPolicy.select(
+            from: candidates,
+            keepEnglishOnly: keepEnglishOnly,
+            keepAllEnglishTracks: keepAllEnglishTracks
+        )
+        let preferredStreamIndex = selection.preferred?.streamIndex
+        return selection.selected.map { candidate in
             SubtitleMapping(
-                index: candidate.index,
-                language: candidate.language,
-                isDefault: offset == preferredDefaultOffset,
-                isForced: candidate.forced,
-                isHearingImpaired: candidate.hearingImpaired,
-                isCaptions: candidate.captions
+                index: candidate.streamIndex,
+                language: candidate.language ?? (keepEnglishOnly ? "und" : nil),
+                isDefault: candidate.streamIndex == preferredStreamIndex,
+                isForced: candidate.isForced,
+                isHearingImpaired: candidate.isHearingImpaired,
+                isCaptions: candidate.isCaptions,
+                selectionRationale: candidate.streamIndex == preferredStreamIndex
+                    ? selection.rationale : nil
             )
         }
+    }
+
+    private func subtitleContentMetrics(
+        inputFile: String,
+        streamIndex: Int
+    ) async -> (cueCount: Int, accessibilityMarkerCount: Int)? {
+        let arguments = [
+            "-nostdin", "-v", "error", "-i", inputFile,
+            "-map", "0:\(streamIndex)", "-f", "srt", "-"
+        ]
+        guard let text = await runCommandWithOutput(path: ffmpegPath, arguments: arguments) else {
+            return nil
+        }
+        return SubtitleTrackSelectionPolicy.contentMetrics(from: text)
     }
 
     private func buildFFmpegCommand(

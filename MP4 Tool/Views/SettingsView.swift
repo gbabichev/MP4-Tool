@@ -21,6 +21,7 @@ struct SettingsView: View {
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepAllEnglishAudioTracks: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
+    @Binding var keepAllEnglishSubtitleTracks: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
@@ -39,6 +40,9 @@ struct SettingsView: View {
         }
         for index in presets.indices where presets[index].keepAllEnglishAudioTracks == nil {
             presets[index].keepAllEnglishAudioTracks = false
+        }
+        for index in presets.indices where presets[index].keepAllEnglishSubtitleTracks == nil {
+            presets[index].keepAllEnglishSubtitleTracks = false
         }
         return presets.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -188,6 +192,17 @@ struct SettingsView: View {
 
                         SettingsRow("Keep English Subtitles Only", subtitle: "Ignore non-English subtitle tracks during processing") {
                             Toggle("", isOn: $keepEnglishSubtitlesOnly)
+                                .toggleStyle(.switch)
+                                .disabled(isProcessing)
+                        }
+
+                        SettingsRow(
+                            "Keep All English Subtitle Tracks",
+                            subtitle: keepEnglishSubtitlesOnly
+                                ? "Keep forced and SDH variants instead of choosing one complete subtitle track"
+                                : "Keep every English subtitle variant while leaving other languages unchanged"
+                        ) {
+                            Toggle("", isOn: $keepAllEnglishSubtitleTracks)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
                         }
@@ -346,6 +361,7 @@ struct SettingsView: View {
             keepEnglishAudioOnly: keepEnglishAudioOnly,
             keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
@@ -434,6 +450,7 @@ struct SettingsView: View {
         keepEnglishAudioOnly = preset.keepEnglishAudioOnly
         keepAllEnglishAudioTracks = preset.keepAllEnglishAudioTracks ?? false
         keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
+        keepAllEnglishSubtitleTracks = preset.keepAllEnglishSubtitleTracks ?? false
         postProcessScriptPath = preset.postProcessScriptPath
         postProcessScriptRunTiming = preset.postProcessScriptRunTiming
         postProcessScriptPassFileNameAsFirstArgument =

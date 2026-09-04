@@ -89,6 +89,14 @@ private struct MP4ValidationAudioAuthoringAnalysis {
     let audioStreamIndexesToRemove: Set<Int>
 }
 
+private struct MP4ValidationSubtitleAuthoringAnalysis {
+    let warnings: [String]
+    let streamIndexesToRemove: Set<Int>
+    let preferredStreamIndex: Int?
+    let rationale: String?
+    let streams: [VideoStream]
+}
+
 private enum MP4AudioChannelScanDepth {
     case quick
     case confirmation
@@ -107,6 +115,8 @@ private struct MP4ValidationFinding {
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsAudioMetadataRepair: Bool
     let audioStreamIndexesToRemove: Set<Int>
+    let subtitleStreamIndexesToRemove: Set<Int>
+    let preferredSubtitleStreamIndex: Int?
 }
 
 struct MP4ValidationResult: Identifiable {
@@ -119,6 +129,8 @@ struct MP4ValidationResult: Identifiable {
     let repairCandidates: [MP4AudioRepairCandidate]
     let needsAudioMetadataRepair: Bool
     let audioStreamIndexesToRemove: Set<Int>
+    let subtitleStreamIndexesToRemove: Set<Int>
+    let preferredSubtitleStreamIndex: Int?
     var repairMessage: String? = nil
 
     var isFlagged: Bool {
@@ -126,7 +138,10 @@ struct MP4ValidationResult: Identifiable {
     }
 
     var isRepairable: Bool {
-        needsAudioMetadataRepair || !repairCandidates.isEmpty || !audioStreamIndexesToRemove.isEmpty
+        needsAudioMetadataRepair
+            || !repairCandidates.isEmpty
+            || !audioStreamIndexesToRemove.isEmpty
+            || !subtitleStreamIndexesToRemove.isEmpty
     }
 }
 
@@ -331,7 +346,7 @@ final class MP4ValidationViewModel: ObservableObject {
             resultIDs.contains($0.id) && $0.isRepairable
         }
         guard !selectedResults.isEmpty else {
-            scanAlertText = "Select at least one repairable audio warning."
+            scanAlertText = "Select at least one repairable issue."
             return
         }
 
@@ -432,6 +447,16 @@ final class MP4ValidationViewModel: ObservableObject {
                 continue
             }
 
+            let subtitleAnalysis = await subtitleAuthoringAnalysis(filePath: result.filePath)
+            let availableSubtitleStreamIndexes = Set(
+                subtitleAnalysis?.streams.map(\.index) ?? []
+            )
+            let subtitleStreamIndexesToRemove = result.subtitleStreamIndexesToRemove
+                .intersection(availableSubtitleStreamIndexes)
+            let retainedSubtitleStreams = subtitleAnalysis?.streams.filter {
+                !subtitleStreamIndexesToRemove.contains($0.index)
+            } ?? []
+
             let availableStreamIndexes = Set(compatibility.streams.map(\.index))
             let audioStreamIndexesToRemove = result.audioStreamIndexesToRemove
                 .intersection(availableStreamIndexes)
@@ -510,14 +535,19 @@ final class MP4ValidationViewModel: ObservableObject {
             )
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
 
-            updateRepairMessage(
-                for: result.id,
-                message: !audioStreamIndexesToRemove.isEmpty
-                    ? "Keeping the preferred English audio and removing redundant tracks…"
-                    : confirmedCandidates.isEmpty
-                        ? "Normalizing audio defaults and track titles…"
-                        : "Repairing malformed audio and normalizing its metadata…"
-            )
+            let repairStatusMessage: String
+            if !audioStreamIndexesToRemove.isEmpty && !subtitleStreamIndexesToRemove.isEmpty {
+                repairStatusMessage = "Keeping the preferred English audio and subtitle tracks…"
+            } else if !subtitleStreamIndexesToRemove.isEmpty {
+                repairStatusMessage = "Keeping the best complete English subtitle track…"
+            } else if !audioStreamIndexesToRemove.isEmpty {
+                repairStatusMessage = "Keeping the preferred English audio and removing redundant tracks…"
+            } else if confirmedCandidates.isEmpty {
+                repairStatusMessage = "Normalizing audio defaults and track titles…"
+            } else {
+                repairStatusMessage = "Repairing malformed audio and normalizing its metadata…"
+            }
+            updateRepairMessage(for: result.id, message: repairStatusMessage)
             var arguments = [
                 "-hide_banner", "-nostats", "-y",
                 "-i", result.filePath,
@@ -528,6 +558,9 @@ final class MP4ValidationViewModel: ObservableObject {
             ]
 
             for streamIndex in audioStreamIndexesToRemove.sorted() {
+                arguments.append(contentsOf: ["-map", "-0:\(streamIndex)"])
+            }
+            for streamIndex in subtitleStreamIndexesToRemove.sorted() {
                 arguments.append(contentsOf: ["-map", "-0:\(streamIndex)"])
             }
 
@@ -592,6 +625,32 @@ final class MP4ValidationViewModel: ObservableObject {
                 }
             }
 
+            if !subtitleStreamIndexesToRemove.isEmpty,
+               let preferredSubtitleStreamIndex = result.preferredSubtitleStreamIndex {
+                for (outputSubtitleIndex, stream) in retainedSubtitleStreams.enumerated() {
+                    guard stream.index == preferredSubtitleStreamIndex else { continue }
+                    let label = [stream.tags?["title"], stream.tags?["handler_name"]]
+                        .compactMap { $0 }
+                        .joined(separator: " ")
+                        .lowercased()
+                    let isForced = stream.disposition?.isForced == 1 || label.contains("forced")
+                    let isSDH = stream.disposition?.isHearingImpaired == 1
+                        || stream.disposition?.isCaptions == 1
+                        || label.contains("sdh")
+                        || label.contains("hearing impaired")
+                    let title = isForced ? "English (Forced)" : isSDH ? "English (SDH)" : "English"
+                    let disposition = isForced
+                        ? "forced"
+                        : isSDH ? "default+hearing_impaired" : "default"
+                    arguments.append(contentsOf: [
+                        "-metadata:s:s:\(outputSubtitleIndex)", "language=eng",
+                        "-metadata:s:s:\(outputSubtitleIndex)", "title=\(title)",
+                        "-metadata:s:s:\(outputSubtitleIndex)", "handler_name=\(title)",
+                        "-disposition:s:\(outputSubtitleIndex)", disposition
+                    ])
+                }
+            }
+
             for candidate in confirmedCandidates {
                 guard let outputAudioIndex = outputAudioIndexBySourceAudioIndex[candidate.audioIndex] else {
                     continue
@@ -634,8 +693,11 @@ final class MP4ValidationViewModel: ObservableObject {
                 continue
             }
 
+            let repairedSubtitleAnalysis = await subtitleAuthoringAnalysis(filePath: temporaryURL.path)
             guard let repairedCompatibility = await probeAudioCompatibility(filePath: temporaryURL.path),
                   repairedCompatibility.streams.count == retainedAudioPairs.count,
+                  (repairedSubtitleAnalysis?.streams.count ?? 0) == retainedSubtitleStreams.count,
+                  repairedSubtitleAnalysis?.streamIndexesToRemove.isEmpty != false,
                   repairedCompatibility.streams.filter({ $0.disposition?.isDefault == 1 }).count <= 1,
                   audioTrackNamesAreDistinguishable(repairedCompatibility.streams),
                   confirmedCandidates.allSatisfy({ candidate in
@@ -997,7 +1059,9 @@ final class MP4ValidationViewModel: ObservableObject {
                     severity: finding?.severity,
                     repairCandidates: finding?.repairCandidates ?? [],
                     needsAudioMetadataRepair: finding?.needsAudioMetadataRepair ?? false,
-                    audioStreamIndexesToRemove: finding?.audioStreamIndexesToRemove ?? []
+                    audioStreamIndexesToRemove: finding?.audioStreamIndexesToRemove ?? [],
+                    subtitleStreamIndexesToRemove: finding?.subtitleStreamIndexesToRemove ?? [],
+                    preferredSubtitleStreamIndex: finding?.preferredSubtitleStreamIndex
                 )
             )
         }
@@ -1053,6 +1117,8 @@ final class MP4ValidationViewModel: ObservableObject {
         var repairCandidates: [MP4AudioRepairCandidate] = []
         var needsAudioMetadataRepair = false
         var audioStreamIndexesToRemove = Set<Int>()
+        var subtitleStreamIndexesToRemove = Set<Int>()
+        var preferredSubtitleStreamIndex: Int?
         var audioCompatibility: MP4ValidationAudioCompatibility?
 
         if ffprobeAvailable {
@@ -1072,6 +1138,12 @@ final class MP4ValidationViewModel: ObservableObject {
                 repairCandidates = authoringAnalysis.repairCandidates
                 needsAudioMetadataRepair = authoringAnalysis.needsMetadataRepair
                 audioStreamIndexesToRemove = authoringAnalysis.audioStreamIndexesToRemove
+            }
+
+            if let subtitleAnalysis = await subtitleAuthoringAnalysis(filePath: filePath) {
+                warnings.append(contentsOf: subtitleAnalysis.warnings)
+                subtitleStreamIndexesToRemove = subtitleAnalysis.streamIndexesToRemove
+                preferredSubtitleStreamIndex = subtitleAnalysis.preferredStreamIndex
             }
         }
 
@@ -1096,7 +1168,8 @@ final class MP4ValidationViewModel: ObservableObject {
             warnings: warnings,
             repairCandidates: repairCandidates,
             needsAudioMetadataRepair: needsAudioMetadataRepair,
-            audioStreamIndexesToRemove: audioStreamIndexesToRemove
+            audioStreamIndexesToRemove: audioStreamIndexesToRemove,
+            subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove
         )
 
         if !reasons.isEmpty {
@@ -1107,7 +1180,9 @@ final class MP4ValidationViewModel: ObservableObject {
                 severity: .error,
                 repairCandidates: repairCandidates,
                 needsAudioMetadataRepair: needsAudioMetadataRepair,
-                audioStreamIndexesToRemove: audioStreamIndexesToRemove
+                audioStreamIndexesToRemove: audioStreamIndexesToRemove,
+                subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove,
+                preferredSubtitleStreamIndex: preferredSubtitleStreamIndex
             )
         }
 
@@ -1118,7 +1193,9 @@ final class MP4ValidationViewModel: ObservableObject {
             severity: .warning,
             repairCandidates: repairCandidates,
             needsAudioMetadataRepair: needsAudioMetadataRepair,
-            audioStreamIndexesToRemove: audioStreamIndexesToRemove
+            audioStreamIndexesToRemove: audioStreamIndexesToRemove,
+            subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove,
+            preferredSubtitleStreamIndex: preferredSubtitleStreamIndex
         )
     }
 
@@ -1127,7 +1204,8 @@ final class MP4ValidationViewModel: ObservableObject {
         warnings: [String],
         repairCandidates: [MP4AudioRepairCandidate],
         needsAudioMetadataRepair: Bool,
-        audioStreamIndexesToRemove: Set<Int>
+        audioStreamIndexesToRemove: Set<Int>,
+        subtitleStreamIndexesToRemove: Set<Int>
     ) -> String {
         let findings = (reasons + warnings).joined(separator: " ").lowercased()
         var actions: [String] = []
@@ -1139,6 +1217,12 @@ final class MP4ValidationViewModel: ObservableObject {
         if !audioStreamIndexesToRemove.isEmpty {
             actions.append(
                 "Automatic repair available: keep the preferred main English audio and remove \(audioStreamIndexesToRemove.count) redundant English track(s)."
+            )
+        }
+
+        if !subtitleStreamIndexesToRemove.isEmpty {
+            actions.append(
+                "Automatic repair available: keep the best complete English subtitle track and remove \(subtitleStreamIndexesToRemove.count) redundant English variant(s)."
             )
         }
 
@@ -1283,6 +1367,107 @@ final class MP4ValidationViewModel: ObservableObject {
             streams: probeOutput.streams,
             formatDuration: probeOutput.format?.duration.flatMap(TimeInterval.init)
         )
+    }
+
+    private func subtitleAuthoringAnalysis(
+        filePath: String
+    ) async -> MP4ValidationSubtitleAuthoringAnalysis? {
+        let arguments = [
+            "-v", "error", "-select_streams", "s", "-count_packets",
+            "-show_streams", "-print_format", "json", filePath
+        ]
+        guard let output = await runProcessCaptureStdout(path: ffprobePath, arguments: arguments),
+              let data = output.data(using: .utf8),
+              let probe = try? JSONDecoder().decode(FFProbeOutput.self, from: data) else {
+            return nil
+        }
+
+        let supportedCodecs = Set(["mov_text", "subrip", "ass", "ssa"])
+        let supportedStreams = probe.streams.filter {
+            $0.codecName.map { supportedCodecs.contains($0.lowercased()) } == true
+        }
+        var candidates: [SubtitleTrackSelectionCandidate] = []
+        for (subtitleIndex, stream) in supportedStreams.enumerated() {
+            let language = stream.tags?["language"]
+            let title = stream.tags?["title"]
+            let handlerName = stream.tags?["handler_name"]
+            let normalizedLabel = [title, handlerName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+                .lowercased()
+            let shouldInspectContent = ["eng", "en", "und", ""]
+                .contains((language ?? "").lowercased())
+                || normalizedLabel.contains("english")
+            let metrics = shouldInspectContent && ffmpegAvailable
+                ? await validationSubtitleContentMetrics(
+                    filePath: filePath,
+                    streamIndex: stream.index
+                )
+                : nil
+            candidates.append(
+                SubtitleTrackSelectionCandidate(
+                    streamIndex: stream.index,
+                    subtitleIndex: subtitleIndex,
+                    language: language,
+                    title: title,
+                    handlerName: handlerName,
+                    cueCount: metrics?.cueCount ?? stream.nbReadPackets.flatMap(Int.init),
+                    accessibilityMarkerCount: metrics?.accessibilityMarkerCount ?? 0,
+                    isDefault: stream.disposition?.isDefault == 1,
+                    isForced: stream.disposition?.isForced == 1
+                        || normalizedLabel.contains("forced"),
+                    isHearingImpaired: stream.disposition?.isHearingImpaired == 1
+                        || normalizedLabel.contains("sdh")
+                        || normalizedLabel.contains("hearing impaired"),
+                    isCaptions: stream.disposition?.isCaptions == 1
+                )
+            )
+        }
+
+        let englishCandidates = candidates.filter(SubtitleTrackSelectionPolicy.isEnglish)
+        guard englishCandidates.count > 1,
+              let preferred = SubtitleTrackSelectionPolicy.preferredFullTrack(
+                from: englishCandidates
+              ) else {
+            return MP4ValidationSubtitleAuthoringAnalysis(
+                warnings: [],
+                streamIndexesToRemove: [],
+                preferredStreamIndex: nil,
+                rationale: nil,
+                streams: supportedStreams
+            )
+        }
+
+        let indexesToRemove = Set(
+            englishCandidates
+                .filter { $0.streamIndex != preferred.streamIndex }
+                .map(\.streamIndex)
+        )
+        let rationale = SubtitleTrackSelectionPolicy.rationale(
+            for: preferred,
+            among: englishCandidates
+        )
+        return MP4ValidationSubtitleAuthoringAnalysis(
+            warnings: ["multiple English subtitle tracks; preferred track is \(rationale)"],
+            streamIndexesToRemove: indexesToRemove,
+            preferredStreamIndex: preferred.streamIndex,
+            rationale: rationale,
+            streams: supportedStreams
+        )
+    }
+
+    private func validationSubtitleContentMetrics(
+        filePath: String,
+        streamIndex: Int
+    ) async -> (cueCount: Int, accessibilityMarkerCount: Int)? {
+        let arguments = [
+            "-nostdin", "-v", "error", "-i", filePath,
+            "-map", "0:\(streamIndex)", "-f", "srt", "-"
+        ]
+        guard let text = await runProcessCaptureStdout(path: ffmpegPath, arguments: arguments) else {
+            return nil
+        }
+        return SubtitleTrackSelectionPolicy.contentMetrics(from: text)
     }
 
     private func audioAuthoringAnalysis(

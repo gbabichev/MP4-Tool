@@ -15,6 +15,7 @@ struct ProcessingPreset: Codable, Identifiable, Equatable {
     var keepEnglishAudioOnly: Bool
     var keepAllEnglishAudioTracks: Bool?
     var keepEnglishSubtitlesOnly: Bool
+    var keepAllEnglishSubtitleTracks: Bool?
     var postProcessScriptPath: String
     var postProcessScriptRunTimingRawValue: String
     var postProcessScriptPassFileNameAsFirstArgument: Bool
@@ -53,6 +54,7 @@ extension ProcessingPreset {
             keepEnglishAudioOnly: true,
             keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
+            keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: false
@@ -72,6 +74,7 @@ extension ProcessingPreset {
             keepEnglishAudioOnly: true,
             keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
+            keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: false
@@ -91,6 +94,7 @@ extension ProcessingPreset {
             keepEnglishAudioOnly: true,
             keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
+            keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: false
@@ -110,6 +114,7 @@ extension ProcessingPreset {
             keepEnglishAudioOnly: true,
             keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: true,
+            keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: false
@@ -129,6 +134,7 @@ extension ProcessingPreset {
             keepEnglishAudioOnly: false,
             keepAllEnglishAudioTracks: false,
             keepEnglishSubtitlesOnly: false,
+            keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
             postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
             postProcessScriptPassFileNameAsFirstArgument: false

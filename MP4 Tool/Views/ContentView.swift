@@ -23,6 +23,7 @@ private struct ProcessingSettingsSnapshot: Equatable {
     let keepEnglishAudioOnly: Bool
     let keepAllEnglishAudioTracks: Bool
     let keepEnglishSubtitlesOnly: Bool
+    let keepAllEnglishSubtitleTracks: Bool
     let postProcessScriptPath: String
     let postProcessScriptRunTimingRaw: String
     let postProcessScriptPassFileNameAsFirstArgument: Bool
@@ -46,6 +47,7 @@ struct ContentView: View {
     @AppStorage("defaultKeepEnglishAudioOnly") private var keepEnglishAudioOnly: Bool = true
     @AppStorage("defaultKeepAllEnglishAudioTracks") private var keepAllEnglishAudioTracks: Bool = false
     @AppStorage("defaultKeepEnglishSubtitlesOnly") private var keepEnglishSubtitlesOnly: Bool = true
+    @AppStorage("defaultKeepAllEnglishSubtitleTracks") private var keepAllEnglishSubtitleTracks: Bool = false
     @AppStorage("defaultPostProcessScriptPath") private var postProcessScriptPath: String = ""
     @AppStorage("defaultPostProcessScriptRunTiming") private var postProcessScriptRunTimingRaw: String = PostProcessScriptRunTiming.afterEachItem.rawValue
     @AppStorage("defaultPostProcessScriptPassFileNameAsFirstArgument") private var postProcessScriptPassFileNameAsFirstArgument: Bool = false
@@ -178,6 +180,7 @@ struct ContentView: View {
             keepEnglishAudioOnly: keepEnglishAudioOnly,
             keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRaw: postProcessScriptRunTimingRaw,
             postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
@@ -278,6 +281,7 @@ struct ContentView: View {
             keepEnglishAudioOnly: keepEnglishAudioOnly,
             keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTiming: postProcessScriptRunTiming,
             postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
@@ -420,6 +424,7 @@ struct ContentView: View {
         let keepEnglishAudioOnly = keepEnglishAudioOnly
         let keepAllEnglishAudioTracks = keepAllEnglishAudioTracks
         let keepEnglishSubtitlesOnly = keepEnglishSubtitlesOnly
+        let keepAllEnglishSubtitleTracks = keepAllEnglishSubtitleTracks
         let postProcessScriptPath = postProcessScriptPath
         let postProcessScriptRunTiming = postProcessScriptRunTiming
         let postProcessScriptPassFileNameAsFirstArgument = postProcessScriptPassFileNameAsFirstArgument
@@ -439,6 +444,7 @@ struct ContentView: View {
                 keepEnglishAudioOnly: keepEnglishAudioOnly,
                 keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
                 postProcessScriptPath: postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTiming,
                 postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
@@ -542,6 +548,7 @@ struct ContentView: View {
                     keepEnglishAudioOnly: $keepEnglishAudioOnly,
                     keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
                     keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                    keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
                     postProcessScriptPath: $postProcessScriptPath,
                     postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
                     postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
@@ -595,6 +602,7 @@ struct ContentView: View {
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
                 keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
                 keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
                 postProcessScriptPath: $postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
                 postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
@@ -757,6 +765,7 @@ struct ContentView: View {
                                 keepEnglishAudioOnly: keepEnglishAudioOnly,
                                 keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                                keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
                                 postProcessScriptPath: postProcessScriptPath,
                                 postProcessScriptRunTiming: postProcessScriptRunTiming,
                                 postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
@@ -922,6 +931,7 @@ private struct CompactProcessingSetupView: View {
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepAllEnglishAudioTracks: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
+    @Binding var keepAllEnglishSubtitleTracks: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
@@ -950,6 +960,9 @@ private struct CompactProcessingSetupView: View {
         }
         for index in presets.indices where presets[index].keepAllEnglishAudioTracks == nil {
             presets[index].keepAllEnglishAudioTracks = false
+        }
+        for index in presets.indices where presets[index].keepAllEnglishSubtitleTracks == nil {
+            presets[index].keepAllEnglishSubtitleTracks = false
         }
         return presets.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -1293,6 +1306,7 @@ private struct CompactProcessingSetupView: View {
             keepEnglishAudioOnly: keepEnglishAudioOnly,
             keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
             keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+            keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
             postProcessScriptPassFileNameAsFirstArgument:
@@ -1314,6 +1328,7 @@ private struct CompactProcessingSetupView: View {
         keepEnglishAudioOnly = preset.keepEnglishAudioOnly
         keepAllEnglishAudioTracks = preset.keepAllEnglishAudioTracks ?? false
         keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
+        keepAllEnglishSubtitleTracks = preset.keepAllEnglishSubtitleTracks ?? false
         postProcessScriptPath = preset.postProcessScriptPath
         postProcessScriptRunTiming = preset.postProcessScriptRunTiming
         postProcessScriptPassFileNameAsFirstArgument =
@@ -1462,6 +1477,7 @@ struct ExpandedSettingsPanel: View {
     @Binding var keepEnglishAudioOnly: Bool
     @Binding var keepAllEnglishAudioTracks: Bool
     @Binding var keepEnglishSubtitlesOnly: Bool
+    @Binding var keepAllEnglishSubtitleTracks: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
     @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
@@ -1483,6 +1499,7 @@ struct ExpandedSettingsPanel: View {
                 keepEnglishAudioOnly: $keepEnglishAudioOnly,
                 keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
                 keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
                 postProcessScriptPath: $postProcessScriptPath,
                 postProcessScriptRunTiming: $postProcessScriptRunTiming,
                 postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
