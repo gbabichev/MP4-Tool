@@ -27,6 +27,19 @@ struct SubtitleTrackSelection {
 }
 
 enum SubtitleTrackSelectionPolicy {
+    static func needsContentInspection(
+        _ candidates: [SubtitleTrackSelectionCandidate]
+    ) -> Bool {
+        guard candidates.count > 1 else { return false }
+        let maximumCueCount = candidates.compactMap(\.cueCount).max()
+        let bestPriority = candidates.map {
+            rolePriority(role(of: $0, maximumCueCount: maximumCueCount))
+        }.max() ?? 0
+        return candidates.filter {
+            rolePriority(role(of: $0, maximumCueCount: maximumCueCount)) == bestPriority
+        }.count > 1
+    }
+
     static func select(
         from candidates: [SubtitleTrackSelectionCandidate],
         keepEnglishOnly: Bool,
@@ -201,6 +214,14 @@ enum SubtitleTrackSelectionPolicy {
         value -= min(candidate.accessibilityMarkerCount, 10_000) * 20
         if candidate.isDefault && resolvedRole != .forced { value += 50 }
         return value
+    }
+
+    private static func rolePriority(_ role: SubtitleTrackRole) -> Int {
+        switch role {
+        case .ordinary: return 3
+        case .sdh: return 2
+        case .forced: return 1
+        }
     }
 
     private static func normalizedLabel(_ candidate: SubtitleTrackSelectionCandidate) -> String {

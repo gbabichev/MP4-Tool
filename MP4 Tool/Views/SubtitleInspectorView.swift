@@ -65,7 +65,11 @@ struct SubtitleInspectorView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(minWidth: 340, idealWidth: 380, maxWidth: 420)
+            .frame(
+                minWidth: navigationContent == nil ? 340 : 300,
+                idealWidth: navigationContent == nil ? 380 : 310,
+                maxWidth: navigationContent == nil ? 420 : 320
+            )
             .background(Color.secondary.opacity(0.035))
 
             Divider()

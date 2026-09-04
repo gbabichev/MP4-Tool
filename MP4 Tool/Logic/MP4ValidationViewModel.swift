@@ -447,15 +447,15 @@ final class MP4ValidationViewModel: ObservableObject {
                 continue
             }
 
-            let subtitleAnalysis = await subtitleAuthoringAnalysis(filePath: result.filePath)
+            let sourceSubtitleStreams = await probeSubtitleStreams(filePath: result.filePath) ?? []
             let availableSubtitleStreamIndexes = Set(
-                subtitleAnalysis?.streams.map(\.index) ?? []
+                sourceSubtitleStreams.map(\.index)
             )
             let subtitleStreamIndexesToRemove = result.subtitleStreamIndexesToRemove
                 .intersection(availableSubtitleStreamIndexes)
-            let retainedSubtitleStreams = subtitleAnalysis?.streams.filter {
+            let retainedSubtitleStreams = sourceSubtitleStreams.filter {
                 !subtitleStreamIndexesToRemove.contains($0.index)
-            } ?? []
+            }
 
             let availableStreamIndexes = Set(compatibility.streams.map(\.index))
             let audioStreamIndexesToRemove = result.audioStreamIndexesToRemove
@@ -693,11 +693,10 @@ final class MP4ValidationViewModel: ObservableObject {
                 continue
             }
 
-            let repairedSubtitleAnalysis = await subtitleAuthoringAnalysis(filePath: temporaryURL.path)
+            let repairedSubtitleStreams = await probeSubtitleStreams(filePath: temporaryURL.path)
             guard let repairedCompatibility = await probeAudioCompatibility(filePath: temporaryURL.path),
                   repairedCompatibility.streams.count == retainedAudioPairs.count,
-                  (repairedSubtitleAnalysis?.streams.count ?? 0) == retainedSubtitleStreams.count,
-                  repairedSubtitleAnalysis?.streamIndexesToRemove.isEmpty != false,
+                  repairedSubtitleStreams?.count == retainedSubtitleStreams.count,
                   repairedCompatibility.streams.filter({ $0.disposition?.isDefault == 1 }).count <= 1,
                   audioTrackNamesAreDistinguishable(repairedCompatibility.streams),
                   confirmedCandidates.allSatisfy({ candidate in
@@ -1372,20 +1371,10 @@ final class MP4ValidationViewModel: ObservableObject {
     private func subtitleAuthoringAnalysis(
         filePath: String
     ) async -> MP4ValidationSubtitleAuthoringAnalysis? {
-        let arguments = [
-            "-v", "error", "-select_streams", "s", "-count_packets",
-            "-show_streams", "-print_format", "json", filePath
-        ]
-        guard let output = await runProcessCaptureStdout(path: ffprobePath, arguments: arguments),
-              let data = output.data(using: .utf8),
-              let probe = try? JSONDecoder().decode(FFProbeOutput.self, from: data) else {
+        guard let supportedStreams = await probeSubtitleStreams(filePath: filePath) else {
             return nil
         }
 
-        let supportedCodecs = Set(["mov_text", "subrip", "ass", "ssa"])
-        let supportedStreams = probe.streams.filter {
-            $0.codecName.map { supportedCodecs.contains($0.lowercased()) } == true
-        }
         var candidates: [SubtitleTrackSelectionCandidate] = []
         for (subtitleIndex, stream) in supportedStreams.enumerated() {
             let language = stream.tags?["language"]
@@ -1395,15 +1384,6 @@ final class MP4ValidationViewModel: ObservableObject {
                 .compactMap { $0 }
                 .joined(separator: " ")
                 .lowercased()
-            let shouldInspectContent = ["eng", "en", "und", ""]
-                .contains((language ?? "").lowercased())
-                || normalizedLabel.contains("english")
-            let metrics = shouldInspectContent && ffmpegAvailable
-                ? await validationSubtitleContentMetrics(
-                    filePath: filePath,
-                    streamIndex: stream.index
-                )
-                : nil
             candidates.append(
                 SubtitleTrackSelectionCandidate(
                     streamIndex: stream.index,
@@ -1411,8 +1391,9 @@ final class MP4ValidationViewModel: ObservableObject {
                     language: language,
                     title: title,
                     handlerName: handlerName,
-                    cueCount: metrics?.cueCount ?? stream.nbReadPackets.flatMap(Int.init),
-                    accessibilityMarkerCount: metrics?.accessibilityMarkerCount ?? 0,
+                    cueCount: stream.nbFrames.flatMap(Int.init)
+                        ?? stream.nbReadPackets.flatMap(Int.init),
+                    accessibilityMarkerCount: 0,
                     isDefault: stream.disposition?.isDefault == 1,
                     isForced: stream.disposition?.isForced == 1
                         || normalizedLabel.contains("forced"),
@@ -1424,11 +1405,53 @@ final class MP4ValidationViewModel: ObservableObject {
             )
         }
 
-        let englishCandidates = candidates.filter(SubtitleTrackSelectionPolicy.isEnglish)
-        guard englishCandidates.count > 1,
-              let preferred = SubtitleTrackSelectionPolicy.preferredFullTrack(
-                from: englishCandidates
-              ) else {
+        var englishCandidates = candidates.filter(SubtitleTrackSelectionPolicy.isEnglish)
+        guard englishCandidates.count > 1 else {
+            return MP4ValidationSubtitleAuthoringAnalysis(
+                warnings: [],
+                streamIndexesToRemove: [],
+                preferredStreamIndex: nil,
+                rationale: nil,
+                streams: supportedStreams
+            )
+        }
+        guard ffmpegAvailable
+                || !SubtitleTrackSelectionPolicy.needsContentInspection(englishCandidates) else {
+            return MP4ValidationSubtitleAuthoringAnalysis(
+                warnings: ["multiple English subtitle tracks require a deeper review"],
+                streamIndexesToRemove: [],
+                preferredStreamIndex: nil,
+                rationale: nil,
+                streams: supportedStreams
+            )
+        }
+
+        if SubtitleTrackSelectionPolicy.needsContentInspection(englishCandidates) {
+            for index in englishCandidates.indices {
+                guard let metrics = await validationSubtitleContentMetrics(
+                    filePath: filePath,
+                    streamIndex: englishCandidates[index].streamIndex
+                ) else { continue }
+                let candidate = englishCandidates[index]
+                englishCandidates[index] = SubtitleTrackSelectionCandidate(
+                    streamIndex: candidate.streamIndex,
+                    subtitleIndex: candidate.subtitleIndex,
+                    language: candidate.language,
+                    title: candidate.title,
+                    handlerName: candidate.handlerName,
+                    cueCount: metrics.cueCount,
+                    accessibilityMarkerCount: metrics.accessibilityMarkerCount,
+                    isDefault: candidate.isDefault,
+                    isForced: candidate.isForced,
+                    isHearingImpaired: candidate.isHearingImpaired,
+                    isCaptions: candidate.isCaptions
+                )
+            }
+        }
+
+        guard let preferred = SubtitleTrackSelectionPolicy.preferredFullTrack(
+            from: englishCandidates
+        ) else {
             return MP4ValidationSubtitleAuthoringAnalysis(
                 warnings: [],
                 streamIndexesToRemove: [],
@@ -1454,6 +1477,24 @@ final class MP4ValidationViewModel: ObservableObject {
             rationale: rationale,
             streams: supportedStreams
         )
+    }
+
+    private func probeSubtitleStreams(filePath: String) async -> [VideoStream]? {
+        let arguments = [
+            "-v", "error", "-select_streams", "s",
+            "-show_streams", "-print_format", "json", filePath
+        ]
+        guard let output = await runProcessCaptureStdout(path: ffprobePath, arguments: arguments),
+              let data = output.data(using: .utf8),
+              let probe = try? JSONDecoder().decode(FFProbeOutput.self, from: data) else {
+            return nil
+        }
+
+        let supportedCodecs = Set(["mov_text", "subrip", "ass", "ssa"])
+        let supportedStreams = probe.streams.filter {
+            $0.codecName.map { supportedCodecs.contains($0.lowercased()) } == true
+        }
+        return supportedStreams
     }
 
     private func validationSubtitleContentMetrics(

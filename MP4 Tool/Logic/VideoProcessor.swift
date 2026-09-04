@@ -30,6 +30,7 @@ struct VideoStream: Codable {
     let height: Int?
     let averageFrameRate: String?
     let realFrameRate: String?
+    let nbFrames: String?
     let nbReadPackets: String?
     let disposition: VideoStreamDisposition?
 
@@ -50,6 +51,7 @@ struct VideoStream: Codable {
         case height
         case averageFrameRate = "avg_frame_rate"
         case realFrameRate = "r_frame_rate"
+        case nbFrames = "nb_frames"
         case nbReadPackets = "nb_read_packets"
         case disposition
     }
@@ -2149,9 +2151,6 @@ class VideoProcessor: ObservableObject {
 
         if let streams = selectStreams {
             arguments.append(contentsOf: ["-select_streams", streams])
-            if streams == "s" {
-                arguments.append("-count_packets")
-            }
         }
 
         arguments.append(inputFile)
@@ -2639,11 +2638,6 @@ class VideoProcessor: ObservableObject {
                 || normalizedTitle.contains("hearing impaired")
                 || normalizedTitle.contains("sdh")
             let captions = stream.disposition?.isCaptions == 1
-            let shouldInspectContent = language == "eng" || language == "en"
-                || language == nil || language == "und"
-            let contentMetrics = shouldInspectContent
-                ? await subtitleContentMetrics(inputFile: inputFile, streamIndex: stream.index)
-                : nil
             candidates.append(
                 SubtitleTrackSelectionCandidate(
                 streamIndex: stream.index,
@@ -2651,14 +2645,43 @@ class VideoProcessor: ObservableObject {
                 language: language,
                 title: title,
                 handlerName: handlerName,
-                cueCount: contentMetrics?.cueCount ?? stream.nbReadPackets.flatMap(Int.init),
-                accessibilityMarkerCount: contentMetrics?.accessibilityMarkerCount ?? 0,
+                cueCount: stream.nbFrames.flatMap(Int.init)
+                    ?? stream.nbReadPackets.flatMap(Int.init),
+                accessibilityMarkerCount: 0,
                 isDefault: stream.disposition?.isDefault == 1,
                 isForced: forced,
                 isHearingImpaired: hearingImpaired,
                 isCaptions: captions
                 )
             )
+        }
+
+        let englishCandidates = candidates.filter(SubtitleTrackSelectionPolicy.isEnglish)
+        let contentInspectionPool = englishCandidates.isEmpty
+            ? candidates.filter(SubtitleTrackSelectionPolicy.isUndefinedLanguage)
+            : englishCandidates
+        if SubtitleTrackSelectionPolicy.needsContentInspection(contentInspectionPool) {
+            let inspectedIndexes = Set(contentInspectionPool.map(\.streamIndex))
+            for index in candidates.indices where inspectedIndexes.contains(candidates[index].streamIndex) {
+                guard let metrics = await subtitleContentMetrics(
+                    inputFile: inputFile,
+                    streamIndex: candidates[index].streamIndex
+                ) else { continue }
+                let candidate = candidates[index]
+                candidates[index] = SubtitleTrackSelectionCandidate(
+                    streamIndex: candidate.streamIndex,
+                    subtitleIndex: candidate.subtitleIndex,
+                    language: candidate.language,
+                    title: candidate.title,
+                    handlerName: candidate.handlerName,
+                    cueCount: metrics.cueCount,
+                    accessibilityMarkerCount: metrics.accessibilityMarkerCount,
+                    isDefault: candidate.isDefault,
+                    isForced: candidate.isForced,
+                    isHearingImpaired: candidate.isHearingImpaired,
+                    isCaptions: candidate.isCaptions
+                )
+            }
         }
 
         let selection = SubtitleTrackSelectionPolicy.select(
