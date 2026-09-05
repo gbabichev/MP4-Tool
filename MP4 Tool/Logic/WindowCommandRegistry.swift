@@ -8,6 +8,7 @@
 import Combine
 
 struct WindowCommandActions {
+    let openInputFile: () -> Void
     let openInputFolder: () -> Void
     let selectOutputFolder: () -> Void
     let clearFolders: () -> Void

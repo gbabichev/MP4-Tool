@@ -42,21 +42,55 @@ class ContentViewModel: ObservableObject {
         return "\(minutes)m \(remainingSeconds)s"
     }
 
+    func selectInputFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.allowedContentTypes = ["mkv", "mp4", "avi", "mov", "m4v"].compactMap {
+            UTType(filenameExtension: $0)
+        }
+        panel.message = "Choose a video file to process"
+        panel.prompt = "Open"
+
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.addVideoFile(url: url)
+        }
+    }
+
+    func selectInputFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.message = "Choose a folder containing video files"
+        panel.prompt = "Open"
+
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            self.setInputFolder(path: url.path)
+        }
+    }
+
     func selectFolder(isInput: Bool) {
+        if isInput {
+            selectInputFolder()
+            return
+        }
+
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
-        panel.message = isInput ? "Select folder containing video files to encode" : "Select folder where encoded files will be saved"
+        panel.message = "Select folder where encoded files will be saved"
 
         CleanFilePanelPresenter.present(panel) { [weak self] response in
             guard let self, response == .OK, let url = panel.url else { return }
-            if isInput {
-                self.setInputFolder(path: url.path)
-            } else {
-                self.setOutputFolder(path: url.path)
-            }
+            self.setOutputFolder(path: url.path)
         }
     }
 

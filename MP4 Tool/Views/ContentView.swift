@@ -158,7 +158,8 @@ struct ContentView: View {
 
     private var commandActions: WindowCommandActions {
         WindowCommandActions(
-            openInputFolder: { viewModel.selectFolder(isInput: true) },
+            openInputFile: { viewModel.selectInputFile() },
+            openInputFolder: { viewModel.selectInputFolder() },
             selectOutputFolder: { viewModel.selectFolder(isInput: false) },
             clearFolders: { viewModel.clearFolders() },
             startProcessing: {
@@ -672,13 +673,23 @@ struct ContentView: View {
 //#endif
             .toolbar {
                 ToolbarItem(placement: .navigation) {
-                    Button(action: {
-                        viewModel.selectFolder(isInput: true)
-                    }) {
-                        Label("Input Folder", systemImage: "folder")
+                    Menu {
+                        Button {
+                            viewModel.selectInputFile()
+                        } label: {
+                            Label("Open File...", systemImage: "doc")
+                        }
+
+                        Button {
+                            viewModel.selectInputFolder()
+                        } label: {
+                            Label("Open Folder...", systemImage: "folder")
+                        }
+                    } label: {
+                        Label("Open", systemImage: "folder.badge.plus")
                     }
                     .disabled(viewModel.processor.isProcessing)
-                    .help(viewModel.inputFolderPath.isEmpty ? "Select input folder" : viewModel.inputFolderPath)
+                    .help("Open a video file or folder")
                     //.foregroundStyle(.orange)
                 }
 

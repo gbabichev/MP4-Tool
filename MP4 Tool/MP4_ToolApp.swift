@@ -194,11 +194,19 @@ struct MP4_ToolApp: App {
 
             CommandGroup(replacing: .newItem) {
                 Button(action: {
-                    windowCommandRegistry.activeActions?.openInputFolder()
+                    windowCommandRegistry.activeActions?.openInputFile()
                 }) {
-                    Label("Open Input Folder...", systemImage: "folder")
+                    Label("Open File...", systemImage: "doc")
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                .disabled(windowCommandRegistry.activeAvailability.isProcessing || !windowCommandRegistry.hasActiveWindow)
+
+                Button(action: {
+                    windowCommandRegistry.activeActions?.openInputFolder()
+                }) {
+                    Label("Open Folder...", systemImage: "folder")
+                }
+                .keyboardShortcut("o", modifiers: [.command, .option])
                 .disabled(windowCommandRegistry.activeAvailability.isProcessing || !windowCommandRegistry.hasActiveWindow)
 
                 Button(action: {
