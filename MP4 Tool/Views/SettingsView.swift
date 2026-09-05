@@ -85,15 +85,6 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            HStack {
-                Text("Customize Preset")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
-
             ScrollView {
                 VStack(spacing: 12) {
                     processingPresetsSection
@@ -126,7 +117,7 @@ struct SettingsView: View {
                             SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
                                 HStack {
                                     Slider(value: $crfValue, in: 0...50, step: 1)
-                                        .frame(width: 200)
+                                        .frame(minWidth: 120, idealWidth: 200, maxWidth: 200)
                                         .disabled(isProcessing || !encodeVideo)
                                     Text("\(Int(crfValue))")
                                         .frame(width: 30)
@@ -263,62 +254,19 @@ struct SettingsView: View {
     private var processingPresetsSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Selected Preset")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        presetSummary
+                        Spacer(minLength: 8)
+                        presetActionButtons
+                    }
+                    .frame(minWidth: 390)
 
-                        Text(
-                            selectedProcessingPreset.map(presetDisplayName)
-                                ?? "Custom Settings"
-                        )
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 8) {
+                        presetSummary
+                        presetActionButtons
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Button {
-                        newPresetName = ""
-                        isShowingSavePresetAlert = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .help("Save current settings as a new preset")
-                    .disabled(isProcessing)
-
-                    Button {
-                        updateSelectedPreset()
-                    } label: {
-                        Image(systemName: "square.and.arrow.down")
-                    }
-                    .help("Save changes to the selected preset")
-                    .disabled(
-                        isProcessing
-                        || selectedProcessingPreset == nil
-                        || selectedPresetIsBuiltIn
-                        || !selectedPresetIsModified
-                    )
-
-                    Button {
-                        resetSelectedPreset()
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                    }
-                    .help("Discard unsaved changes and restore the selected preset")
-                    .disabled(
-                        isProcessing
-                        || selectedProcessingPreset == nil
-                        || !selectedPresetIsModified
-                    )
-
-                    Button(role: .destructive) {
-                        isShowingDeletePresetAlert = true
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .help("Delete selected preset")
-                    .disabled(isProcessing || selectedProcessingPreset == nil || selectedPresetIsBuiltIn)
                 }
                 .controlSize(.small)
 
@@ -343,6 +291,71 @@ struct SettingsView: View {
                 .font(.subheadline.weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var presetSummary: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Selected Preset")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: true, vertical: false)
+
+            Text(
+                selectedProcessingPreset.map(presetDisplayName)
+                    ?? "Custom Settings"
+            )
+            .font(.subheadline.weight(.medium))
+            .lineLimit(1)
+            .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var presetActionButtons: some View {
+        HStack(spacing: 6) {
+            Button {
+                newPresetName = ""
+                isShowingSavePresetAlert = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .help("Save current settings as a new preset")
+            .disabled(isProcessing)
+
+            Button {
+                updateSelectedPreset()
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+            }
+            .help("Save changes to the selected preset")
+            .disabled(
+                isProcessing
+                || selectedProcessingPreset == nil
+                || selectedPresetIsBuiltIn
+                || !selectedPresetIsModified
+            )
+
+            Button {
+                resetSelectedPreset()
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+            }
+            .help("Discard unsaved changes and restore the selected preset")
+            .disabled(
+                isProcessing
+                || selectedProcessingPreset == nil
+                || !selectedPresetIsModified
+            )
+
+            Button(role: .destructive) {
+                isShowingDeletePresetAlert = true
+            } label: {
+                Image(systemName: "trash")
+            }
+            .help("Delete selected preset")
+            .disabled(isProcessing || selectedProcessingPreset == nil || selectedPresetIsBuiltIn)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func currentPreset(id: UUID, name: String) -> ProcessingPreset {

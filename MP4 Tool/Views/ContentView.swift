@@ -275,102 +275,17 @@ struct ContentView: View {
     }
 
     private func toggleLogInspector() {
-        if isLogExpanded {
-            prefersLogExpanded = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                isLogExpanded = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    updateMainWindowMinimumSize(inspectorVisible: false)
-                }
-            }
-        } else {
-            prefersLogExpanded = true
-            presentLogInspectorWhenWindowIsReady()
-        }
+        prefersLogExpanded = !isLogExpanded
+        isLogExpanded.toggle()
     }
 
     private func restoreLogInspectorIfNeeded() {
         guard !didRestoreLogInspector else { return }
         didRestoreLogInspector = true
         guard prefersLogExpanded else { return }
-        presentLogInspectorWhenWindowIsReady()
-    }
-
-    private func presentLogInspectorWhenWindowIsReady() {
-        guard !isLogExpanded else { return }
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
-              let visibleFrame = window.screen?.visibleFrame else {
-            DispatchQueue.main.async {
-                isLogExpanded = true
-            }
-            return
-        }
-
-        if isSettingsExpanded && visibleFrame.width < 1_080 {
-            isSettingsExpandedBinding.wrappedValue = false
-            DispatchQueue.main.async {
-                presentLogInspectorWhenWindowIsReady()
-            }
-            return
-        }
-
-        let minimumWidth: CGFloat = isSettingsExpanded ? 1_080 : 880
-        let minimumHeight: CGFloat = 500
-        window.contentMinSize = NSSize(width: minimumWidth, height: minimumHeight)
-        let targetWidth = min(max(window.frame.width, minimumWidth), visibleFrame.width)
-        let targetHeight = min(max(window.frame.height, minimumHeight), visibleFrame.height)
-
-        var targetFrame = window.frame
-        targetFrame.origin.x = min(
-            max(window.frame.midX - targetWidth / 2, visibleFrame.minX),
-            visibleFrame.maxX - targetWidth
-        )
-        targetFrame.origin.y = min(
-            max(window.frame.maxY - targetHeight, visibleFrame.minY),
-            visibleFrame.maxY - targetHeight
-        )
-        targetFrame.size = NSSize(width: targetWidth, height: targetHeight)
-
-        if targetFrame != window.frame {
-            window.setFrame(targetFrame, display: true)
-        }
-
-        // Give AppKit one complete layout pass before it inserts the inspector.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.main.async {
             isLogExpanded = true
         }
-    }
-
-    private func updateMainWindowMinimumSize(inspectorVisible: Bool) {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-        let minimumWidth: CGFloat
-        if inspectorVisible {
-            minimumWidth = isSettingsExpanded ? 1_080 : 880
-        } else {
-            minimumWidth = 800
-        }
-        let minimumHeight: CGFloat = inspectorVisible ? 500 : 520
-        window.contentMinSize = NSSize(width: minimumWidth, height: minimumHeight)
-
-        guard inspectorVisible,
-              let visibleFrame = window.screen?.visibleFrame,
-              window.frame.width < minimumWidth || window.frame.height < minimumHeight else {
-            return
-        }
-
-        let targetWidth = min(max(window.frame.width, minimumWidth), visibleFrame.width)
-        let targetHeight = min(max(window.frame.height, minimumHeight), visibleFrame.height)
-        var targetFrame = window.frame
-        targetFrame.origin.x = min(
-            max(window.frame.midX - targetWidth / 2, visibleFrame.minX),
-            visibleFrame.maxX - targetWidth
-        )
-        targetFrame.origin.y = min(
-            max(window.frame.maxY - targetHeight, visibleFrame.minY),
-            visibleFrame.maxY - targetHeight
-        )
-        targetFrame.size = NSSize(width: targetWidth, height: targetHeight)
-        window.setFrame(targetFrame, display: true)
     }
 
     private func restoreLastOutputFolderIfAvailable() {
@@ -677,7 +592,7 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(minWidth: 500, minHeight: 300)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
         .inspector(isPresented: $isLogExpanded) {
             LogInspectorView(
@@ -942,10 +857,6 @@ struct ContentView: View {
             }
             .onChange(of: framePreviewsEnabled) { _, enabled in
                 viewModel.processor.setFramePreviewsEnabled(enabled)
-            }
-            .onChange(of: isSettingsExpanded) { _, _ in
-                guard isLogExpanded else { return }
-                updateMainWindowMinimumSize(inspectorVisible: true)
             }
             .task {
                 var candidateSnapshot: ProcessingSettingsSnapshot?

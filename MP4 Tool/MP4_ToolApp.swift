@@ -298,7 +298,6 @@ struct MP4_ToolApp: App {
             }
         }
         .defaultSize(width: 1_100, height: 720)
-        .windowResizability(.contentMinSize)
         
         Window("Video Splitter", id: "videoSplitter") {
             VideoSplitterView()
