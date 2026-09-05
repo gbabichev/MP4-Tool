@@ -332,6 +332,7 @@ class VideoProcessor: ObservableObject {
     private var framePreviewProcess: Process?
     private var framePreviewToken = UUID()
     private var activeFramePreviewInputFile: String?
+    private var activeHistoryFFmpegCommands: [String] = []
 
     // Batch processing tracking
     private var pendingBatchFiles: [VideoFileInfo] = []
@@ -1170,6 +1171,7 @@ class VideoProcessor: ObservableObject {
             let filePathForProcessing = fileInfo.path
             let currentIndex = index
             let fileStartTime = Date()
+            activeHistoryFFmpegCommands = []
             activeFramePreviewInputFile = nil
             stopFramePreviewUpdates(clearPreview: true)
             DispatchQueue.main.async {
@@ -1372,7 +1374,33 @@ class VideoProcessor: ObservableObject {
                     fileName: URL(fileURLWithPath: outputFilePath).lastPathComponent,
                     originalBytes: inputSize,
                     outputBytes: outputSize,
-                    processedAt: fileEndTime
+                    startedAt: fileStartTime,
+                    processedAt: fileEndTime,
+                    runtimeSeconds: duration,
+                    details: ProcessingHistoryDetails(
+                        runID: runIdentifier,
+                        inputPath: inputFilePath,
+                        outputPath: outputFilePath,
+                        mode: mode.description,
+                        sourceDurationSeconds: sourceDuration,
+                        encodeVideo: encodeVideo,
+                        encodeAudio: encodeAudio,
+                        crfValue: mode == .remux ? nil : crfValue,
+                        resolution: mode == .remux ? nil : resolution.description,
+                        encoderPreset: mode == .remux ? nil : preset.description,
+                        createSubfolders: createSubfolders,
+                        automaticRename: automaticRename,
+                        deleteOriginal: deleteOriginal,
+                        keepEnglishAudioOnly: keepEnglishAudioOnly,
+                        keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
+                        keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                        keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
+                        ffmpegSource: isUsingSystemFFmpeg ? "System" : "Bundled",
+                        ffmpegVersion: ffmpegVersion,
+                        appVersion: appVersion,
+                        appBuild: appBuild,
+                        ffmpegCommands: activeHistoryFFmpegCommands
+                    )
                 )
                 if !historyWasSaved {
                     addLog("􀇾 Warning: Could not save this file to processing history")
@@ -3003,6 +3031,9 @@ class VideoProcessor: ObservableObject {
     }
 
     private func runCommand(arguments: [String]) async -> (success: Bool, errorMessage: String) {
+        activeHistoryFFmpegCommands.append(
+            shellCommand(executable: ffmpegPath, arguments: arguments)
+        )
         let expectedDuration = currentInputDurationSeconds
         let expectedFrameRate = currentInputFrameRate
         return await withCheckedContinuation { continuation in

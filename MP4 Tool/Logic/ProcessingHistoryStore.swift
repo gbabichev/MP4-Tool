@@ -6,12 +6,40 @@
 import Foundation
 import Combine
 
+struct ProcessingHistoryDetails: Codable, Equatable {
+    let runID: String
+    let inputPath: String
+    let outputPath: String
+    let mode: String
+    let sourceDurationSeconds: TimeInterval?
+    let encodeVideo: Bool
+    let encodeAudio: Bool
+    let crfValue: Int?
+    let resolution: String?
+    let encoderPreset: String?
+    let createSubfolders: Bool
+    let automaticRename: Bool
+    let deleteOriginal: Bool
+    let keepEnglishAudioOnly: Bool
+    let keepAllEnglishAudioTracks: Bool
+    let keepEnglishSubtitlesOnly: Bool
+    let keepAllEnglishSubtitleTracks: Bool
+    let ffmpegSource: String
+    let ffmpegVersion: String
+    let appVersion: String
+    let appBuild: String
+    let ffmpegCommands: [String]
+}
+
 struct ProcessingHistoryEntry: Codable, Identifiable, Equatable {
     let id: UUID
     let fileName: String
     let originalBytes: Int64
     let outputBytes: Int64
+    let startedAt: Date?
     let processedAt: Date
+    let runtimeSeconds: TimeInterval?
+    let details: ProcessingHistoryDetails?
 
     var savedBytes: Int64 {
         originalBytes - outputBytes
@@ -50,14 +78,20 @@ final class ProcessingHistoryStore: ObservableObject {
         fileName: String,
         originalBytes: Int64,
         outputBytes: Int64,
-        processedAt: Date
+        startedAt: Date,
+        processedAt: Date,
+        runtimeSeconds: TimeInterval,
+        details: ProcessingHistoryDetails
     ) -> Bool {
         let entry = ProcessingHistoryEntry(
             id: UUID(),
             fileName: fileName,
             originalBytes: originalBytes,
             outputBytes: outputBytes,
-            processedAt: processedAt
+            startedAt: startedAt,
+            processedAt: processedAt,
+            runtimeSeconds: runtimeSeconds,
+            details: details
         )
         entries.insert(entry, at: 0)
         return persist()
