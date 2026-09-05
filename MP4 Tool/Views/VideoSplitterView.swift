@@ -15,13 +15,20 @@ struct VideoSplitterView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text("Find natural split points around black frames, review the detected cuts, and split selected MP4 files without re-encoding.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
-                statusContent
-                Spacer()
+            if viewModel.isScanning
+                || viewModel.isSplitting
+                || !viewModel.scanProgress.isEmpty
+                || !viewModel.splitProgress.isEmpty
+                || !viewModel.scanAlertText.isEmpty {
+                HStack(spacing: 12) {
+                    statusContent
+                    Spacer()
+                }
             }
-
-            Divider()
 
             HStack(spacing: 16) {
                 if showSettings {
@@ -327,17 +334,12 @@ private extension VideoSplitterView {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-        } else {
-            Text(viewModel.ffmpegStatusLabel)
+        } else if !viewModel.scanAlertText.isEmpty {
+            Text(viewModel.scanAlertText)
                 .font(.caption)
-                .foregroundColor(viewModel.mediaToolsStatusIsWarning ? .orange : .secondary)
-            if !viewModel.scanAlertText.isEmpty {
-                Text(viewModel.scanAlertText)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+                .foregroundStyle(.red)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
     }
 }

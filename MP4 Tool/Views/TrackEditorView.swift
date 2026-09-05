@@ -16,7 +16,7 @@ struct TrackEditorView: View {
             }
 
             Text("Inspect every media track, choose what to keep, add external audio or subtitles, and create a new validated MP4.")
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             GroupBox("Source") {
@@ -270,17 +270,12 @@ struct TrackEditorView: View {
 
     @ViewBuilder
     private var statusContent: some View {
-        HStack(spacing: 8) {
-            if viewModel.operationInProgress {
-                ProgressView()
-                    .controlSize(.small)
-            }
-            Image(systemName: viewModel.hasTools ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(viewModel.hasTools ? Color.green : Color.orange)
-            Text(viewModel.hasTools ? "FFmpeg ready" : "FFmpeg and FFprobe are required")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if !viewModel.statusMessage.isEmpty {
+        if viewModel.operationInProgress || !viewModel.statusMessage.isEmpty {
+            HStack(spacing: 8) {
+                if viewModel.operationInProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                }
                 Text(viewModel.statusMessage)
                     .font(.caption)
                     .foregroundStyle(statusColor)
