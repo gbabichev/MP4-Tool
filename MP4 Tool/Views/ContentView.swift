@@ -1439,8 +1439,6 @@ private struct LogInspectorView: View {
             }
             .padding(10)
 
-            Divider()
-
             Group {
                 if logText.isEmpty {
                     ContentUnavailableView(
@@ -1457,6 +1455,12 @@ private struct LogInspectorView: View {
                     )
                 }
             }
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.secondary.opacity(0.06))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottomTrailing) {

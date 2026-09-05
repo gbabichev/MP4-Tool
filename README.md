@@ -104,25 +104,37 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 ## 📝 Changelog
 
 ### 2.0.0
+
 #### Interface improvements
-- Redesigned the main window with responsive Settings and Log panes.
+
+- Rebuilt the main window and Inspect & Repair around native, responsive split views that adapt as sidebars and the Log inspector open, close, and resize.
 - Added live frame previews, richer progress reporting, ETA, and completion summaries.
-- Modernized the selectable Log inspector with wrapping, semantic colors, and “Jump to Latest.”
+- Modernized the selectable Log inspector with wrapping, semantic colors, “Jump to Latest,” and a card-based layout.
 - Standardized selection, filtering, repair, and CSV export controls across tools.
+- Added Reset All and individual result removal to every Inspect & Repair category.
 - Improved file and folder selection throughout the app.
 - Added native Dock behavior for reopening the main window.
 - Improved performance for large tables and file lists.
+- Fixed completion-overlay presentation on newer macOS releases.
+
 #### New tools and features
+
 - Added the unified Inspect & Repair tool for compatibility, metadata, timing, and subtitle checks.
 - Added Track Editor to inspect, add, remove, and edit media tracks.
 - Added Metadata Cleaner for detecting and removing unwanted attribution metadata.
 - Added subtitle auditing, including missing-subtitle and English-subtitle checks.
+- Added automatic detection and repair of redundant English audio and subtitle tracks, with suggested next steps when an issue cannot be repaired automatically.
 - Added persistent Run History with multi-selection and deletion.
 - Added reusable encoding and remux presets.
+
 #### Processing improvements
+
 - Added output validation for stream presence, duration, readability, and truncation.
 - Improved AAC multichannel encoding and Apple playback compatibility.
-- Improved subtitle titles, roles, language metadata, and default-track selection.
+- Encoding and remuxing now keep one preferred main English audio track by default, avoiding commentary, audio-description, and dubbed tracks; a new setting can preserve every English track when needed.
+- Encoding and remuxing now choose one complete English subtitle track by default, preferring ordinary subtitles over SDH and forced-only variants. When labels are unclear, cue counts and accessibility markers help identify the best track.
+- Accelerated compatibility scans by performing deeper subtitle-content analysis only when track metadata cannot identify a clear choice.
+- Improved subtitle titles, roles, language metadata, and default-track selection for Apple playback.
 - Added Stop After Current File and faster immediate stopping.
 - Added pending Queue reordering and inline item removal.
 - Added configurable staging storage, disk-space reporting, and abandoned-file cleanup.
