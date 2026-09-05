@@ -147,6 +147,7 @@ struct MP4_ToolApp: App {
             MainWindowRootView(
                 viewModel: sharedCLIViewModel
             )
+            .standardWindowToolbarDivider()
             .environmentObject(windowCommandRegistry)
             .onAppear {
                 appDelegate.videoProcessor = sharedCLIViewModel.processor
@@ -296,29 +297,48 @@ struct MP4_ToolApp: App {
                 .disabled(!windowCommandRegistry.hasActiveWindow)
             }
         }
+        .defaultSize(width: 1_100, height: 720)
+        .windowResizability(.contentMinSize)
         
         Window("Video Splitter", id: "videoSplitter") {
             VideoSplitterView()
+                .standardWindowToolbarDivider()
         }
 
         Window("Inspect & Repair", id: "inspectRepair") {
             InspectRepairView()
+                .standardWindowToolbarDivider()
         }
-        .defaultSize(width: 980, height: 720)
+        .defaultSize(width: 1_100, height: 720)
 
         Window("Track Editor", id: "trackEditor") {
             TrackEditorView()
+                .standardWindowToolbarDivider()
         }
         .defaultSize(width: 1120, height: 760)
 
         Window("Scan for Non-MP4 Files", id: "nonMP4Scanner") {
             NonMP4ScannerView()
+                .standardWindowToolbarDivider()
         }
 
         Window("Run History", id: "runHistory") {
             RunHistoryView()
+                .standardWindowToolbarDivider()
         }
         .defaultSize(width: 980, height: 520)
+    }
+}
+
+private extension View {
+    /// Draws a consistent boundary between the native window toolbar and the
+    /// SwiftUI content, independent of the toolbar style macOS chooses.
+    func standardWindowToolbarDivider() -> some View {
+        overlay(alignment: .top) {
+            Divider()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 

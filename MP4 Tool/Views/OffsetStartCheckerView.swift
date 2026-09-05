@@ -20,7 +20,9 @@ struct OffsetStartCheckerView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        Group {
+            if isActive {
+                NavigationSplitView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let navigationContent {
@@ -78,15 +80,12 @@ struct OffsetStartCheckerView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(
-                minWidth: navigationContent == nil ? 340 : 300,
-                idealWidth: navigationContent == nil ? 380 : 310,
-                maxWidth: navigationContent == nil ? 420 : 320
+            .navigationSplitViewColumnWidth(
+                min: navigationContent == nil ? 340 : 360,
+                ideal: 380,
+                max: 420
             )
-            .background(Color.secondary.opacity(0.035))
-
-            Divider()
-
+        } detail: {
             VStack(alignment: .leading, spacing: 0) {
                 GroupBox {
                 if viewModel.isScanning || viewModel.isFixing {
@@ -243,8 +242,10 @@ struct OffsetStartCheckerView: View {
             .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .frame(minWidth: 860, minHeight: 560)
+                .navigationSplitViewStyle(.balanced)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
         .onChange(of: sharedInputURL?.wrappedValue?.path) { _, _ in
             applySharedInput()
         }

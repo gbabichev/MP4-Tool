@@ -51,7 +51,7 @@ struct ContentView: View {
     @AppStorage("defaultPostProcessScriptPath") private var postProcessScriptPath: String = ""
     @AppStorage("defaultPostProcessScriptRunTiming") private var postProcessScriptRunTimingRaw: String = PostProcessScriptRunTiming.afterEachItem.rawValue
     @AppStorage("defaultPostProcessScriptPassFileNameAsFirstArgument") private var postProcessScriptPassFileNameAsFirstArgument: Bool = false
-    @AppStorage("defaultIsLogExpanded") private var isLogExpanded = true
+    @AppStorage("defaultIsLogExpanded") private var prefersLogExpanded = true
     @SceneStorage("isSettingsExpanded") private var sceneIsSettingsExpanded: Bool?
     @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = false
     @AppStorage("didAdoptCompactProcessingSetup") private var didAdoptCompactProcessingSetup = false
@@ -62,6 +62,8 @@ struct ContentView: View {
     @AppStorage("stageTemporaryFilesOnDestinationVolume") private var stageTemporaryFilesOnDestinationVolume = false
     @State private var isShowingLogCopyConfirmation = false
     @State private var logCopyConfirmationTask: Task<Void, Never>?
+    @State private var isLogExpanded = false
+    @State private var didRestoreLogInspector = false
 
     init(viewModel: ContentViewModel, windowID: UUID) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -139,6 +141,17 @@ struct ContentView: View {
             set: { newValue in
                 sceneIsSettingsExpanded = newValue
                 defaultIsSettingsExpanded = newValue
+            }
+        )
+    }
+
+    private var settingsColumnVisibilityBinding: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { isSettingsExpanded ? .all : .detailOnly },
+            set: { visibility in
+                let shouldShowSettings = visibility != .detailOnly
+                guard shouldShowSettings != isSettingsExpanded else { return }
+                isSettingsExpandedBinding.wrappedValue = shouldShowSettings
             }
         )
     }
@@ -259,6 +272,105 @@ struct ContentView: View {
                 isShowingLogCopyConfirmation = false
             }
         }
+    }
+
+    private func toggleLogInspector() {
+        if isLogExpanded {
+            prefersLogExpanded = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isLogExpanded = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    updateMainWindowMinimumSize(inspectorVisible: false)
+                }
+            }
+        } else {
+            prefersLogExpanded = true
+            presentLogInspectorWhenWindowIsReady()
+        }
+    }
+
+    private func restoreLogInspectorIfNeeded() {
+        guard !didRestoreLogInspector else { return }
+        didRestoreLogInspector = true
+        guard prefersLogExpanded else { return }
+        presentLogInspectorWhenWindowIsReady()
+    }
+
+    private func presentLogInspectorWhenWindowIsReady() {
+        guard !isLogExpanded else { return }
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
+              let visibleFrame = window.screen?.visibleFrame else {
+            DispatchQueue.main.async {
+                isLogExpanded = true
+            }
+            return
+        }
+
+        if isSettingsExpanded && visibleFrame.width < 1_080 {
+            isSettingsExpandedBinding.wrappedValue = false
+            DispatchQueue.main.async {
+                presentLogInspectorWhenWindowIsReady()
+            }
+            return
+        }
+
+        let minimumWidth: CGFloat = isSettingsExpanded ? 1_080 : 880
+        let minimumHeight: CGFloat = 500
+        window.contentMinSize = NSSize(width: minimumWidth, height: minimumHeight)
+        let targetWidth = min(max(window.frame.width, minimumWidth), visibleFrame.width)
+        let targetHeight = min(max(window.frame.height, minimumHeight), visibleFrame.height)
+
+        var targetFrame = window.frame
+        targetFrame.origin.x = min(
+            max(window.frame.midX - targetWidth / 2, visibleFrame.minX),
+            visibleFrame.maxX - targetWidth
+        )
+        targetFrame.origin.y = min(
+            max(window.frame.maxY - targetHeight, visibleFrame.minY),
+            visibleFrame.maxY - targetHeight
+        )
+        targetFrame.size = NSSize(width: targetWidth, height: targetHeight)
+
+        if targetFrame != window.frame {
+            window.setFrame(targetFrame, display: true)
+        }
+
+        // Give AppKit one complete layout pass before it inserts the inspector.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isLogExpanded = true
+        }
+    }
+
+    private func updateMainWindowMinimumSize(inspectorVisible: Bool) {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        let minimumWidth: CGFloat
+        if inspectorVisible {
+            minimumWidth = isSettingsExpanded ? 1_080 : 880
+        } else {
+            minimumWidth = 800
+        }
+        let minimumHeight: CGFloat = inspectorVisible ? 500 : 520
+        window.contentMinSize = NSSize(width: minimumWidth, height: minimumHeight)
+
+        guard inspectorVisible,
+              let visibleFrame = window.screen?.visibleFrame,
+              window.frame.width < minimumWidth || window.frame.height < minimumHeight else {
+            return
+        }
+
+        let targetWidth = min(max(window.frame.width, minimumWidth), visibleFrame.width)
+        let targetHeight = min(max(window.frame.height, minimumHeight), visibleFrame.height)
+        var targetFrame = window.frame
+        targetFrame.origin.x = min(
+            max(window.frame.midX - targetWidth / 2, visibleFrame.minX),
+            visibleFrame.maxX - targetWidth
+        )
+        targetFrame.origin.y = min(
+            max(window.frame.maxY - targetHeight, visibleFrame.minY),
+            visibleFrame.maxY - targetHeight
+        )
+        targetFrame.size = NSSize(width: targetWidth, height: targetHeight)
+        window.setFrame(targetFrame, display: true)
     }
 
     private func restoreLastOutputFolderIfAvailable() {
@@ -533,32 +645,28 @@ struct ContentView: View {
     }
     
     var mainContent: some View {
-        HStack(spacing: 0) {
-            if isSettingsExpanded {
-                ExpandedSettingsPanel(
-                    selectedMode: selectedModeBinding,
-                    crfValue: $crfValue,
-                    selectedResolution: selectedResolutionBinding,
-                    selectedPreset: selectedPresetBinding,
-                    encodeVideo: $encodeVideo,
-                    encodeAudio: $encodeAudio,
-                    createSubfolders: $createSubfolders,
-                    automaticRename: $automaticRename,
-                    deleteOriginal: $deleteOriginal,
-                    keepEnglishAudioOnly: $keepEnglishAudioOnly,
-                    keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
-                    keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
-                    keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
-                    postProcessScriptPath: $postProcessScriptPath,
-                    postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
-                    postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
-                    isProcessing: viewModel.processor.isProcessing,
-                    isExpanded: isSettingsExpandedBinding
-                )
-
-                Divider()
-            }
-
+        NavigationSplitView(columnVisibility: settingsColumnVisibilityBinding) {
+            ExpandedSettingsPanel(
+                selectedMode: selectedModeBinding,
+                crfValue: $crfValue,
+                selectedResolution: selectedResolutionBinding,
+                selectedPreset: selectedPresetBinding,
+                encodeVideo: $encodeVideo,
+                encodeAudio: $encodeAudio,
+                createSubfolders: $createSubfolders,
+                automaticRename: $automaticRename,
+                deleteOriginal: $deleteOriginal,
+                keepEnglishAudioOnly: $keepEnglishAudioOnly,
+                keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
+                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+                keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
+                postProcessScriptPath: $postProcessScriptPath,
+                postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
+                postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+                isProcessing: viewModel.processor.isProcessing,
+                isExpanded: isSettingsExpandedBinding
+            )
+        } detail: {
             GeometryReader { geometry in
                 ScrollView(.vertical) {
                     centerContent
@@ -569,14 +677,18 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(minWidth: 600, minHeight: 500)
+        .frame(minWidth: 500, minHeight: 300)
         .background(WindowActivationObserver(windowID: windowID, registry: windowCommandRegistry))
         .inspector(isPresented: $isLogExpanded) {
             LogInspectorView(
                 logText: viewModel.processor.logText,
-                isShowingCopyConfirmation: isShowingLogCopyConfirmation
+                isShowingCopyConfirmation: isShowingLogCopyConfirmation,
+                copyLog: copyLogToClipboard,
+                exportLog: viewModel.exportLogToFile,
+                clearLog: {
+                    viewModel.processor.logText = ""
+                }
             )
-            .inspectorColumnWidth(min: 280, ideal: 400, max: 700)
         }
     }
 
@@ -645,17 +757,6 @@ struct ContentView: View {
 //#endif
             .toolbar {
                 ToolbarItem(placement: .navigation) {
-                    Button {
-                        withAnimation {
-                            isSettingsExpandedBinding.wrappedValue.toggle()
-                        }
-                    } label: {
-                        Label(isSettingsExpanded ? "Hide Settings" : "Show Settings", systemImage: "sidebar.left")
-                    }
-                    .help(isSettingsExpanded ? "Hide settings panel" : "Show settings panel")
-                }
-
-                ToolbarItem(placement: .navigation) {
                     Button(action: {
                         viewModel.selectFolder(isInput: true)
                     }) {
@@ -668,36 +769,11 @@ struct ContentView: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isLogExpanded.toggle()
-                        }
+                        toggleLogInspector()
                     } label: {
-                        Label(isLogExpanded ? "Hide Log" : "Show Log", systemImage: "sidebar.trailing")
+                        Label("Log Inspector", systemImage: "sidebar.trailing")
                     }
                     .help(isLogExpanded ? "Hide log inspector" : "Show log inspector")
-                }
-
-                ToolbarItemGroup(placement: .primaryAction) {
-                    if isLogExpanded && !viewModel.processor.logText.isEmpty {
-                        Button(action: copyLogToClipboard) {
-                            Label("Copy Log", systemImage: "doc.on.doc")
-                        }
-                        .help("Copy log to clipboard")
-
-                        Button {
-                            viewModel.exportLogToFile()
-                        } label: {
-                            Label("Export Log", systemImage: "square.and.arrow.up")
-                        }
-                        .help("Export log")
-
-                        Button {
-                            viewModel.processor.logText = ""
-                        } label: {
-                            Label("Clear Log", systemImage: "trash")
-                        }
-                        .help("Clear log")
-                    }
                 }
                 
                 ToolbarItem(placement: .primaryAction) {
@@ -845,6 +921,7 @@ struct ContentView: View {
                 if sceneIsSettingsExpanded == nil {
                     sceneIsSettingsExpanded = defaultIsSettingsExpanded
                 }
+                restoreLogInspectorIfNeeded()
                 restoreLastOutputFolderIfAvailable()
                 
                 viewModel.processor.setNotificationsEnabled(processingNotificationsEnabled)
@@ -865,6 +942,10 @@ struct ContentView: View {
             }
             .onChange(of: framePreviewsEnabled) { _, enabled in
                 viewModel.processor.setFramePreviewsEnabled(enabled)
+            }
+            .onChange(of: isSettingsExpanded) { _, _ in
+                guard isLogExpanded else { return }
+                updateMainWindowMinimumSize(inspectorVisible: true)
             }
             .task {
                 var candidateSnapshot: ProcessingSettingsSnapshot?
@@ -1411,24 +1492,59 @@ private struct ProcessingSetupToggle: View {
 private struct LogInspectorView: View {
     let logText: String
     let isShowingCopyConfirmation: Bool
+    let copyLog: () -> Void
+    let exportLog: () -> Void
+    let clearLog: () -> Void
     @State private var isAtBottom = true
     @State private var scrollToEndRequest = 0
     
     var body: some View {
-        Group {
-            if logText.isEmpty {
-                ContentUnavailableView(
-                    "No Log Output",
-                    systemImage: "terminal",
-                    description: Text("Processing details will appear here.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                LogView(
-                    logText: logText,
-                    isAtBottom: $isAtBottom,
-                    scrollToEndRequest: scrollToEndRequest
-                )
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Label("Log", systemImage: "terminal")
+                    .font(.subheadline.weight(.semibold))
+
+                Spacer()
+
+                ControlGroup {
+                    Button(action: copyLog) {
+                        Label("Copy Log", systemImage: "doc.on.doc")
+                    }
+                    .help("Copy log to clipboard")
+
+                    Button(action: exportLog) {
+                        Label("Export Log", systemImage: "square.and.arrow.up")
+                    }
+                    .help("Export log")
+
+                    Button(role: .destructive, action: clearLog) {
+                        Label("Clear Log", systemImage: "trash")
+                    }
+                    .help("Clear log")
+                }
+                .labelStyle(.iconOnly)
+                .controlSize(.small)
+                .disabled(logText.isEmpty)
+            }
+            .padding(10)
+
+            Divider()
+
+            Group {
+                if logText.isEmpty {
+                    ContentUnavailableView(
+                        "No Log Output",
+                        systemImage: "terminal",
+                        description: Text("Processing details will appear here.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    LogView(
+                        logText: logText,
+                        isAtBottom: $isAtBottom,
+                        scrollToEndRequest: scrollToEndRequest
+                    )
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1485,29 +1601,26 @@ struct ExpandedSettingsPanel: View {
     @Binding var isExpanded: Bool
     
     var body: some View {
-        VStack(spacing: 0) {
-            SettingsView(
-                selectedMode: $selectedMode,
-                crfValue: $crfValue,
-                selectedResolution: $selectedResolution,
-                selectedPreset: $selectedPreset,
-                encodeVideo: $encodeVideo,
-                encodeAudio: $encodeAudio,
-                createSubfolders: $createSubfolders,
-                automaticRename: $automaticRename,
-                deleteOriginal: $deleteOriginal,
-                keepEnglishAudioOnly: $keepEnglishAudioOnly,
-                keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
-                keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
-                keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
-                postProcessScriptPath: $postProcessScriptPath,
-                postProcessScriptRunTiming: $postProcessScriptRunTiming,
-                postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
-                isProcessing: isProcessing,
-                isExpanded: $isExpanded
-            )
-            .frame(width: 400)
-        }
+        SettingsView(
+            selectedMode: $selectedMode,
+            crfValue: $crfValue,
+            selectedResolution: $selectedResolution,
+            selectedPreset: $selectedPreset,
+            encodeVideo: $encodeVideo,
+            encodeAudio: $encodeAudio,
+            createSubfolders: $createSubfolders,
+            automaticRename: $automaticRename,
+            deleteOriginal: $deleteOriginal,
+            keepEnglishAudioOnly: $keepEnglishAudioOnly,
+            keepAllEnglishAudioTracks: $keepAllEnglishAudioTracks,
+            keepEnglishSubtitlesOnly: $keepEnglishSubtitlesOnly,
+            keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
+            postProcessScriptPath: $postProcessScriptPath,
+            postProcessScriptRunTiming: $postProcessScriptRunTiming,
+            postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+            isProcessing: isProcessing,
+            isExpanded: $isExpanded
+        )
     }
 }
 
