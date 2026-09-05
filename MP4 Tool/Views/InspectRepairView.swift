@@ -87,7 +87,6 @@ struct InspectRepairView: View {
             .accessibilityHidden(selectedSection != .subtitles)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(minWidth: 1_040, minHeight: 640)
         .onDrop(of: [.fileURL], isTargeted: nil, perform: handleSharedDrop)
         .toolbar {
             ToolbarItem {

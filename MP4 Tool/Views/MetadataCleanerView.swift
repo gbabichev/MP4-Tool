@@ -92,11 +92,6 @@ struct MetadataCleanerView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .navigationSplitViewColumnWidth(
-                min: navigationContent == nil ? 340 : 360,
-                ideal: 380,
-                max: 420
-            )
         } detail: {
             VStack(alignment: .leading, spacing: 0) {
                 GroupBox {

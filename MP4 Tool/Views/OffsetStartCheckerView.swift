@@ -74,17 +74,14 @@ struct OffsetStartCheckerView: View {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .foregroundStyle(.orange)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 4)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .navigationSplitViewColumnWidth(
-                min: navigationContent == nil ? 340 : 360,
-                ideal: 380,
-                max: 420
-            )
         } detail: {
             VStack(alignment: .leading, spacing: 0) {
                 GroupBox {
