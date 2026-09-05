@@ -13,7 +13,6 @@ struct WindowCommandActions {
     let selectOutputFolder: () -> Void
     let clearFolders: () -> Void
     let startProcessing: () -> Void
-    let exportLog: () -> Void
     let showTutorial: () -> Void
     let showAbout: () -> Void
 }
@@ -22,7 +21,6 @@ struct WindowCommandAvailability: Equatable {
     var canStartProcessing = false
     var isProcessing = false
     var canClearFolders = false
-    var canExportLog = false
 }
 
 @MainActor

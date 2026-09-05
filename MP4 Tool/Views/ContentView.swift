@@ -165,7 +165,6 @@ struct ContentView: View {
             startProcessing: {
                 startProcessingFromWindowCommand()
             },
-            exportLog: { viewModel.exportLogToFile() },
             showTutorial: { viewModel.showTutorial() },
             showAbout: { viewModel.showAbout() }
         )
@@ -175,8 +174,7 @@ struct ContentView: View {
         WindowCommandAvailability(
             canStartProcessing: viewModel.canStartProcessing,
             isProcessing: viewModel.processor.isProcessing,
-            canClearFolders: !(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty),
-            canExportLog: !viewModel.processor.logText.isEmpty
+            canClearFolders: !(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty)
         )
     }
 
@@ -600,7 +598,6 @@ struct ContentView: View {
                 logText: viewModel.processor.logText,
                 isShowingCopyConfirmation: isShowingLogCopyConfirmation,
                 copyLog: copyLogToClipboard,
-                exportLog: viewModel.exportLogToFile,
                 clearLog: {
                     viewModel.processor.logText = ""
                 }
@@ -904,19 +901,6 @@ struct ContentView: View {
             }
             .onDisappear {
                 windowCommandRegistry.unregister(windowID: windowID)
-            }
-            .fileExporter(
-                isPresented: $viewModel.showingLogExporter,
-                document: viewModel.logExportDocument,
-                contentType: .plainText,
-                defaultFilename: "MP4_Tool_Log_\(Int(Date().timeIntervalSince1970))"
-            ) { result in
-                switch result {
-                case .success(let url):
-                    viewModel.processor.addLog("􀈊 Log exported to: \(url.path)")
-                case .failure(let error):
-                    viewModel.processor.addLog("􀁡 Failed to export log: \(error.localizedDescription)")
-                }
             }
     }
 }
@@ -1415,7 +1399,6 @@ private struct LogInspectorView: View {
     let logText: String
     let isShowingCopyConfirmation: Bool
     let copyLog: () -> Void
-    let exportLog: () -> Void
     let clearLog: () -> Void
     @State private var isAtBottom = true
     @State private var scrollToEndRequest = 0
@@ -1433,11 +1416,6 @@ private struct LogInspectorView: View {
                         Label("Copy Log", systemImage: "doc.on.doc")
                     }
                     .help("Copy log to clipboard")
-
-                    Button(action: exportLog) {
-                        Label("Export Log", systemImage: "square.and.arrow.up")
-                    }
-                    .help("Export log")
 
                     Button(role: .destructive, action: clearLog) {
                         Label("Clear Log", systemImage: "trash")
@@ -1547,31 +1525,6 @@ struct ExpandedSettingsPanel: View {
             isProcessing: isProcessing,
             isExpanded: $isExpanded
         )
-    }
-}
-
-// Document type for log export
-struct LogDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.plainText] }
-    
-    var text: String
-    
-    init(text: String = "") {
-        self.text = text
-    }
-    
-    init(configuration: ReadConfiguration) throws {
-        if let data = configuration.file.regularFileContents,
-           let string = String(data: data, encoding: .utf8) {
-            text = string
-        } else {
-            text = ""
-        }
-    }
-    
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        let data = text.data(using: .utf8) ?? Data()
-        return FileWrapper(regularFileWithContents: data)
     }
 }
 

@@ -266,16 +266,17 @@ struct MP4_ToolApp: App {
                 }
                 .keyboardShortcut("S", modifiers: [.command, .shift])
 
-                Divider()
+            }
 
+            CommandMenu("Log") {
                 Button(action: {
                     openWindow(id: "runHistory")
                 }) {
                     Label("Run History", systemImage: "clock.arrow.circlepath")
                 }
-            }
 
-            CommandMenu("Log") {
+                Divider()
+
                 Button(action: openProcessingLog) {
                     Label("Open Processing Log", systemImage: "doc.text")
                 }
@@ -283,16 +284,6 @@ struct MP4_ToolApp: App {
                 Button(action: openProcessingLogFolder) {
                     Label("Open Log Folder", systemImage: "folder")
                 }
-
-                Divider()
-
-                Button(action: {
-                    windowCommandRegistry.activeActions?.exportLog()
-                }) {
-                    Label("Export Current Log to TXT...", systemImage: "square.and.arrow.up")
-                }
-                .keyboardShortcut("E", modifiers: [.command, .shift])
-                .disabled(!windowCommandRegistry.activeAvailability.canExportLog)
             }
 
             CommandGroup(after: .help) {

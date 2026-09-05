@@ -15,8 +15,6 @@ class ContentViewModel: ObservableObject {
     let processor = VideoProcessor()
     @Published var inputFolderPath: String = ""
     @Published var outputFolderPath: String = ""
-    @Published var showingLogExporter = false
-    @Published var logExportDocument: LogDocument?
     @Published var showingTutorial = false
     @Published var showingAbout = false
     @Published var selectedFileIDs: Set<UUID> = []
@@ -290,16 +288,6 @@ class ContentViewModel: ObservableObject {
         alert.addButton(withTitle: "OK")
         alert.runModal()
         return false
-    }
-
-    func exportLogToFile() {
-        guard !processor.logText.isEmpty else {
-            processor.addLog("􀇾 Cannot export: Log is empty")
-            return
-        }
-
-        logExportDocument = LogDocument(text: processor.logText)
-        showingLogExporter = true
     }
 
     func clearFolders() {
