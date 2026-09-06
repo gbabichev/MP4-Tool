@@ -39,21 +39,11 @@ struct MainContentView: View {
             queueSection
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding()
-        } else if viewModel.processor.isProcessing {
-            queueSection
-                .frame(height: processingQueueHeight)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .padding()
         } else {
             queueSection
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding()
         }
-    }
-
-    private var processingQueueHeight: CGFloat {
-        let rowsHeight = CGFloat(max(viewModel.processor.videoFiles.count, 1)) * 68
-        return min(max(rowsHeight + 76, 220), 420)
     }
 
     private var queueSection: some View {
@@ -96,9 +86,11 @@ struct MainContentView: View {
                 } label: {
                     Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                         .font(.caption.weight(.semibold))
-                        .frame(width: 16, height: 16)
+                        .frame(width: 28, height: 24)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isCollapsed ? "Show queue" : "Hide queue")
                 .help(isCollapsed ? "Show queue" : "Hide queue")
             }
             .padding(.horizontal, 12)
@@ -636,9 +628,11 @@ struct ProcessingProgressCard: View {
                     } label: {
                         Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                             .font(.caption.weight(.semibold))
-                            .frame(width: 16, height: 16)
+                            .frame(width: 28, height: 24)
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(isCollapsed ? "Show progress details" : "Hide progress details")
                     .help(isCollapsed ? "Show progress details" : "Hide progress details")
                 }
 
@@ -648,39 +642,44 @@ struct ProcessingProgressCard: View {
                             .progressViewStyle(.linear)
                     } else {
                         VStack(spacing: 5) {
-                            HStack {
+                            HStack(spacing: 10) {
                                 Text("Overall progress")
-                                Spacer()
+                                Spacer(minLength: 12)
                                 Text("\(completedCount) completed")
                                 if failedCount > 0 {
                                     Text("• \(failedCount) failed")
                                         .foregroundStyle(.red)
                                 }
+
+                                Divider()
+                                    .frame(height: 30)
+
+                                ProcessingMetric(
+                                    icon: "film.stack",
+                                    title: "Batch",
+                                    value: "\(completedCount + failedCount) / \(processor.totalFiles)"
+                                )
+                                Divider()
+                                    .frame(height: 30)
+                                ProcessingMetric(
+                                    icon: "clock",
+                                    title: "Elapsed",
+                                    value: formattedDuration(batchElapsed)
+                                )
+                                Divider()
+                                    .frame(height: 30)
+                                ProcessingMetric(
+                                    icon: "hourglass",
+                                    title: "Remaining",
+                                    value: eta.totalSeconds.map { formattedDuration(TimeInterval($0)) }
+                                        ?? "Calculating…"
+                                )
                             }
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
                             ProgressView(value: overallProgress, total: 1)
                                 .progressViewStyle(.linear)
-                        }
-
-                        HStack(spacing: 10) {
-                            ProcessingMetric(
-                                icon: "film.stack",
-                                title: "Batch",
-                                value: "\(completedCount + failedCount) / \(processor.totalFiles)"
-                            )
-                            ProcessingMetric(
-                                icon: "clock",
-                                title: "Elapsed",
-                                value: formattedDuration(batchElapsed)
-                            )
-                            ProcessingMetric(
-                                icon: "hourglass",
-                                title: "Remaining",
-                                value: eta.totalSeconds.map { formattedDuration(TimeInterval($0)) }
-                                    ?? "Calculating…"
-                            )
                         }
 
                         HStack(alignment: .center, spacing: 12) {
@@ -820,23 +819,22 @@ private struct ProcessingMetric: View {
     let value: String
 
     var body: some View {
-        VStack(spacing: 4) {
+        HStack(spacing: 8) {
             Image(systemName: icon)
+                .font(.caption)
                 .foregroundStyle(.tint)
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 66)
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
-        )
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }

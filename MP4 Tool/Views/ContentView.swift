@@ -1093,9 +1093,11 @@ private struct CompactProcessingSetupView: View {
                 } label: {
                     Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                         .font(.caption.weight(.semibold))
-                        .frame(width: 16, height: 16)
+                        .frame(width: 28, height: 24)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isCollapsed ? "Show processing setup" : "Hide processing setup")
                 .help(isCollapsed ? "Show processing setup" : "Hide processing setup")
             }
 
