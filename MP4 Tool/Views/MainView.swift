@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct MainContentView: View {
     @ObservedObject var viewModel: ContentViewModel
+    @Binding var isCollapsed: Bool
     @State private var draggedPendingFileID: UUID?
 
     private var selectedFileIDs: Set<UUID> {
@@ -34,7 +35,11 @@ struct MainContentView: View {
     }
 
     var body: some View {
-        if viewModel.processor.isProcessing {
+        if isCollapsed {
+            queueSection
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding()
+        } else if viewModel.processor.isProcessing {
             queueSection
                 .frame(height: processingQueueHeight)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -60,6 +65,8 @@ struct MainContentView: View {
                 )
                 .font(.subheadline.weight(.semibold))
 
+                Spacer()
+
                 Button {
                     chooseFilesToAdd()
                 } label: {
@@ -76,19 +83,29 @@ struct MainContentView: View {
                     viewModel.clearFilesToProcess()
                     viewModel.selectedFileIDs.removeAll()
                 } label: {
-                    Image(systemName: "trash")
+                    Label("Clear Queue", systemImage: "trash")
                 }
                 .controlSize(.small)
-                .buttonStyle(.borderless)
                 .disabled(viewModel.processor.isProcessing || viewModel.processor.videoFiles.isEmpty)
                 .help("Clear queue")
 
-                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isCollapsed.toggle()
+                    }
+                } label: {
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .help(isCollapsed ? "Show queue" : "Hide queue")
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
+            .padding(.bottom, isCollapsed ? 12 : 0)
 
-            if viewModel.processor.videoFiles.isEmpty {
+            if !isCollapsed && viewModel.processor.videoFiles.isEmpty {
                 // Empty state with drop zone
                 VStack(spacing: 8) {
                     Image(systemName: "film.stack")
@@ -106,7 +123,7 @@ struct MainContentView: View {
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                     handleFileDrop(providers: providers)
                 }
-            } else {
+            } else if !isCollapsed {
                 List(selection: selectedFileIDsBinding) {
                     ForEach(viewModel.processor.videoFiles) { file in
                         queueRow(for: file)
@@ -523,6 +540,7 @@ private struct PendingQueueDropDelegate: DropDelegate {
 
 struct ProcessingProgressCard: View {
     @ObservedObject var processor: VideoProcessor
+    @Binding var isCollapsed: Bool
 
     private var isScanning: Bool {
         processor.currentFile.isEmpty && !processor.scanProgress.isEmpty
@@ -610,52 +628,65 @@ struct ProcessingProgressCard: View {
                     Text("\(overallPercent)%")
                         .font(.title3.weight(.semibold))
                         .monospacedDigit()
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isCollapsed.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isCollapsed ? "Show progress details" : "Hide progress details")
                 }
 
-                if isScanning {
-                    ProgressView()
-                        .progressViewStyle(.linear)
-                } else {
-                    VStack(spacing: 5) {
-                        HStack {
-                            Text("Overall progress")
-                            Spacer()
-                            Text("\(completedCount) completed")
-                            if failedCount > 0 {
-                                Text("• \(failedCount) failed")
-                                    .foregroundStyle(.red)
-                            }
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                        ProgressView(value: overallProgress, total: 1)
+                if !isCollapsed {
+                    if isScanning {
+                        ProgressView()
                             .progressViewStyle(.linear)
-                    }
+                    } else {
+                        VStack(spacing: 5) {
+                            HStack {
+                                Text("Overall progress")
+                                Spacer()
+                                Text("\(completedCount) completed")
+                                if failedCount > 0 {
+                                    Text("• \(failedCount) failed")
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
 
-                    HStack(spacing: 10) {
-                        ProcessingMetric(
-                            icon: "film.stack",
-                            title: "Batch",
-                            value: "\(completedCount + failedCount) / \(processor.totalFiles)"
-                        )
-                        ProcessingMetric(
-                            icon: "clock",
-                            title: "Elapsed",
-                            value: formattedDuration(batchElapsed)
-                        )
-                        ProcessingMetric(
-                            icon: "hourglass",
-                            title: "Remaining",
-                            value: eta.totalSeconds.map { formattedDuration(TimeInterval($0)) }
-                                ?? "Calculating…"
-                        )
-                    }
-
-                    HStack(alignment: .center, spacing: 12) {
-                        if showsFramePreview {
-                            framePreview
+                            ProgressView(value: overallProgress, total: 1)
+                                .progressViewStyle(.linear)
                         }
+
+                        HStack(spacing: 10) {
+                            ProcessingMetric(
+                                icon: "film.stack",
+                                title: "Batch",
+                                value: "\(completedCount + failedCount) / \(processor.totalFiles)"
+                            )
+                            ProcessingMetric(
+                                icon: "clock",
+                                title: "Elapsed",
+                                value: formattedDuration(batchElapsed)
+                            )
+                            ProcessingMetric(
+                                icon: "hourglass",
+                                title: "Remaining",
+                                value: eta.totalSeconds.map { formattedDuration(TimeInterval($0)) }
+                                    ?? "Calculating…"
+                            )
+                        }
+
+                        HStack(alignment: .center, spacing: 12) {
+                            if showsFramePreview {
+                                framePreview
+                            }
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .firstTextBaseline) {
@@ -701,27 +732,28 @@ struct ProcessingProgressCard: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         }
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.secondary.opacity(0.06))
+                        )
                     }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.secondary.opacity(0.06))
-                    )
-                }
 
-                HStack(spacing: 6) {
-                    Image(systemName: "plus.circle")
-                    Text("Add more files below at any time; they’ll join this batch.")
-                    Spacer()
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle")
+                        Text("Add more files below at any time; they’ll join this batch.")
+                        Spacer()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                if processor.processingHadError {
-                    Label("One or more files encountered an error. Processing will continue.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if processor.processingHadError {
+                        Label("One or more files encountered an error. Processing will continue.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
             .padding(16)

@@ -11,7 +11,8 @@ struct WindowCommandActions {
     let openInputFile: () -> Void
     let openInputFolder: () -> Void
     let selectOutputFolder: () -> Void
-    let clearFolders: () -> Void
+    let clearQueue: () -> Void
+    let resetWorkspace: () -> Void
     let startProcessing: () -> Void
     let showTutorial: () -> Void
     let showAbout: () -> Void
@@ -20,7 +21,8 @@ struct WindowCommandActions {
 struct WindowCommandAvailability: Equatable {
     var canStartProcessing = false
     var isProcessing = false
-    var canClearFolders = false
+    var canClearQueue = false
+    var canResetWorkspace = false
 }
 
 @MainActor

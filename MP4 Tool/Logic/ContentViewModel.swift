@@ -290,7 +290,7 @@ class ContentViewModel: ObservableObject {
         return false
     }
 
-    func clearFolders() {
+    func resetWorkspace() {
         inputFolderPath = ""
         outputFolderPath = ""
         processor.logText = ""

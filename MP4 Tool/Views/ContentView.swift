@@ -60,6 +60,9 @@ struct ContentView: View {
     @AppStorage("processingNotificationsEnabled") private var processingNotificationsEnabled = true
     @AppStorage("framePreviewsEnabled") private var framePreviewsEnabled = true
     @AppStorage("stageTemporaryFilesOnDestinationVolume") private var stageTemporaryFilesOnDestinationVolume = false
+    @AppStorage("mainProcessingSetupCollapsed") private var isProcessingSetupCollapsed = false
+    @AppStorage("mainQueueCollapsed") private var isQueueCollapsed = false
+    @AppStorage("mainProgressCollapsed") private var isProgressCollapsed = false
     @State private var isShowingLogCopyConfirmation = false
     @State private var logCopyConfirmationTask: Task<Void, Never>?
     @State private var isLogExpanded = false
@@ -161,7 +164,8 @@ struct ContentView: View {
             openInputFile: { viewModel.selectInputFile() },
             openInputFolder: { viewModel.selectInputFolder() },
             selectOutputFolder: { viewModel.selectFolder(isInput: false) },
-            clearFolders: { viewModel.clearFolders() },
+            clearQueue: { viewModel.clearFilesToProcess() },
+            resetWorkspace: { viewModel.resetWorkspace() },
             startProcessing: {
                 startProcessingFromWindowCommand()
             },
@@ -174,7 +178,11 @@ struct ContentView: View {
         WindowCommandAvailability(
             canStartProcessing: viewModel.canStartProcessing,
             isProcessing: viewModel.processor.isProcessing,
-            canClearFolders: !(viewModel.inputFolderPath.isEmpty && viewModel.outputFolderPath.isEmpty)
+            canClearQueue: !viewModel.processor.videoFiles.isEmpty,
+            canResetWorkspace: !viewModel.inputFolderPath.isEmpty
+                || !viewModel.outputFolderPath.isEmpty
+                || !viewModel.processor.videoFiles.isEmpty
+                || !viewModel.processor.logText.isEmpty
         )
     }
 
@@ -608,7 +616,10 @@ struct ContentView: View {
     private var centerContent: some View {
         VStack(spacing: 0) {
             if viewModel.processor.isProcessing {
-                ProcessingProgressCard(processor: viewModel.processor)
+                ProcessingProgressCard(
+                    processor: viewModel.processor,
+                    isCollapsed: $isProgressCollapsed
+                )
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -641,6 +652,7 @@ struct ContentView: View {
                 framePreviewsEnabled: $framePreviewsEnabled,
                 stageTemporaryFilesOnDestinationVolume: $stageTemporaryFilesOnDestinationVolume,
                 isSettingsExpanded: isSettingsExpandedBinding,
+                isCollapsed: $isProcessingSetupCollapsed,
                 onSelectFFmpegSource: { useSystem in
                     viewModel.processor.toggleFFmpegSource(useSystem: useSystem)
                 },
@@ -655,7 +667,10 @@ struct ContentView: View {
                 }
             )
 
-            MainContentView(viewModel: viewModel)
+            MainContentView(
+                viewModel: viewModel,
+                isCollapsed: $isQueueCollapsed
+            )
         }
         .frame(maxWidth: .infinity, alignment: .top)
     }
@@ -932,6 +947,7 @@ private struct CompactProcessingSetupView: View {
     @Binding var framePreviewsEnabled: Bool
     @Binding var stageTemporaryFilesOnDestinationVolume: Bool
     @Binding var isSettingsExpanded: Bool
+    @Binding var isCollapsed: Bool
     let onSelectFFmpegSource: (Bool) -> Void
     let onChooseOutputFolder: () -> Void
     let onOpenOutputFolder: () -> Void
@@ -997,6 +1013,13 @@ private struct CompactProcessingSetupView: View {
         }
     }
 
+    private var selectedPresetSummary: String {
+        guard let selectedProcessingPreset else { return "Custom Settings" }
+        return ProcessingPreset.builtInPresets.contains { $0.id == selectedProcessingPreset.id }
+            ? "\(selectedProcessingPreset.name) (Built-in)"
+            : selectedProcessingPreset.name
+    }
+
     private var ffmpegSourceBinding: Binding<Bool> {
         Binding(
             get: { isUsingSystemFFmpeg },
@@ -1047,6 +1070,14 @@ private struct CompactProcessingSetupView: View {
                 Label("Processing Setup", systemImage: "slider.horizontal.3")
                     .font(.subheadline.weight(.semibold))
 
+                if isCollapsed {
+                    Text(selectedPresetSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
                 if isModified {
                     Label("Modified", systemImage: "pencil.circle.fill")
                         .font(.caption.weight(.medium))
@@ -1055,41 +1086,54 @@ private struct CompactProcessingSetupView: View {
 
                 Spacer()
 
-                Button(isSettingsExpanded ? "Done" : "Customize…") {
+                Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        isSettingsExpanded.toggle()
+                        isCollapsed.toggle()
                     }
+                } label: {
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 16, height: 16)
                 }
-                .controlSize(.small)
-                .disabled(isProcessing)
+                .buttonStyle(.plain)
+                .help(isCollapsed ? "Show processing setup" : "Hide processing setup")
             }
 
-            HStack(spacing: 12) {
-                Picker("Preset", selection: selectedPresetIDBinding) {
-                    Text("Custom Settings")
-                        .tag(nil as UUID?)
-                    ForEach(presets) { preset in
-                        Text(presetDisplayName(preset))
-                            .tag(Optional(preset.id))
+            if !isCollapsed {
+                HStack(spacing: 12) {
+                    Picker("Preset", selection: selectedPresetIDBinding) {
+                        Text("Custom Settings")
+                            .tag(nil as UUID?)
+                        ForEach(presets) { preset in
+                            Text(presetDisplayName(preset))
+                                .tag(Optional(preset.id))
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 220)
+                    .disabled(isProcessing)
+
+                    Button("Customize Presets") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isSettingsExpanded.toggle()
+                        }
+                    }
+                    .controlSize(.small)
+                    .disabled(isProcessing)
+
+                    Text(settingsSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer(minLength: 0)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 220)
-                .disabled(isProcessing)
 
-                Text(settingsSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                Divider()
 
-                Spacer(minLength: 0)
-            }
-
-            Divider()
-
-            AdaptiveProcessingSetupPair {
+                AdaptiveProcessingSetupPair {
                 HStack(spacing: 10) {
                     Image(systemName: ffmpegAvailable ? "terminal.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(ffmpegAvailable ? Color.accentColor : Color.orange)
@@ -1135,7 +1179,7 @@ private struct CompactProcessingSetupView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-            } trailing: {
+                } trailing: {
                 HStack(spacing: 10) {
                     Image(systemName: outputFolderPath.isEmpty ? "folder.badge.plus" : "folder.fill")
                         .foregroundStyle(
@@ -1169,29 +1213,29 @@ private struct CompactProcessingSetupView: View {
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
                 .onDrop(of: [.fileURL], isTargeted: nil, perform: handleOutputFolderDrop)
-            }
+                }
 
-            Divider()
+                Divider()
 
-            AdaptiveProcessingSetupPair(horizontalMinimumWidth: 620) {
+                AdaptiveProcessingSetupPair(horizontalMinimumWidth: 620) {
                 ProcessingSetupToggle(
                     title: "Enable Notifications",
                     subtitle: "Notify when processing finishes in the background",
                     systemImage: "bell.fill",
                     isOn: $notificationsEnabled
                 )
-            } trailing: {
+                } trailing: {
                 ProcessingSetupToggle(
                     title: "Enable Previews",
                     subtitle: "Refresh the current frame while encoding",
                     systemImage: "photo.fill",
                     isOn: $framePreviewsEnabled
                 )
-            }
+                }
 
-            Divider()
+                Divider()
 
-            AdaptiveProcessingSetupPair(horizontalMinimumWidth: 620) {
+                AdaptiveProcessingSetupPair(horizontalMinimumWidth: 620) {
                 HStack(spacing: 10) {
                     Image(systemName: stagingLocation.usesDestinationVolume ? "externaldrive.fill" : "internaldrive.fill")
                         .foregroundStyle(Color.accentColor)
@@ -1211,7 +1255,7 @@ private struct CompactProcessingSetupView: View {
                     Spacer(minLength: 8)
                 }
                 .frame(maxWidth: .infinity)
-            } trailing: {
+                } trailing: {
                 ProcessingSetupToggle(
                     title: "Stage on Destination Volume",
                     subtitle: stagingLocation.destinationVolumeIsEligible
@@ -1221,6 +1265,7 @@ private struct CompactProcessingSetupView: View {
                     isOn: effectiveDestinationStagingBinding
                 )
                 .disabled(isProcessing || !stagingLocation.destinationVolumeIsEligible)
+                }
             }
         }
         .padding(12)

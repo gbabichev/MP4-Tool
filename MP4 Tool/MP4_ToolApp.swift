@@ -220,12 +220,19 @@ struct MP4_ToolApp: App {
                 Divider()
 
                 Button(action: {
-                    windowCommandRegistry.activeActions?.clearFolders()
+                    windowCommandRegistry.activeActions?.clearQueue()
                 }) {
-                    Label("Clear List", systemImage: "arrow.counterclockwise")
+                    Label("Clear Queue", systemImage: "trash")
                 }
                 .keyboardShortcut("l", modifiers: .command)
-                .disabled(!windowCommandRegistry.activeAvailability.canClearFolders || windowCommandRegistry.activeAvailability.isProcessing)
+                .disabled(!windowCommandRegistry.activeAvailability.canClearQueue || windowCommandRegistry.activeAvailability.isProcessing)
+
+                Button(action: {
+                    windowCommandRegistry.activeActions?.resetWorkspace()
+                }) {
+                    Label("Reset Workspace", systemImage: "arrow.counterclockwise")
+                }
+                .disabled(!windowCommandRegistry.activeAvailability.canResetWorkspace || windowCommandRegistry.activeAvailability.isProcessing)
             }
 
             CommandMenu("Tools") {
