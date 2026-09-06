@@ -62,6 +62,44 @@ private struct MP4ValidationProbeFormat: Decodable {
     let duration: String?
 }
 
+private struct MP4ValidationContainerProbeOutput: Decodable {
+    let streams: [MP4ValidationContainerStream]
+    let chapters: [MP4ValidationChapter]?
+}
+
+private struct MP4ValidationContainerStream: Decodable {
+    let index: Int
+    let codecType: String?
+    let codecTagString: String?
+    let startTime: String?
+    let duration: String?
+    let tags: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case index
+        case codecType = "codec_type"
+        case codecTagString = "codec_tag_string"
+        case startTime = "start_time"
+        case duration
+        case tags
+    }
+}
+
+private struct MP4ValidationChapter: Decodable {
+    let startTime: String?
+    let endTime: String?
+
+    enum CodingKeys: String, CodingKey {
+        case startTime = "start_time"
+        case endTime = "end_time"
+    }
+}
+
+private struct MP4ValidationContainerAnalysis {
+    let issues: [String]
+    let needsMediaOnlyRemux: Bool
+}
+
 private struct MP4ValidationAudioCompatibility {
     let hasAudioStreams: Bool
     let issues: [String]
@@ -117,6 +155,7 @@ private struct MP4ValidationFinding {
     let audioStreamIndexesToRemove: Set<Int>
     let subtitleStreamIndexesToRemove: Set<Int>
     let preferredSubtitleStreamIndex: Int?
+    let needsContainerRemux: Bool
 }
 
 struct MP4ValidationResult: Identifiable {
@@ -131,6 +170,7 @@ struct MP4ValidationResult: Identifiable {
     let audioStreamIndexesToRemove: Set<Int>
     let subtitleStreamIndexesToRemove: Set<Int>
     let preferredSubtitleStreamIndex: Int?
+    let needsContainerRemux: Bool
     var repairMessage: String? = nil
 
     var isFlagged: Bool {
@@ -142,6 +182,7 @@ struct MP4ValidationResult: Identifiable {
             || !repairCandidates.isEmpty
             || !audioStreamIndexesToRemove.isEmpty
             || !subtitleStreamIndexesToRemove.isEmpty
+            || needsContainerRemux
     }
 }
 
@@ -432,7 +473,9 @@ final class MP4ValidationViewModel: ObservableObject {
                 startedAt: operationStartedAt
             )
             scanProgress = "Repairing \(index + 1)/\(selectedResults.count): \(result.fileName)"
-            if result.repairCandidates.isEmpty {
+            if result.needsContainerRemux {
+                updateRepairMessage(for: result.id, message: "Preparing container repair…")
+            } else if result.repairCandidates.isEmpty {
                 updateRepairMessage(for: result.id, message: "Preparing audio metadata repair…")
             } else {
                 updateRepairMessage(
@@ -536,7 +579,9 @@ final class MP4ValidationViewModel: ObservableObject {
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
 
             let repairStatusMessage: String
-            if !audioStreamIndexesToRemove.isEmpty && !subtitleStreamIndexesToRemove.isEmpty {
+            if result.needsContainerRemux {
+                repairStatusMessage = "Rebuilding the MP4 without malformed auxiliary tracks…"
+            } else if !audioStreamIndexesToRemove.isEmpty && !subtitleStreamIndexesToRemove.isEmpty {
                 repairStatusMessage = "Keeping the preferred English audio and subtitle tracks…"
             } else if !subtitleStreamIndexesToRemove.isEmpty {
                 repairStatusMessage = "Keeping the best complete English subtitle track…"
@@ -550,12 +595,22 @@ final class MP4ValidationViewModel: ObservableObject {
             updateRepairMessage(for: result.id, message: repairStatusMessage)
             var arguments = [
                 "-hide_banner", "-nostats", "-y",
-                "-i", result.filePath,
-                "-map", "0",
+                "-i", result.filePath
+            ]
+            if result.needsContainerRemux {
+                arguments.append(contentsOf: [
+                    "-map", "0:v:0",
+                    "-map", "0:a?",
+                    "-map", "0:s?"
+                ])
+            } else {
+                arguments.append(contentsOf: ["-map", "0"])
+            }
+            arguments.append(contentsOf: [
                 "-map_metadata", "0",
                 "-map_chapters", "0",
                 "-c", "copy"
-            ]
+            ])
 
             for streamIndex in audioStreamIndexesToRemove.sorted() {
                 arguments.append(contentsOf: ["-map", "-0:\(streamIndex)"])
@@ -1060,7 +1115,8 @@ final class MP4ValidationViewModel: ObservableObject {
                     needsAudioMetadataRepair: finding?.needsAudioMetadataRepair ?? false,
                     audioStreamIndexesToRemove: finding?.audioStreamIndexesToRemove ?? [],
                     subtitleStreamIndexesToRemove: finding?.subtitleStreamIndexesToRemove ?? [],
-                    preferredSubtitleStreamIndex: finding?.preferredSubtitleStreamIndex
+                    preferredSubtitleStreamIndex: finding?.preferredSubtitleStreamIndex,
+                    needsContainerRemux: finding?.needsContainerRemux ?? false
                 )
             )
         }
@@ -1118,11 +1174,17 @@ final class MP4ValidationViewModel: ObservableObject {
         var audioStreamIndexesToRemove = Set<Int>()
         var subtitleStreamIndexesToRemove = Set<Int>()
         var preferredSubtitleStreamIndex: Int?
+        var needsContainerRemux = false
         var audioCompatibility: MP4ValidationAudioCompatibility?
 
         if ffprobeAvailable {
             if let unsupportedVideoCodec = await unsupportedAppleVideoCodec(filePath: filePath) {
                 reasons.append("unsupported video codec \(unsupportedVideoCodec)")
+            }
+
+            if let containerAnalysis = await containerAnalysis(filePath: filePath) {
+                reasons.append(contentsOf: containerAnalysis.issues)
+                needsContainerRemux = containerAnalysis.needsMediaOnlyRemux
             }
 
             audioCompatibility = await probeAudioCompatibility(filePath: filePath)
@@ -1168,7 +1230,8 @@ final class MP4ValidationViewModel: ObservableObject {
             repairCandidates: repairCandidates,
             needsAudioMetadataRepair: needsAudioMetadataRepair,
             audioStreamIndexesToRemove: audioStreamIndexesToRemove,
-            subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove
+            subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove,
+            needsContainerRemux: needsContainerRemux
         )
 
         if !reasons.isEmpty {
@@ -1181,7 +1244,8 @@ final class MP4ValidationViewModel: ObservableObject {
                 needsAudioMetadataRepair: needsAudioMetadataRepair,
                 audioStreamIndexesToRemove: audioStreamIndexesToRemove,
                 subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove,
-                preferredSubtitleStreamIndex: preferredSubtitleStreamIndex
+                preferredSubtitleStreamIndex: preferredSubtitleStreamIndex,
+                needsContainerRemux: needsContainerRemux
             )
         }
 
@@ -1194,7 +1258,8 @@ final class MP4ValidationViewModel: ObservableObject {
             needsAudioMetadataRepair: needsAudioMetadataRepair,
             audioStreamIndexesToRemove: audioStreamIndexesToRemove,
             subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove,
-            preferredSubtitleStreamIndex: preferredSubtitleStreamIndex
+            preferredSubtitleStreamIndex: preferredSubtitleStreamIndex,
+            needsContainerRemux: needsContainerRemux
         )
     }
 
@@ -1204,10 +1269,15 @@ final class MP4ValidationViewModel: ObservableObject {
         repairCandidates: [MP4AudioRepairCandidate],
         needsAudioMetadataRepair: Bool,
         audioStreamIndexesToRemove: Set<Int>,
-        subtitleStreamIndexesToRemove: Set<Int>
+        subtitleStreamIndexesToRemove: Set<Int>,
+        needsContainerRemux: Bool
     ) -> String {
         let findings = (reasons + warnings).joined(separator: " ").lowercased()
         var actions: [String] = []
+
+        if needsContainerRemux {
+            actions.append("Automatic repair available: rebuild the MP4 using only its video, audio, and subtitle tracks.")
+        }
 
         if needsAudioMetadataRepair && audioStreamIndexesToRemove.isEmpty {
             actions.append("Automatic repair available: normalize audio defaults and assign distinct track titles.")
@@ -1272,6 +1342,63 @@ final class MP4ValidationViewModel: ObservableObject {
         }
 
         return actions.joined(separator: " ")
+    }
+
+    private func containerAnalysis(filePath: String) async -> MP4ValidationContainerAnalysis? {
+        let arguments = [
+            "-v", "error",
+            "-show_entries",
+            "stream=index,codec_type,codec_tag_string,start_time,duration:stream_tags=handler_name:chapter=start_time,end_time",
+            "-print_format", "json",
+            filePath
+        ]
+
+        guard let output = await runProcessCaptureStdout(path: ffprobePath, arguments: arguments),
+              let data = output.data(using: .utf8),
+              let probe = try? JSONDecoder().decode(MP4ValidationContainerProbeOutput.self, from: data) else {
+            return nil
+        }
+
+        let auxiliaryStreams = probe.streams.filter {
+            normalizedProbeValue($0.codecType) == "data"
+        }
+        let malformedChapters = (probe.chapters ?? []).filter { chapter in
+            guard let start = chapter.startTime.flatMap(TimeInterval.init),
+                  let end = chapter.endTime.flatMap(TimeInterval.init) else {
+                return true
+            }
+            return end - start < 0.01
+        }
+        let mislabeledAuxiliaryStreams = auxiliaryStreams.filter { stream in
+            let tag = normalizedProbeValue(stream.codecTagString)
+            let handler = normalizedProbeValue(stream.tags?["handler_name"])
+            return handler.contains("subtitle") && tag != "text"
+        }
+
+        guard !malformedChapters.isEmpty || !mislabeledAuxiliaryStreams.isEmpty else {
+            return MP4ValidationContainerAnalysis(issues: [], needsMediaOnlyRemux: false)
+        }
+
+        let tags = auxiliaryStreams
+            .compactMap { stream -> String? in
+                let tag = normalizedProbeValue(stream.codecTagString)
+                return tag.isEmpty ? nil : tag
+            }
+            .reduce(into: [String]()) { values, tag in
+                if !values.contains(tag) { values.append(tag) }
+            }
+        var details: [String] = []
+        if !tags.isEmpty {
+            details.append(tags.joined(separator: ", "))
+        }
+        if !malformedChapters.isEmpty {
+            details.append("\(malformedChapters.count) invalid chapter ranges")
+        }
+        let suffix = details.isEmpty ? "" : " (\(details.joined(separator: "; ")))"
+        return MP4ValidationContainerAnalysis(
+            issues: ["malformed auxiliary or chapter tracks\(suffix)"],
+            needsMediaOnlyRemux: true
+        )
     }
 
     private func unsupportedAppleVideoCodec(filePath: String) async -> String? {
