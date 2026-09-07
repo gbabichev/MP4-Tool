@@ -2303,10 +2303,10 @@ class VideoProcessor: ObservableObject {
         arguments.append(contentsOf: ["-map", "0:s?", "-c:s", "copy"])
         arguments.append(contentsOf: [
             "-map_metadata", "-1",
-            // Rebuild chapters from the original source. Copying the temporary
-            // MP4's chapter reference without its hidden chapter track can leave
-            // a "Referenced QT chapter track not found" warning.
-            "-map_chapters", "1",
+            // Source chapter metadata can make FFmpeg synthesize hidden text/data
+            // tracks that AVPlayer rejects. Final MP4s intentionally contain only
+            // the explicitly mapped video, audio, and subtitle streams.
+            "-map_chapters", "-1",
             "-movflags", "+faststart",
             "-loglevel", "error",
             "-nostats",
@@ -2356,6 +2356,11 @@ class VideoProcessor: ObservableObject {
         let videoTrackCount = outputStreams.streams.filter { $0.codecType == "video" }.count
         guard videoTrackCount > 0 else {
             return "temporary output contains no video stream"
+        }
+
+        let auxiliaryTrackCount = outputStreams.streams.filter { $0.codecType == "data" }.count
+        guard auxiliaryTrackCount == 0 else {
+            return "temporary output contains \(auxiliaryTrackCount) unsupported auxiliary data track(s)"
         }
 
         let outputAudioStreams = outputStreams.streams.filter { $0.codecType == "audio" }
@@ -2417,7 +2422,8 @@ class VideoProcessor: ObservableObject {
         addLog(
             "Validated Output: \(formattedByteCount(outputSize)) · "
             + "\(videoTrackCount) video · "
-            + "\(actualAudioTrackCount) audio · \(formatDuration(seconds: Int(outputDuration)))"
+            + "\(actualAudioTrackCount) audio · no auxiliary data · "
+            + "\(formatDuration(seconds: Int(outputDuration)))"
         )
         return nil
     }
@@ -2909,6 +2915,10 @@ class VideoProcessor: ObservableObject {
             )
         }
 
+        // Never let FFmpeg implicitly rebuild QuickTime chapter/data tracks. Some
+        // otherwise valid sources contain malformed auxiliary tracks that make the
+        // resulting MP4 unreadable by AVPlayer.
+        cmd.append(contentsOf: ["-map_chapters", "-1"])
         cmd.append(tempFile)
 
         return cmd
@@ -2966,7 +2976,7 @@ class VideoProcessor: ObservableObject {
 
         cmd.append(contentsOf: [
             "-map_metadata", "-1",
-            "-map_chapters", "1",
+            "-map_chapters", "-1",
             "-movflags", "+faststart",
             "-loglevel", "error",
             "-nostats",

@@ -482,7 +482,9 @@ final class TrackEditorViewModel: ObservableObject {
                 arguments.append(contentsOf: ["-i", path])
             }
         }
-        arguments.append(contentsOf: ["-map_metadata", "0", "-map_chapters", "0"])
+        // Chapters are represented by hidden QuickTime text/data tracks in MP4.
+        // Rebuilding malformed source chapters can produce a file AVPlayer rejects.
+        arguments.append(contentsOf: ["-map_metadata", "0", "-map_chapters", "-1"])
 
         var outputIndexes: [TrackEditorTrackKind: Int] = [.video: 0, .audio: 0, .subtitle: 0]
         for track in includedTracks {

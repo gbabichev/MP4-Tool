@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import AVFoundation
 import Combine
+import Darwin
 import UniformTypeIdentifiers
 
 let queueMP4ValidationFlaggedFilesNotification = Notification.Name("MP4Tool.QueueMP4ValidationFlaggedFiles")
@@ -98,6 +99,55 @@ private struct MP4ValidationChapter: Decodable {
 private struct MP4ValidationContainerAnalysis {
     let issues: [String]
     let needsMediaOnlyRemux: Bool
+}
+
+private nonisolated final class MP4ValidationProcessCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isCancelled = false
+    private var process: Process?
+
+    func register(_ process: Process) {
+        lock.lock()
+        self.process = process
+        let shouldStop = isCancelled
+        lock.unlock()
+
+        if shouldStop {
+            Self.stop(process)
+        }
+    }
+
+    func stopIfCancelled() {
+        lock.lock()
+        let shouldStop = isCancelled
+        let process = process
+        lock.unlock()
+
+        if shouldStop, let process {
+            Self.stop(process)
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let process = process
+        lock.unlock()
+
+        if let process {
+            Self.stop(process)
+        }
+    }
+
+    static func stop(_ process: Process) {
+        guard process.isRunning else { return }
+        process.terminate()
+        let processIdentifier = process.processIdentifier
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1) {
+            guard process.isRunning else { return }
+            Darwin.kill(processIdentifier, SIGKILL)
+        }
+    }
 }
 
 private struct MP4ValidationAudioCompatibility {
@@ -424,8 +474,10 @@ final class MP4ValidationViewModel: ObservableObject {
         guard isRepairing else { return }
         repairTask?.cancel()
         terminateCurrentProcess()
-        scanProgress = "Repair canceled."
-        isRepairing = false
+        // Keep the operation active until the worker has actually unwound. This
+        // prevents a second repair from starting while a slow network write is
+        // still being terminated in the background.
+        scanProgress = "Stopping repair…"
     }
 
     func resetAll() {
@@ -564,7 +616,10 @@ final class MP4ValidationViewModel: ObservableObject {
                 : inputURL.deletingPathExtension().lastPathComponent + "_fixed.mp4"
             let outputURL = destinationDirectoryURL.appendingPathComponent(outputFileName)
 
-            guard replacesOriginal || !FileManager.default.fileExists(atPath: outputURL.path) else {
+            let outputAlreadyExists = await Task.detached(priority: .utility) {
+                FileManager.default.fileExists(atPath: outputURL.path)
+            }.value
+            guard replacesOriginal || !outputAlreadyExists else {
                 skippedCount += 1
                 updateRepairMessage(
                     for: result.id,
@@ -576,7 +631,9 @@ final class MP4ValidationViewModel: ObservableObject {
             let temporaryURL = destinationDirectoryURL.appendingPathComponent(
                 ".mp4tool-audio-repair-\(UUID().uuidString).mp4"
             )
-            defer { try? FileManager.default.removeItem(at: temporaryURL) }
+            // SMB cleanup can block for a long time when a share is slow or has
+            // disconnected. Never perform it on the main actor.
+            defer { Self.removeFileInBackground(temporaryURL) }
 
             let repairStatusMessage: String
             if result.needsContainerRemux {
@@ -608,7 +665,7 @@ final class MP4ValidationViewModel: ObservableObject {
             }
             arguments.append(contentsOf: [
                 "-map_metadata", "0",
-                "-map_chapters", "0",
+                "-map_chapters", result.needsContainerRemux ? "-1" : "0",
                 "-c", "copy"
             ])
 
@@ -789,12 +846,27 @@ final class MP4ValidationViewModel: ObservableObject {
                 continue
             }
 
-            do {
-                if replacesOriginal {
-                    _ = try FileManager.default.replaceItemAt(inputURL, withItemAt: temporaryURL)
-                } else {
-                    try FileManager.default.moveItem(at: temporaryURL, to: outputURL)
-                }
+            if Task.isCancelled {
+                scanProgress = "Repair canceled."
+                isRepairing = false
+                return
+            }
+
+            let installationError = await Self.installRepairedFile(
+                temporaryURL: temporaryURL,
+                inputURL: inputURL,
+                outputURL: outputURL,
+                replacesOriginal: replacesOriginal
+            )
+            if Task.isCancelled {
+                scanProgress = "Repair canceled."
+                isRepairing = false
+                return
+            }
+            if let installationError {
+                skippedCount += 1
+                updateRepairMessage(for: result.id, message: "Repair failed: \(installationError)")
+            } else {
                 repairedCount += 1
                 updateRepairMessage(
                     for: result.id,
@@ -802,9 +874,6 @@ final class MP4ValidationViewModel: ObservableObject {
                         ? "Replaced original after validation"
                         : "Saved \(outputURL.lastPathComponent)"
                 )
-            } catch {
-                skippedCount += 1
-                updateRepairMessage(for: result.id, message: "Repair failed: \(error.localizedDescription)")
             }
         }
 
@@ -826,6 +895,32 @@ final class MP4ValidationViewModel: ObservableObject {
     private func updateRepairMessage(for resultID: UUID, message: String) {
         guard let index = results.firstIndex(where: { $0.id == resultID }) else { return }
         results[index].repairMessage = message
+    }
+
+    nonisolated private static func removeFileInBackground(_ url: URL) {
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    nonisolated private static func installRepairedFile(
+        temporaryURL: URL,
+        inputURL: URL,
+        outputURL: URL,
+        replacesOriginal: Bool
+    ) async -> String? {
+        await Task.detached(priority: .utility) {
+            do {
+                if replacesOriginal {
+                    _ = try FileManager.default.replaceItemAt(inputURL, withItemAt: temporaryURL)
+                } else {
+                    try FileManager.default.moveItem(at: temporaryURL, to: outputURL)
+                }
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
+        }.value
     }
 
     private func repairedAudioTrackNames(
@@ -1182,9 +1277,11 @@ final class MP4ValidationViewModel: ObservableObject {
                 reasons.append("unsupported video codec \(unsupportedVideoCodec)")
             }
 
-            if let containerAnalysis = await containerAnalysis(filePath: filePath) {
+            if let containerAnalysis = await containerAnalysis(filePath: filePath),
+               containerAnalysis.needsMediaOnlyRemux,
+               await failsApplePlaybackStartup(filePath: filePath) {
                 reasons.append(contentsOf: containerAnalysis.issues)
-                needsContainerRemux = containerAnalysis.needsMediaOnlyRemux
+                needsContainerRemux = true
             }
 
             audioCompatibility = await probeAudioCompatibility(filePath: filePath)
@@ -1369,13 +1466,7 @@ final class MP4ValidationViewModel: ObservableObject {
             }
             return end - start < 0.01
         }
-        let mislabeledAuxiliaryStreams = auxiliaryStreams.filter { stream in
-            let tag = normalizedProbeValue(stream.codecTagString)
-            let handler = normalizedProbeValue(stream.tags?["handler_name"])
-            return handler.contains("subtitle") && tag != "text"
-        }
-
-        guard !malformedChapters.isEmpty || !mislabeledAuxiliaryStreams.isEmpty else {
+        guard !auxiliaryStreams.isEmpty || !malformedChapters.isEmpty else {
             return MP4ValidationContainerAnalysis(issues: [], needsMediaOnlyRemux: false)
         }
 
@@ -1399,6 +1490,39 @@ final class MP4ValidationViewModel: ObservableObject {
             issues: ["malformed auxiliary or chapter tracks\(suffix)"],
             needsMediaOnlyRemux: true
         )
+    }
+
+    /// `AVURLAsset.isPlayable` can be true for malformed QuickTime auxiliary
+    /// tracks even though AVPlayer fails as soon as playback begins. Probe actual
+    /// player-item readiness for suspicious containers to avoid both that false
+    /// negative and static chapter-count false positives.
+    private func failsApplePlaybackStartup(filePath: String) async -> Bool {
+        let item = AVPlayerItem(url: URL(fileURLWithPath: filePath))
+        let player = AVPlayer(playerItem: item)
+        player.isMuted = true
+        player.play()
+        defer {
+            player.pause()
+            player.replaceCurrentItem(with: nil)
+        }
+
+        for _ in 0..<40 {
+            if Task.isCancelled { return false }
+            switch item.status {
+            case .failed:
+                return true
+            case .readyToPlay:
+                return false
+            case .unknown:
+                break
+            @unknown default:
+                return false
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+
+        // An inconclusive timeout is not sufficient evidence to flag a file.
+        return false
     }
 
     private func unsupportedAppleVideoCodec(filePath: String) async -> String? {
@@ -2074,91 +2198,107 @@ final class MP4ValidationViewModel: ObservableObject {
     }
 
     private func runProcessCaptureStdout(path: String, arguments: [String]) async -> String? {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = arguments
+        guard !Task.isCancelled else { return nil }
+        let cancellation = MP4ValidationProcessCancellation()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: path)
+                    process.arguments = arguments
 
-                let outputPipe = Pipe()
-                process.standardOutput = outputPipe
-                process.standardError = FileHandle.nullDevice
+                    let outputPipe = Pipe()
+                    process.standardOutput = outputPipe
+                    process.standardError = FileHandle.nullDevice
 
-                do {
-                    self.processLock.lock()
-                    self.currentProcess = process
-                    self.processLock.unlock()
+                    do {
+                        cancellation.register(process)
+                        self.processLock.lock()
+                        self.currentProcess = process
+                        self.processLock.unlock()
 
-                    try process.run()
-                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
+                        try process.run()
+                        cancellation.stopIfCancelled()
+                        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                        process.waitUntilExit()
 
-                    self.processLock.lock()
-                    if self.currentProcess === process {
-                        self.currentProcess = nil
-                    }
-                    self.processLock.unlock()
+                        self.processLock.lock()
+                        if self.currentProcess === process {
+                            self.currentProcess = nil
+                        }
+                        self.processLock.unlock()
 
-                    guard process.terminationStatus == 0 else {
+                        guard process.terminationStatus == 0 else {
+                            continuation.resume(returning: nil)
+                            return
+                        }
+
+                        let output = String(data: outputData, encoding: .utf8)
+                        continuation.resume(returning: output)
+                    } catch {
+                        self.processLock.lock()
+                        if self.currentProcess === process {
+                            self.currentProcess = nil
+                        }
+                        self.processLock.unlock()
                         continuation.resume(returning: nil)
-                        return
                     }
-
-                    let output = String(data: outputData, encoding: .utf8)
-                    continuation.resume(returning: output)
-                } catch {
-                    self.processLock.lock()
-                    if self.currentProcess === process {
-                        self.currentProcess = nil
-                    }
-                    self.processLock.unlock()
-                    continuation.resume(returning: nil)
                 }
             }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
     private func runProcessCaptureStderr(path: String, arguments: [String]) async -> String? {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = arguments
+        guard !Task.isCancelled else { return nil }
+        let cancellation = MP4ValidationProcessCancellation()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: path)
+                    process.arguments = arguments
 
-                let errorPipe = Pipe()
-                process.standardOutput = FileHandle.nullDevice
-                process.standardError = errorPipe
+                    let errorPipe = Pipe()
+                    process.standardOutput = FileHandle.nullDevice
+                    process.standardError = errorPipe
 
-                do {
-                    self.processLock.lock()
-                    self.currentProcess = process
-                    self.processLock.unlock()
+                    do {
+                        cancellation.register(process)
+                        self.processLock.lock()
+                        self.currentProcess = process
+                        self.processLock.unlock()
 
-                    try process.run()
-                    let outputData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
+                        try process.run()
+                        cancellation.stopIfCancelled()
+                        let outputData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                        process.waitUntilExit()
 
-                    self.processLock.lock()
-                    if self.currentProcess === process {
-                        self.currentProcess = nil
-                    }
-                    self.processLock.unlock()
+                        self.processLock.lock()
+                        if self.currentProcess === process {
+                            self.currentProcess = nil
+                        }
+                        self.processLock.unlock()
 
-                    guard process.terminationStatus == 0 else {
+                        guard process.terminationStatus == 0 else {
+                            continuation.resume(returning: nil)
+                            return
+                        }
+
+                        continuation.resume(returning: String(data: outputData, encoding: .utf8))
+                    } catch {
+                        self.processLock.lock()
+                        if self.currentProcess === process {
+                            self.currentProcess = nil
+                        }
+                        self.processLock.unlock()
                         continuation.resume(returning: nil)
-                        return
                     }
-
-                    continuation.resume(returning: String(data: outputData, encoding: .utf8))
-                } catch {
-                    self.processLock.lock()
-                    if self.currentProcess === process {
-                        self.currentProcess = nil
-                    }
-                    self.processLock.unlock()
-                    continuation.resume(returning: nil)
                 }
             }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
@@ -2167,7 +2307,8 @@ final class MP4ValidationViewModel: ObservableObject {
         let process = currentProcess
         processLock.unlock()
 
-        process?.terminate()
+        guard let process else { return }
+        MP4ValidationProcessCancellation.stop(process)
     }
 
     private func locateMediaTools() {

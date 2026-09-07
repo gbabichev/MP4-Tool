@@ -400,7 +400,8 @@ final class MetadataCleanerViewModel: ObservableObject {
 
         var arguments = [
             "-hide_banner", "-nostdin", "-y", "-i", result.filePath,
-            "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy"
+            "-map", "0:v?", "-map", "0:a?", "-map", "0:s?",
+            "-map_metadata", "0", "-map_chapters", "-1", "-c", "copy"
         ]
 
         for (key, value) in sourceProbe.format?.tags ?? [:]
