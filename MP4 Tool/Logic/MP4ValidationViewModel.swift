@@ -101,6 +101,126 @@ private struct MP4ValidationContainerAnalysis {
     let needsMediaOnlyRemux: Bool
 }
 
+private nonisolated struct MP4ValidationFileIdentity: Sendable {
+    let size: UInt64
+    let modificationDate: Date
+}
+
+private nonisolated struct MP4ValidationRepairCandidateSnapshot: Codable, Sendable {
+    let streamIndex: Int
+    let audioIndex: Int
+    let kind: String
+    let value: String?
+
+    init(_ candidate: MP4AudioRepairCandidate) {
+        streamIndex = candidate.streamIndex
+        audioIndex = candidate.audioIndex
+        switch candidate.kind {
+        case .downmixToStereo:
+            kind = "downmixToStereo"
+            value = nil
+        case .extractChannelToMono(let channel):
+            kind = "extractChannelToMono"
+            value = String(channel)
+        case .restoreLayout(let layout):
+            kind = "restoreLayout"
+            value = layout
+        }
+    }
+
+    var repairCandidate: MP4AudioRepairCandidate? {
+        let repairKind: MP4AudioRepairKind
+        switch kind {
+        case "downmixToStereo":
+            repairKind = .downmixToStereo
+        case "extractChannelToMono":
+            guard let value, let channel = Int(value) else { return nil }
+            repairKind = .extractChannelToMono(channel)
+        case "restoreLayout":
+            guard let value, !value.isEmpty else { return nil }
+            repairKind = .restoreLayout(value)
+        default:
+            return nil
+        }
+        return MP4AudioRepairCandidate(
+            streamIndex: streamIndex,
+            audioIndex: audioIndex,
+            kind: repairKind
+        )
+    }
+}
+
+private nonisolated struct MP4ValidationResultSnapshot: Codable, Sendable {
+    let fileName: String
+    let filePath: String
+    let issue: String?
+    let assessment: String
+    let severity: String?
+    let repairCandidates: [MP4ValidationRepairCandidateSnapshot]
+    let needsAudioMetadataRepair: Bool
+    let audioStreamIndexesToRemove: Set<Int>
+    let subtitleStreamIndexesToRemove: Set<Int>
+    let preferredSubtitleStreamIndex: Int?
+    let needsContainerRemux: Bool
+    let sourceFileSize: UInt64
+    let sourceModificationDate: Date
+    let repairCompleted: Bool?
+
+    init(_ result: MP4ValidationResult) {
+        fileName = result.fileName
+        filePath = result.filePath
+        issue = result.issue
+        assessment = result.assessment
+        switch result.severity {
+        case .warning: severity = "warning"
+        case .error: severity = "error"
+        case nil: severity = nil
+        }
+        repairCandidates = result.repairCandidates.map(MP4ValidationRepairCandidateSnapshot.init)
+        needsAudioMetadataRepair = result.needsAudioMetadataRepair
+        audioStreamIndexesToRemove = result.audioStreamIndexesToRemove
+        subtitleStreamIndexesToRemove = result.subtitleStreamIndexesToRemove
+        preferredSubtitleStreamIndex = result.preferredSubtitleStreamIndex
+        needsContainerRemux = result.needsContainerRemux
+        sourceFileSize = result.sourceFileSize
+        sourceModificationDate = result.sourceModificationDate
+        repairCompleted = result.repairCompleted
+    }
+
+    var validationResult: MP4ValidationResult {
+        MP4ValidationResult(
+            fileName: fileName,
+            filePath: filePath,
+            issue: issue,
+            assessment: assessment,
+            severity: severity == "warning" ? .warning : severity == "error" ? .error : nil,
+            repairCandidates: repairCandidates.compactMap(\.repairCandidate),
+            needsAudioMetadataRepair: needsAudioMetadataRepair,
+            audioStreamIndexesToRemove: audioStreamIndexesToRemove,
+            subtitleStreamIndexesToRemove: subtitleStreamIndexesToRemove,
+            preferredSubtitleStreamIndex: preferredSubtitleStreamIndex,
+            needsContainerRemux: needsContainerRemux,
+            sourceFileSize: sourceFileSize,
+            sourceModificationDate: sourceModificationDate,
+            repairCompleted: repairCompleted ?? false,
+            repairMessage: repairCompleted == true
+                ? "Repair completed before this scan was saved"
+                : nil
+        )
+    }
+}
+
+private nonisolated struct MP4ValidationScanSnapshot: Codable, Sendable {
+    static let currentFormatVersion = 1
+
+    let formatVersion: Int
+    let createdAt: Date
+    let appVersion: String
+    let inputFolderPath: String
+    let droppedFilePaths: [String]
+    let results: [MP4ValidationResultSnapshot]
+}
+
 private nonisolated final class MP4ValidationProcessCancellation: @unchecked Sendable {
     private let lock = NSLock()
     private var isCancelled = false
@@ -157,13 +277,13 @@ private struct MP4ValidationAudioCompatibility {
     let formatDuration: TimeInterval?
 }
 
-enum MP4AudioRepairKind: Equatable {
+nonisolated enum MP4AudioRepairKind: Equatable, Sendable {
     case downmixToStereo
     case extractChannelToMono(Int)
     case restoreLayout(String)
 }
 
-struct MP4AudioRepairCandidate: Equatable {
+nonisolated struct MP4AudioRepairCandidate: Equatable, Sendable {
     let streamIndex: Int
     let audioIndex: Int
     let kind: MP4AudioRepairKind
@@ -191,7 +311,7 @@ private enum MP4AudioChannelScanDepth {
     case full
 }
 
-enum MP4ValidationSeverity {
+nonisolated enum MP4ValidationSeverity: Sendable {
     case warning
     case error
 }
@@ -208,7 +328,7 @@ private struct MP4ValidationFinding {
     let needsContainerRemux: Bool
 }
 
-struct MP4ValidationResult: Identifiable {
+nonisolated struct MP4ValidationResult: Identifiable, Sendable {
     let id = UUID()
     let fileName: String
     let filePath: String
@@ -221,6 +341,9 @@ struct MP4ValidationResult: Identifiable {
     let subtitleStreamIndexesToRemove: Set<Int>
     let preferredSubtitleStreamIndex: Int?
     let needsContainerRemux: Bool
+    let sourceFileSize: UInt64
+    let sourceModificationDate: Date
+    var repairCompleted = false
     var repairMessage: String? = nil
 
     var isFlagged: Bool {
@@ -228,11 +351,13 @@ struct MP4ValidationResult: Identifiable {
     }
 
     var isRepairable: Bool {
-        needsAudioMetadataRepair
-            || !repairCandidates.isEmpty
-            || !audioStreamIndexesToRemove.isEmpty
-            || !subtitleStreamIndexesToRemove.isEmpty
-            || needsContainerRemux
+        !repairCompleted && (
+            needsAudioMetadataRepair
+                || !repairCandidates.isEmpty
+                || !audioStreamIndexesToRemove.isEmpty
+                || !subtitleStreamIndexesToRemove.isEmpty
+                || needsContainerRemux
+        )
     }
 }
 
@@ -295,6 +420,10 @@ final class MP4ValidationViewModel: ObservableObject {
 
     var canExportAll: Bool {
         !isScanning && !isRepairing && !results.isEmpty
+    }
+
+    var canImportSnapshot: Bool {
+        !isScanning && !isRepairing
     }
 
     var canSendFlaggedToMainApp: Bool {
@@ -534,6 +663,15 @@ final class MP4ValidationViewModel: ObservableObject {
                     for: result.id,
                     message: "Confirming channel activity across the full audio track…"
                 )
+            }
+
+            if let mismatch = await Self.sourceMismatch(for: result) {
+                skippedCount += 1
+                updateRepairMessage(
+                    for: result.id,
+                    message: "Repair skipped: \(mismatch) Rescan this file first."
+                )
+                continue
             }
 
             guard let compatibility = await probeAudioCompatibility(filePath: result.filePath) else {
@@ -868,7 +1006,7 @@ final class MP4ValidationViewModel: ObservableObject {
                 updateRepairMessage(for: result.id, message: "Repair failed: \(installationError)")
             } else {
                 repairedCount += 1
-                updateRepairMessage(
+                markRepairCompleted(
                     for: result.id,
                     message: replacesOriginal
                         ? "Replaced original after validation"
@@ -897,10 +1035,46 @@ final class MP4ValidationViewModel: ObservableObject {
         results[index].repairMessage = message
     }
 
+    private func markRepairCompleted(for resultID: UUID, message: String) {
+        guard let index = results.firstIndex(where: { $0.id == resultID }) else { return }
+        results[index].repairCompleted = true
+        results[index].repairMessage = message
+    }
+
     nonisolated private static func removeFileInBackground(_ url: URL) {
         DispatchQueue.global(qos: .utility).async {
             try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    nonisolated private static func fileIdentity(
+        atPath path: String
+    ) async -> MP4ValidationFileIdentity? {
+        await Task.detached(priority: .utility) {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+                  let size = (attributes[.size] as? NSNumber)?.uint64Value,
+                  let modificationDate = attributes[.modificationDate] as? Date else {
+                return nil
+            }
+            return MP4ValidationFileIdentity(size: size, modificationDate: modificationDate)
+        }.value
+    }
+
+    nonisolated private static func sourceMismatch(
+        for result: MP4ValidationResult
+    ) async -> String? {
+        guard let currentIdentity = await fileIdentity(atPath: result.filePath) else {
+            return "the source file is missing or unavailable."
+        }
+        guard currentIdentity.size == result.sourceFileSize else {
+            return "the source file size changed after the scan."
+        }
+        guard abs(
+            currentIdentity.modificationDate.timeIntervalSince(result.sourceModificationDate)
+        ) < 0.01 else {
+            return "the source file was modified after the scan."
+        }
+        return nil
     }
 
     nonisolated private static func installRepairedFile(
@@ -1075,7 +1249,8 @@ final class MP4ValidationViewModel: ObservableObject {
                 itemName: URL(fileURLWithPath: result.filePath).lastPathComponent,
                 path: result.filePath,
                 error: result.issue ?? "",
-                assessment: result.assessment
+                assessment: result.assessment,
+                repairCompleted: result.repairCompleted ? "Yes" : "No"
             )
         }
         guard !reportRows.isEmpty else {
@@ -1106,11 +1281,11 @@ final class MP4ValidationViewModel: ObservableObject {
                     return
                 }
 
-                let header = ["Item Name", "Path", "Error", "Assessment"]
+                let header = ["Item Name", "Path", "Error", "Assessment", "Repair Completed"]
                     .map(self.csvField)
                     .joined(separator: ",")
                 let rows = reportRows.map { row in
-                    [row.itemName, row.path, row.error, row.assessment]
+                    [row.itemName, row.path, row.error, row.assessment, row.repairCompleted]
                         .map(self.csvField)
                         .joined(separator: ",")
                 }
@@ -1122,6 +1297,117 @@ final class MP4ValidationViewModel: ObservableObject {
                     self.scanAlertText = "Exported \(reportRows.count) validation \(scope)(s) to \(url.path)."
                 } catch {
                     self.scanAlertText = "Failed to export CSV report: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func exportScanSnapshot() {
+        guard canExportAll else {
+            scanAlertText = "Run or import a scan before exporting a snapshot."
+            return
+        }
+
+        let hostWindow = makeHiddenChromeHostWindow()
+        exportDialogHostWindow = hostWindow
+        hostWindow.makeKeyAndOrderFront(nil)
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [UTType(filenameExtension: "mp4toolscan") ?? .data]
+        panel.nameFieldStringValue = "MP4 Validation Scan.mp4toolscan"
+        panel.message = "Save the complete scan so it can be resumed without scanning again"
+
+        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+            Task { @MainActor in
+                guard let self else { return }
+                defer {
+                    self.exportDialogHostWindow?.orderOut(nil)
+                    self.exportDialogHostWindow = nil
+                }
+                guard response == .OK, let url = panel.url else { return }
+
+                let snapshot = MP4ValidationScanSnapshot(
+                    formatVersion: MP4ValidationScanSnapshot.currentFormatVersion,
+                    createdAt: Date(),
+                    appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+                        as? String ?? "Unknown",
+                    inputFolderPath: self.inputFolderPath,
+                    droppedFilePaths: self.droppedFilePaths,
+                    results: self.results.map(MP4ValidationResultSnapshot.init)
+                )
+
+                do {
+                    try await Task.detached(priority: .utility) {
+                        let encoder = JSONEncoder()
+                        encoder.dateEncodingStrategy = .millisecondsSince1970
+                        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                        try encoder.encode(snapshot).write(to: url, options: .atomic)
+                    }.value
+                    self.scanAlertText = "Saved a resumable scan with \(snapshot.results.count) result(s)."
+                } catch {
+                    self.scanAlertText = "Failed to save scan snapshot: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func importScanSnapshot(
+        onImportedInput: @escaping @MainActor (URL?) -> Void = { _ in }
+    ) {
+        guard canImportSnapshot else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [UTType(filenameExtension: "mp4toolscan") ?? .data]
+        panel.message = "Choose a saved MP4 Tool validation scan"
+
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                do {
+                    let snapshot = try await Task.detached(priority: .utility) {
+                        let decoder = JSONDecoder()
+                        decoder.dateDecodingStrategy = .millisecondsSince1970
+                        return try decoder.decode(
+                            MP4ValidationScanSnapshot.self,
+                            from: Data(contentsOf: url)
+                        )
+                    }.value
+
+                    guard snapshot.formatVersion == MP4ValidationScanSnapshot.currentFormatVersion else {
+                        self.scanAlertText = "This scan was created by an unsupported snapshot format."
+                        return
+                    }
+                    guard !snapshot.results.isEmpty else {
+                        self.scanAlertText = "The selected scan snapshot contains no results."
+                        return
+                    }
+
+                    self.scanTask?.cancel()
+                    self.repairTask?.cancel()
+                    self.inputFolderPath = snapshot.inputFolderPath
+                    self.droppedFilePaths = snapshot.droppedFilePaths
+                    self.results = snapshot.results.map(\.validationResult)
+                    self.scanProgress = "Restored \(self.results.count) result(s) from saved scan."
+                    self.scanAlertText = "Imported scan from \(snapshot.createdAt.formatted(date: .abbreviated, time: .shortened)). Files will be verified before repair."
+                    self.resetOperationProgress()
+                    let restoredInputURL: URL?
+                    if !snapshot.inputFolderPath.isEmpty {
+                        restoredInputURL = URL(
+                            fileURLWithPath: snapshot.inputFolderPath,
+                            isDirectory: true
+                        )
+                    } else if let firstPath = snapshot.droppedFilePaths.first {
+                        restoredInputURL = URL(fileURLWithPath: firstPath)
+                    } else {
+                        restoredInputURL = nil
+                    }
+                    onImportedInput(restoredInputURL)
+                } catch {
+                    self.scanAlertText = "Could not import scan snapshot: \(error.localizedDescription)"
                 }
             }
         }
@@ -1199,6 +1485,26 @@ final class MP4ValidationViewModel: ObservableObject {
             scanProgress = "Validating \(index + 1)/\(files.count): \(fileInfo.relativePath)"
 
             let finding = await validationFinding(filePath: fileInfo.fullPath)
+            guard let sourceIdentity = await Self.fileIdentity(atPath: fileInfo.fullPath) else {
+                results.append(
+                    MP4ValidationResult(
+                        fileName: fileInfo.relativePath,
+                        filePath: fileInfo.fullPath,
+                        issue: "file became unavailable during validation",
+                        assessment: "The file could not be read after validation completed.",
+                        severity: .error,
+                        repairCandidates: [],
+                        needsAudioMetadataRepair: false,
+                        audioStreamIndexesToRemove: [],
+                        subtitleStreamIndexesToRemove: [],
+                        preferredSubtitleStreamIndex: nil,
+                        needsContainerRemux: false,
+                        sourceFileSize: 0,
+                        sourceModificationDate: .distantPast
+                    )
+                )
+                continue
+            }
             results.append(
                 MP4ValidationResult(
                     fileName: fileInfo.relativePath,
@@ -1211,7 +1517,9 @@ final class MP4ValidationViewModel: ObservableObject {
                     audioStreamIndexesToRemove: finding?.audioStreamIndexesToRemove ?? [],
                     subtitleStreamIndexesToRemove: finding?.subtitleStreamIndexesToRemove ?? [],
                     preferredSubtitleStreamIndex: finding?.preferredSubtitleStreamIndex,
-                    needsContainerRemux: finding?.needsContainerRemux ?? false
+                    needsContainerRemux: finding?.needsContainerRemux ?? false,
+                    sourceFileSize: sourceIdentity.size,
+                    sourceModificationDate: sourceIdentity.modificationDate
                 )
             )
         }

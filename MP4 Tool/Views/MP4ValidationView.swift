@@ -206,15 +206,17 @@ struct MP4ValidationView: View {
 
                             Spacer()
 
-                            ControlGroup {
+                            HStack(spacing: 6) {
                                 Button {
                                     showFlaggedOnly.toggle()
                                 } label: {
                                     Label(
-                                        showFlaggedOnly ? "Show All" : "Flagged Only",
+                                        showFlaggedOnly ? "Show All" : "Show Issues",
                                         systemImage: showFlaggedOnly ? "list.bullet" : "exclamationmark.triangle"
                                     )
+                                    .labelStyle(.titleAndIcon)
                                 }
+                                .buttonStyle(.bordered)
                                 .disabled(viewModel.results.isEmpty)
 
                                 Button {
@@ -229,7 +231,9 @@ struct MP4ValidationView: View {
                                         systemImage: allRepairableResultsSelected
                                             ? "checkmark.circle.fill" : "checkmark.circle"
                                     )
+                                    .labelStyle(.titleAndIcon)
                                 }
+                                .buttonStyle(.bordered)
                                 .disabled(
                                     repairableResultIDs.isEmpty
                                         || viewModel.isScanning
@@ -250,7 +254,12 @@ struct MP4ValidationView: View {
                         } else {
                             List(displayedResults) { result in
                                 HStack(spacing: 12) {
-                                    if result.isRepairable {
+                                    if result.repairCompleted {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                            .frame(width: 20, height: 20)
+                                            .help("Repair completed")
+                                    } else if result.isRepairable {
                                         Toggle("Repair", isOn: repairSelectionBinding(for: result.id))
                                             .labelsHidden()
                                             .toggleStyle(.checkbox)
@@ -267,7 +276,8 @@ struct MP4ValidationView: View {
                                             Text(repairMessage)
                                                 .font(.caption2)
                                                 .foregroundStyle(
-                                                    repairMessage.hasPrefix("Saved ")
+                                                    result.repairCompleted
+                                                        || repairMessage.hasPrefix("Saved ")
                                                         || repairMessage.hasPrefix("Replaced ")
                                                         ? Color.green : Color.orange
                                                 )
@@ -365,21 +375,40 @@ struct MP4ValidationView: View {
                 ToolbarItem(placement: .navigation) {
                     Menu {
                         Button {
+                            viewModel.importScanSnapshot { restoredInputURL in
+                                lastAppliedSharedInputPath = restoredInputURL?.path
+                                sharedInputURL?.wrappedValue = restoredInputURL
+                            }
+                        } label: {
+                            Label("Import Scan…", systemImage: "square.and.arrow.down")
+                        }
+                        .disabled(!viewModel.canImportSnapshot)
+
+                        Button {
+                            viewModel.exportScanSnapshot()
+                        } label: {
+                            Label("Export Scan…", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(!viewModel.canExportAll)
+
+                        Divider()
+
+                        Button {
                             viewModel.exportCSVReport(includeAll: true)
                         } label: {
-                            Label("Export All…", systemImage: "list.bullet")
+                            Label("Export All as CSV…", systemImage: "list.bullet")
                         }
+                        .disabled(!viewModel.canExportAll)
 
                         Button {
                             viewModel.exportCSVReport(includeAll: false)
                         } label: {
-                            Label("Export Issues…", systemImage: "exclamationmark.triangle")
+                            Label("Export Issues as CSV…", systemImage: "exclamationmark.triangle")
                         }
                         .disabled(!viewModel.canExportFlagged)
                     } label: {
-                        Label("Export CSV…", systemImage: "square.and.arrow.up")
+                        Label("Import or Export", systemImage: "arrow.up.arrow.down.square")
                     }
-                    .disabled(!viewModel.canExportAll)
                 }
 
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -511,10 +540,12 @@ struct MP4ValidationView: View {
     }
 
     private var resultsSummary: String {
-        if showFlaggedOnly {
-            return "\(displayedResults.count) flagged of \(viewModel.results.count)"
+        let totalCount = viewModel.results.count
+        let issueCount = viewModel.flaggedResults.count
+        if issueCount > 0 {
+            return "\(issueCount) need attention of \(totalCount) file\(totalCount == 1 ? "" : "s")"
         }
-        return "\(viewModel.results.count) file\(viewModel.results.count == 1 ? "" : "s")"
+        return "\(totalCount) file\(totalCount == 1 ? "" : "s") · No issues found"
     }
 
     private var selectedRepairCount: Int {
