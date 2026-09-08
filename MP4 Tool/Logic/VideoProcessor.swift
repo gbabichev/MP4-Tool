@@ -1208,7 +1208,10 @@ class VideoProcessor: ObservableObject {
 
             let outputFilePath: String
             if createSubfolders {
-                let folderName = (fileInfo.name as NSString).deletingPathExtension
+                // Keep the directory and output file in sync. When automatic
+                // rename resolves a clean title, use that same resolved name for
+                // the containing folder instead of the raw source filename.
+                let folderName = (outputFileName as NSString).deletingPathExtension
                 let outputDir = (outputPath as NSString).appendingPathComponent(folderName)
                 outputFilePath = (outputDir as NSString).appendingPathComponent(outputFileName)
 
@@ -3695,7 +3698,7 @@ class VideoProcessor: ObservableObject {
 
         let outputFilePath: String
         if createSubfolders {
-            let folderName = (fileInfo.fileName as NSString).deletingPathExtension
+            let folderName = (outputFileName as NSString).deletingPathExtension
             let outputDir = (outputPath as NSString).appendingPathComponent(folderName)
             outputFilePath = (outputDir as NSString).appendingPathComponent(outputFileName)
         } else {
