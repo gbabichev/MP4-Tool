@@ -15,7 +15,7 @@ struct TrackEditorView: View {
                 remuxProgressContent
             }
 
-            Text("Inspect every media track, choose what to keep, add external audio or subtitles, and create a new validated MP4.")
+            Text("Inspect every media track, choose what to keep, choose or drop external audio and subtitles, and create a new validated MP4.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -158,9 +158,7 @@ struct TrackEditorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(minWidth: 980, minHeight: 680)
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first else { return false }
-            viewModel.inspect(path: url.path)
-            return true
+            viewModel.handleDroppedFiles(urls)
         }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
@@ -180,6 +178,14 @@ struct TrackEditorView: View {
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    viewModel.resetAll()
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
+                }
+                .disabled(!viewModel.hasStateToReset || viewModel.operationInProgress)
+                .help("Clear the selected files and Track Editor state")
+
                 if viewModel.operationInProgress {
                     Button {
                         viewModel.cancel()

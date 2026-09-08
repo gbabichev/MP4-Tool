@@ -167,6 +167,12 @@ private nonisolated final class TrackEditorProcessOutput: @unchecked Sendable {
 
 @MainActor
 final class TrackEditorViewModel: ObservableObject {
+    private static let sourceVideoExtensions = ["mp4", "m4v", "mov"]
+    private static let externalAudioExtensions = [
+        "aac", "m4a", "mp3", "ac3", "eac3", "flac", "wav", "aiff", "mka"
+    ]
+    private static let externalSubtitleExtensions = ["srt", "vtt", "ass", "ssa", "mks"]
+
     @Published var inputPath = ""
     @Published var outputFolderPath = ""
     @Published var outputFileName = ""
@@ -231,6 +237,16 @@ final class TrackEditorViewModel: ObservableObject {
         isInspecting || isRemuxing
     }
 
+    var hasStateToReset: Bool {
+        !inputPath.isEmpty
+            || !outputFolderPath.isEmpty
+            || !outputFileName.isEmpty
+            || !tracks.isEmpty
+            || !statusMessage.isEmpty
+            || !errorDetails.isEmpty
+            || showOverwriteConfirmation
+    }
+
     var hasDeterminateRemuxProgress: Bool {
         sourceDuration.map { $0 > 0 } == true
     }
@@ -248,7 +264,7 @@ final class TrackEditorViewModel: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = Self.contentTypes(for: ["mp4", "m4v", "mov"])
+        panel.allowedContentTypes = Self.contentTypes(for: Self.sourceVideoExtensions)
         panel.message = "Choose an MP4 file to inspect"
         CleanFilePanelPresenter.present(panel) { [weak self] response in
             guard let self, response == .OK, let url = panel.url else { return }
@@ -259,7 +275,7 @@ final class TrackEditorViewModel: ObservableObject {
     func inspect(path: String) {
         guard !operationInProgress else { return }
         let url = URL(fileURLWithPath: path)
-        guard ["mp4", "m4v", "mov"].contains(url.pathExtension.lowercased()) else {
+        guard Self.sourceVideoExtensions.contains(url.pathExtension.lowercased()) else {
             statusMessage = "Choose an MP4, M4V, or MOV file."
             return
         }
@@ -322,6 +338,64 @@ final class TrackEditorViewModel: ObservableObject {
 
     func addSubtitleTracks() {
         addExternalTracks(kind: .subtitle)
+    }
+
+    @discardableResult
+    func handleDroppedFiles(_ urls: [URL]) -> Bool {
+        guard !operationInProgress, !urls.isEmpty else { return false }
+
+        if let sourceURL = urls.first(where: {
+            Self.sourceVideoExtensions.contains($0.pathExtension.lowercased())
+        }) {
+            inspect(path: sourceURL.path)
+            return true
+        }
+
+        guard !inputPath.isEmpty else {
+            statusMessage = "Choose an MP4 before adding audio or subtitle tracks."
+            return false
+        }
+
+        let externalFiles: [(url: URL, kind: TrackEditorTrackKind)] = urls.compactMap { url in
+            let fileExtension = url.pathExtension.lowercased()
+            if Self.externalAudioExtensions.contains(fileExtension) {
+                return (url, .audio)
+            }
+            if Self.externalSubtitleExtensions.contains(fileExtension) {
+                return (url, .subtitle)
+            }
+            return nil
+        }
+
+        guard !externalFiles.isEmpty else {
+            statusMessage = "Drop a supported audio or subtitle file."
+            return false
+        }
+
+        inspectExternalTracks(externalFiles)
+        return true
+    }
+
+    func resetAll() {
+        guard !operationInProgress else { return }
+        operationTask?.cancel()
+        operationTask = nil
+        progressTimerTask?.cancel()
+        progressTimerTask = nil
+        inputPath = ""
+        outputFolderPath = ""
+        outputFileName = ""
+        tracks = []
+        statusMessage = ""
+        errorDetails = ""
+        showOverwriteConfirmation = false
+        remuxProgress = 0
+        remuxElapsed = 0
+        remuxETA = nil
+        remuxStartedAt = nil
+        sourceDuration = nil
+        sourceVideoDuration = nil
+        nextInputOrdinal = 1
     }
 
     func removeExternalTrack(id: UUID) {
@@ -394,25 +468,25 @@ final class TrackEditorViewModel: ObservableObject {
             ? "Choose audio files to add"
             : "Choose subtitle files to add"
         if kind == .audio {
-            panel.allowedContentTypes = Self.contentTypes(
-                for: ["aac", "m4a", "mp3", "ac3", "eac3", "flac", "wav", "aiff", "mka"]
-            )
+            panel.allowedContentTypes = Self.contentTypes(for: Self.externalAudioExtensions)
         } else {
-            panel.allowedContentTypes = Self.contentTypes(for: ["srt", "vtt", "ass", "ssa", "mks"])
+            panel.allowedContentTypes = Self.contentTypes(for: Self.externalSubtitleExtensions)
         }
         CleanFilePanelPresenter.present(panel) { [weak self] response in
             guard let self, response == .OK else { return }
-            self.inspectExternalTracks(at: panel.urls, kind: kind)
+            self.inspectExternalTracks(panel.urls.map { ($0, kind) })
         }
     }
 
-    private func inspectExternalTracks(at urls: [URL], kind: TrackEditorTrackKind) {
+    private func inspectExternalTracks(
+        _ files: [(url: URL, kind: TrackEditorTrackKind)]
+    ) {
         statusMessage = "Inspecting added tracks…"
         isInspecting = true
         operationTask?.cancel()
         operationTask = Task {
-            var addedCount = 0
-            for url in urls {
+            var addedCounts: [TrackEditorTrackKind: Int] = [:]
+            for (url, kind) in files {
                 guard !Task.isCancelled, let probe = await probe(path: url.path) else { continue }
                 let inputOrdinal = nextInputOrdinal
                 nextInputOrdinal += 1
@@ -428,11 +502,16 @@ final class TrackEditorViewModel: ObservableObject {
                     }
                 }
                 tracks.append(contentsOf: matchingStreams)
-                addedCount += matchingStreams.count
+                addedCounts[kind, default: 0] += matchingStreams.count
+            }
+            let addedCount = addedCounts.values.reduce(0, +)
+            let addedKinds = TrackEditorTrackKind.allCases.compactMap { kind -> String? in
+                guard let count = addedCounts[kind], count > 0 else { return nil }
+                return "\(count) \(kind.label.lowercased())"
             }
             statusMessage = addedCount == 0
-                ? "No compatible \(kind.label.lowercased()) tracks were found."
-                : "Added \(addedCount) \(kind.label.lowercased()) track(s)."
+                ? "No compatible audio or subtitle tracks were found."
+                : "Added \(addedKinds.joined(separator: " and ")) track(s)."
             isInspecting = false
         }
     }
