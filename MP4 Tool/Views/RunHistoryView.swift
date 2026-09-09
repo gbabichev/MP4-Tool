@@ -21,74 +21,80 @@ struct RunHistoryView: View {
                     description: Text("Successfully processed files will appear here.")
                 )
             } else {
-                Table(history.entries, selection: $selection) {
-                    TableColumn("File Name") { entry in
-                        Text(entry.fileName)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .width(min: 220, ideal: 360)
-
-                    TableColumn("Original Size") { entry in
-                        Text(formattedBytes(entry.originalBytes))
-                            .monospacedDigit()
-                    }
-                    .width(min: 95, ideal: 110)
-
-                    TableColumn("New Size") { entry in
-                        Text(formattedBytes(entry.outputBytes))
-                            .monospacedDigit()
-                    }
-                    .width(min: 95, ideal: 110)
-
-                    TableColumn("Space Saved") { entry in
-                        Text(formattedBytes(entry.savedBytes))
-                            .monospacedDigit()
-                    }
-                    .width(min: 95, ideal: 110)
-
-                    TableColumn("Saved") { entry in
-                        Text(entry.savedPercentage, format: .number.precision(.fractionLength(1)))
-                            .monospacedDigit()
-                        + Text("%")
-                    }
-                    .width(min: 65, ideal: 75)
-
-                    TableColumn("Runtime") { entry in
-                        Text(formattedRuntime(entry.runtimeSeconds))
-                            .monospacedDigit()
-                    }
-                    .width(min: 75, ideal: 90)
-
-                    TableColumn("Started") { entry in
-                        if let startedAt = entry.startedAt {
-                            Text(startedAt, format: .dateTime.year().month().day().hour().minute())
-                        } else {
-                            Text("—")
-                        }
-                    }
-                    .width(min: 145, ideal: 170)
-
-                    TableColumn("Completed") { entry in
-                        Text(entry.processedAt, format: .dateTime.year().month().day().hour().minute())
-                    }
-                    .width(min: 145, ideal: 170)
-                }
-                .onTapGesture(count: 2) {
-                    showSelectedDetails()
-                }
-                .contextMenu(forSelectionType: ProcessingHistoryEntry.ID.self) { selectedIDs in
-                    Button("Show Details") {
-                        showDetails(for: selectedIDs)
-                    }
-                    .disabled(selectedIDs.count != 1)
+                VStack(spacing: 0) {
+                    allHistorySummary
 
                     Divider()
 
-                    Button("Delete", role: .destructive) {
-                        delete(selectedIDs)
+                    Table(history.entries, selection: $selection) {
+                        TableColumn("File Name") { entry in
+                            Text(entry.fileName)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .width(min: 220, ideal: 360)
+
+                        TableColumn("Original Size") { entry in
+                            Text(formattedBytes(entry.originalBytes))
+                                .monospacedDigit()
+                        }
+                        .width(min: 95, ideal: 110)
+
+                        TableColumn("New Size") { entry in
+                            Text(formattedBytes(entry.outputBytes))
+                                .monospacedDigit()
+                        }
+                        .width(min: 95, ideal: 110)
+
+                        TableColumn("Space Saved") { entry in
+                            Text(formattedBytes(entry.savedBytes))
+                                .monospacedDigit()
+                        }
+                        .width(min: 95, ideal: 110)
+
+                        TableColumn("Saved") { entry in
+                            Text(entry.savedPercentage, format: .number.precision(.fractionLength(1)))
+                                .monospacedDigit()
+                            + Text("%")
+                        }
+                        .width(min: 65, ideal: 75)
+
+                        TableColumn("Runtime") { entry in
+                            Text(formattedRuntime(entry.runtimeSeconds))
+                                .monospacedDigit()
+                        }
+                        .width(min: 75, ideal: 90)
+
+                        TableColumn("Started") { entry in
+                            if let startedAt = entry.startedAt {
+                                Text(startedAt, format: .dateTime.year().month().day().hour().minute())
+                            } else {
+                                Text("—")
+                            }
+                        }
+                        .width(min: 145, ideal: 170)
+
+                        TableColumn("Completed") { entry in
+                            Text(entry.processedAt, format: .dateTime.year().month().day().hour().minute())
+                        }
+                        .width(min: 145, ideal: 170)
                     }
-                    .disabled(selectedIDs.isEmpty)
+                    .onTapGesture(count: 2) {
+                        showSelectedDetails()
+                    }
+                    .contextMenu(forSelectionType: ProcessingHistoryEntry.ID.self) { selectedIDs in
+                        Button("Show Details") {
+                            showDetails(for: selectedIDs)
+                        }
+                        .disabled(selectedIDs.count != 1)
+
+                        Divider()
+
+                        Button("Delete", role: .destructive) {
+                            delete(selectedIDs)
+                        }
+                        .disabled(selectedIDs.isEmpty)
+                    }
                 }
             }
         }
@@ -148,6 +154,65 @@ struct RunHistoryView: View {
         }
         .sheet(item: $detailEntry) { entry in
             ProcessingHistoryDetailView(entry: entry)
+        }
+    }
+
+    private var allHistorySummary: some View {
+        let originalBytes = history.entries.reduce(Int64.zero) { $0 + max($1.originalBytes, 0) }
+        let outputBytes = history.entries.reduce(Int64.zero) { $0 + max($1.outputBytes, 0) }
+        let savedBytes = originalBytes - outputBytes
+        let savedPercentage = originalBytes > 0
+            ? Double(savedBytes) / Double(originalBytes) * 100
+            : 0
+
+        return HStack(spacing: 18) {
+            Image(systemName: "internaldrive.fill")
+                .font(.title2)
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("All-Time Storage Savings")
+                    .font(.headline)
+                Text("Across \(history.entries.count) processed \(history.entries.count == 1 ? "file" : "files")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            historyMetric("Original Size", formattedBytes(originalBytes))
+
+            Image(systemName: "arrow.right")
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+
+            historyMetric("New Size", formattedBytes(outputBytes))
+
+            Divider()
+                .frame(height: 36)
+
+            historyMetric(
+                "Space Saved",
+                "\(formattedBytes(savedBytes)) · \(savedPercentage.formatted(.number.precision(.fractionLength(1))))%",
+                accent: true
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.secondary.opacity(0.04))
+    }
+
+    private func historyMetric(_ title: String, _ value: String, accent: Bool = false) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(value)
+                .font(.headline)
+                .monospacedDigit()
+                .foregroundStyle(accent ? Color.accentColor : Color.primary)
+                .lineLimit(1)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
