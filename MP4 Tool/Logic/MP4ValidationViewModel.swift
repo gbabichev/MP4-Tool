@@ -188,12 +188,23 @@ private nonisolated struct MP4ValidationResultSnapshot: Codable, Sendable {
     }
 
     var validationResult: MP4ValidationResult {
-        MP4ValidationResult(
+        // Older saved scans may contain the former borderline "review" finding.
+        // It is intentionally no longer considered a compatibility problem.
+        let retainedFindings = issue?
+            .components(separatedBy: ", ")
+            .filter { !$0.localizedCaseInsensitiveContains("audio quality: review recommended") }
+        let migratedIssue = retainedFindings.flatMap { findings in
+            findings.isEmpty ? nil : findings.joined(separator: ", ")
+        }
+
+        return MP4ValidationResult(
             fileName: fileName,
             filePath: filePath,
-            issue: issue,
-            assessment: assessment,
-            severity: severity == "warning" ? .warning : severity == "error" ? .error : nil,
+            issue: migratedIssue,
+            assessment: migratedIssue == nil ? "No action needed." : assessment,
+            severity: migratedIssue == nil
+                ? nil
+                : severity == "warning" ? .warning : severity == "error" ? .error : nil,
             repairCandidates: repairCandidates.compactMap(\.repairCandidate),
             needsAudioMetadataRepair: needsAudioMetadataRepair,
             audioStreamIndexesToRemove: audioStreamIndexesToRemove,
@@ -1245,11 +1256,26 @@ final class MP4ValidationViewModel: ObservableObject {
     func exportCSVReport(includeAll: Bool) {
         let sourceResults = includeAll ? results : flaggedResults
         let reportRows = sourceResults.map { result in
-            (
+            let priority: String
+            if result.issue?.localizedCaseInsensitiveContains(
+                "audio quality: replace recommended"
+            ) == true {
+                priority = "Replace"
+            } else {
+                switch result.severity {
+                case .error: priority = "Error"
+                case .warning: priority = "Warning"
+                case nil: priority = "OK"
+                }
+            }
+
+            return (
                 itemName: URL(fileURLWithPath: result.filePath).lastPathComponent,
                 path: result.filePath,
-                error: result.issue ?? "",
-                assessment: result.assessment,
+                priority: priority,
+                finding: result.issue ?? "",
+                recommendation: result.assessment,
+                automaticRepair: result.isRepairable ? "Yes" : "No",
                 repairCompleted: result.repairCompleted ? "Yes" : "No"
             )
         }
@@ -1281,11 +1307,27 @@ final class MP4ValidationViewModel: ObservableObject {
                     return
                 }
 
-                let header = ["Item Name", "Path", "Error", "Assessment", "Repair Completed"]
+                let header = [
+                    "Item Name",
+                    "Path",
+                    "Priority",
+                    "Finding",
+                    "Recommendation",
+                    "Automatic Repair Available",
+                    "Repair Completed"
+                ]
                     .map(self.csvField)
                     .joined(separator: ",")
                 let rows = reportRows.map { row in
-                    [row.itemName, row.path, row.error, row.assessment, row.repairCompleted]
+                    [
+                        row.itemName,
+                        row.path,
+                        row.priority,
+                        row.finding,
+                        row.recommendation,
+                        row.automaticRepair,
+                        row.repairCompleted
+                    ]
                         .map(self.csvField)
                         .joined(separator: ",")
                 }
@@ -1730,6 +1772,10 @@ final class MP4ValidationViewModel: ObservableObject {
             actions.append("Return to the source or use Track Editor to add a valid audio track.")
         }
 
+        if findings.contains("audio quality: replace recommended") {
+            actions.append("Replace the audio from a higher-quality source; remuxing or increasing its bitrate cannot restore discarded detail.")
+        }
+
         if findings.contains("not playable") || findings.contains("could not be opened") {
             actions.append("Remux or re-encode from a known-good source, then validate the new output.")
         }
@@ -2121,6 +2167,21 @@ final class MP4ValidationViewModel: ObservableObject {
             audioSelectionCandidate(stream, audioIndex: audioIndex)
         }
         let englishCandidates = selectionCandidates.filter(AudioTrackSelectionPolicy.isEnglish)
+        let undefinedLanguageCandidates = selectionCandidates.filter(
+            AudioTrackSelectionPolicy.isUndefinedLanguage
+        )
+        let qualityCandidatePool = !englishCandidates.isEmpty
+            ? englishCandidates
+            : !undefinedLanguageCandidates.isEmpty
+                ? undefinedLanguageCandidates
+                : selectionCandidates
+
+        if let preferred = AudioTrackSelectionPolicy.preferredMainTrack(from: qualityCandidatePool),
+           let preferredStream = streams.first(where: { $0.index == preferred.streamIndex }),
+           let qualityFinding = lowBitRateAudioFinding(for: preferredStream) {
+            errors.append(qualityFinding)
+        }
+
         if englishCandidates.count > 1,
            let preferred = AudioTrackSelectionPolicy.preferredMainTrack(from: englishCandidates) {
             audioStreamIndexesToRemove = Set(
@@ -2292,6 +2353,94 @@ final class MP4ValidationViewModel: ObservableObject {
             return title
         }
         return normalizedProbeValue(stream.tags?["handler_name"])
+    }
+
+    private func lowBitRateAudioFinding(
+        for stream: MP4ValidationAudioStream
+    ) -> String? {
+        let codec = normalizedProbeValue(stream.codecName)
+        guard ["aac", "mp3", "ac3", "eac3"].contains(codec),
+              let bitRate = stream.bitRate.flatMap(Int.init),
+              bitRate > 0 else {
+            return nil
+        }
+
+        let profile = stream.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let codecDescription = profile.isEmpty
+            ? displayProbeValue(stream.codecName).uppercased()
+            : profile
+        let normalizedProfile = profile.lowercased()
+        let channelCount = max(stream.channels ?? 2, 1)
+        let replacementThreshold = audioReplacementBitRateThreshold(
+            codec: codec,
+            profile: normalizedProfile,
+            channelCount: channelCount
+        )
+
+        // FFprobe reports the measured average. Allow 5% below a nominal target
+        // so a 63.9 kb/s or 190.6 kb/s stream is treated as 64 or 192 kb/s.
+        let replacementBoundary = Int(Double(replacementThreshold) * 0.95)
+        guard bitRate < replacementBoundary else { return nil }
+
+        let layoutDescription: String
+        switch channelCount {
+        case 1: layoutDescription = "mono"
+        case 2: layoutDescription = "stereo"
+        default: layoutDescription = "\(channelCount) channels"
+        }
+
+        return String(
+            format: "audio quality: replace recommended (preferred %@ %@ track is %.1f kb/s; replacement threshold is %.0f kb/s)",
+            codecDescription,
+            layoutDescription,
+            Double(bitRate) / 1_000,
+            Double(replacementThreshold) / 1_000
+        )
+    }
+
+    private func audioReplacementBitRateThreshold(
+        codec: String,
+        profile: String,
+        channelCount: Int
+    ) -> Int {
+        if codec == "aac", profile.contains("he-aac") {
+            switch channelCount {
+            case 1: return 24_000
+            case 2: return 48_000
+            case 3...4: return 96_000
+            case 5...6: return 144_000
+            default: return 192_000
+            }
+        }
+
+        if codec == "eac3" {
+            switch channelCount {
+            case 1: return 64_000
+            case 2: return 96_000
+            case 3...4: return 144_000
+            case 5...6: return 192_000
+            default: return 256_000
+            }
+        }
+
+        if codec == "ac3" {
+            switch channelCount {
+            case 1: return 96_000
+            case 2: return 160_000
+            case 3...4: return 256_000
+            case 5...6: return 320_000
+            default: return 384_000
+            }
+        }
+
+        // AAC-LC and MP3 need more bitrate than HE-AAC for comparable quality.
+        switch channelCount {
+        case 1: return 48_000
+        case 2: return 96_000
+        case 3...4: return 144_000
+        case 5...6: return 192_000
+        default: return 256_000
+        }
     }
 
     private func inferredChannelLayout(channelCount: Int) -> String? {

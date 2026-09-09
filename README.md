@@ -124,6 +124,7 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 - Added Metadata Cleaner for detecting and removing unwanted attribution metadata.
 - Added subtitle auditing, including missing-subtitle and English-subtitle checks.
 - Added automatic detection and repair of redundant English audio and subtitle tracks, with suggested next steps when an issue cannot be repaired automatically.
+- Added conservative codec- and channel-aware audio-quality reporting that flags only tracks clearly degraded enough to warrant replacement, with sortable priority and recommendation fields in CSV exports.
 - Added persistent Run History with runtime tracking, drill-down diagnostics, recorded FFmpeg commands, multi-selection, and deletion.
 - Added reusable encoding and remux presets.
 
