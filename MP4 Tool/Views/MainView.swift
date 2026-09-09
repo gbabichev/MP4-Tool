@@ -541,6 +541,12 @@ struct ProcessingProgressCard: View {
     private var title: String {
         if isScanning { return "Preparing Batch" }
         switch processor.activeMode {
+        case .smart:
+            switch processor.activeItemMode {
+            case .remux: return "Smart Remuxing in Progress"
+            case .encodeH264, .encodeH265: return "Smart Encoding in Progress"
+            case .smart, nil: return "Smart Processing in Progress"
+            }
         case .remux:
             return "Remuxing in Progress"
         case .encodeH264, .encodeH265:
@@ -580,7 +586,7 @@ struct ProcessingProgressCard: View {
 
     private var showsFramePreview: Bool {
         processor.framePreviewsEnabled
-            && (processor.activeMode == .encodeH264 || processor.activeMode == .encodeH265)
+            && (processor.activeItemMode == .encodeH264 || processor.activeItemMode == .encodeH265)
     }
 
     var body: some View {

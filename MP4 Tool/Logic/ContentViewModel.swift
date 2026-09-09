@@ -183,6 +183,7 @@ class ContentViewModel: ObservableObject {
 
     func startProcessing(
         mode: ProcessingMode,
+        smartRemuxMegabytesPerMinute: Double,
         crfValue: Int,
         resolution: ResolutionOption,
         preset: PresetOption,
@@ -241,6 +242,7 @@ class ContentViewModel: ObservableObject {
                 inputPath: inputFolderPath,
                 outputPath: outputFolderPath,
                 mode: mode,
+                smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
                 crfValue: crfValue,
                 resolution: resolution,
                 preset: preset,

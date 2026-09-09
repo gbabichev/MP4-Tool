@@ -4,6 +4,7 @@ struct ProcessingPreset: Codable, Identifiable, Equatable {
     let id: UUID
     var name: String
     var modeRawValue: String
+    var smartRemuxMegabytesPerMinute: Double? = ProcessingMode.defaultSmartRemuxMegabytesPerMinute
     var crfValue: Double
     var resolutionRawValue: String
     var encoderPresetRawValue: String
@@ -42,7 +43,8 @@ extension ProcessingPreset {
         ProcessingPreset(
             id: UUID(uuidString: "13EA4750-83F7-4B75-9252-8A21A730C926")!,
             name: "Default",
-            modeRawValue: ProcessingMode.encodeH265.rawValue,
+            modeRawValue: ProcessingMode.smart.rawValue,
+            smartRemuxMegabytesPerMinute: 25,
             crfValue: 23,
             resolutionRawValue: ResolutionOption.default.rawValue,
             encoderPresetRawValue: PresetOption.fast.rawValue,

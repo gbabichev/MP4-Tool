@@ -16,15 +16,21 @@ struct ProcessingCompletionOverlayView: View {
     summary.mode == .remux
   }
 
+  private var isSmart: Bool {
+    summary.mode == .smart
+  }
+
   private var actionTitle: String {
     if summary.failedFileCount > 0 || summary.skippedFileCount > 0 {
       return "Processing Complete"
     }
+    if isSmart { return "Smart Processing Complete" }
     return isRemux ? "Remux Complete" : "Encoding Complete"
   }
 
   private var fileMetricTitle: String {
-    isRemux ? "Files Remuxed" : "Files Encoded"
+    if isSmart { return "Files Processed" }
+    return isRemux ? "Files Remuxed" : "Files Encoded"
   }
 
   private var savedMetricTitle: String {
@@ -99,7 +105,7 @@ struct ProcessingCompletionOverlayView: View {
 
             HStack(spacing: 12) {
               CompletionMetric(
-                icon: isRemux ? "arrow.left.arrow.right.circle" : "film.stack",
+                icon: isSmart ? "sparkles" : isRemux ? "arrow.left.arrow.right.circle" : "film.stack",
                 title: fileMetricTitle,
                 value: "\(summary.completedFileCount)",
                 detail: completionCountDetail

@@ -102,12 +102,16 @@ private struct SubtitleMapping {
 }
 
 enum ProcessingMode: String, CaseIterable {
+    case smart = "smart"
     case encodeH264 = "encode_h264"
     case encodeH265 = "encode_h265"
     case remux = "remux"
 
+    static let defaultSmartRemuxMegabytesPerMinute = 25.0
+
     var description: String {
         switch self {
+        case .smart: return "Smart (Automatic)"
         case .encodeH264: return "Encode (H.264)"
         case .encodeH265: return "Encode (H.265)"
         case .remux: return "Remux (Copy to MP4)"
@@ -208,7 +212,7 @@ enum ProcessingStatus {
 }
 
 private enum ConversionOutcome {
-    case success
+    case success(mode: ProcessingMode)
     case skipped(reason: String)
     case failed(reason: String)
 }
@@ -307,6 +311,7 @@ class VideoProcessor: ObservableObject {
     @Published var completionSummary: ProcessingCompletionSummary?
     @Published private(set) var processingStartedAt: Date?
     @Published private(set) var activeMode: ProcessingMode?
+    @Published private(set) var activeItemMode: ProcessingMode?
     @Published private(set) var stopAfterCurrentFileRequested = false
     @Published private(set) var currentFramePreview: NSImage?
     @Published private(set) var notificationsEnabled =
@@ -566,7 +571,7 @@ class VideoProcessor: ObservableObject {
 
         if enabled,
            isProcessing,
-           activeMode != .remux,
+           activeItemMode != .remux,
            let activeFramePreviewInputFile {
             startFramePreviewUpdates(inputFile: activeFramePreviewInputFile)
         } else if !enabled {
@@ -941,6 +946,7 @@ class VideoProcessor: ObservableObject {
         inputPath: String,
         outputPath: String,
         mode: ProcessingMode,
+        smartRemuxMegabytesPerMinute: Double = ProcessingMode.defaultSmartRemuxMegabytesPerMinute,
         crfValue: Int = 23,
         resolution: ResolutionOption = .default,
         preset: PresetOption = .fast,
@@ -980,6 +986,7 @@ class VideoProcessor: ObservableObject {
             self.isProcessing = true
             self.processingStartedAt = runStartedAt
             self.activeMode = mode
+            self.activeItemMode = mode
             self.logText = ""
             self.currentFileIndex = 0
             self.encodingProgress = ""
@@ -1024,7 +1031,10 @@ class VideoProcessor: ObservableObject {
         }
         addLog("􀈖 Output Directory: \(outputPath)")
         addLog("􀣋 Mode: \(mode.rawValue)")
-        if mode == .encodeH265 || mode == .encodeH264 {
+        if mode == .smart {
+            addLog("Smart Target: \(String(format: "%.0f", smartRemuxMegabytesPerMinute)) MB/min")
+            addLog("Smart Fallback: Encode H.265 · CRF \(crfValue) · \(resolution.description) · \(preset.description)")
+        } else if mode == .encodeH265 || mode == .encodeH264 {
             addLog("􀈄 Encode Video: \(encodeVideo)")
             addLog("􀀁 Encode Audio: \(encodeAudio)")
             addLog("􀏃 CRF: \(crfValue)")
@@ -1177,6 +1187,7 @@ class VideoProcessor: ObservableObject {
             DispatchQueue.main.async {
                 self.currentFileIndex = currentIndex + 1
                 self.currentFile = fileInfo.name
+                self.activeItemMode = mode
                 if let fileIndex = self.videoFiles.firstIndex(where: { $0.filePath == filePathForProcessing }) {
                     var updatedFile = self.videoFiles[fileIndex]
                     updatedFile.status = .processing
@@ -1247,6 +1258,7 @@ class VideoProcessor: ObservableObject {
                     inputFile: inputFilePath,
                     tempFile: tempOutputFile,
                     mode: mode,
+                    smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
                     crfValue: crfValue,
                     resolution: resolution,
                     preset: preset,
@@ -1278,7 +1290,7 @@ class VideoProcessor: ObservableObject {
                 break
             }
 
-            if case .success = conversionOutcome {
+            if case .success(let effectiveMode) = conversionOutcome {
                 // Get file sizes
                 let inputSize = (try? FileManager.default.attributesOfItem(atPath: inputFilePath))?[.size] as? Int64 ?? 0
                 let outputSize = (try? FileManager.default.attributesOfItem(atPath: tempOutputFile))?[.size] as? Int64 ?? 0
@@ -1352,7 +1364,7 @@ class VideoProcessor: ObservableObject {
                     let scriptSucceeded = await runPostProcessScriptForItem(
                         scriptPath: activePostProcessScriptPath,
                         completedFile: completedPostProcessFile,
-                        mode: mode,
+                        mode: effectiveMode,
                         passFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
                     )
                     if !scriptSucceeded {
@@ -1384,13 +1396,15 @@ class VideoProcessor: ObservableObject {
                         runID: runIdentifier,
                         inputPath: inputFilePath,
                         outputPath: outputFilePath,
-                        mode: mode.description,
+                        mode: mode == .smart
+                            ? "Smart → \(effectiveMode.description)"
+                            : effectiveMode.description,
                         sourceDurationSeconds: sourceDuration,
-                        encodeVideo: encodeVideo,
-                        encodeAudio: encodeAudio,
-                        crfValue: mode == .remux ? nil : crfValue,
-                        resolution: mode == .remux ? nil : resolution.description,
-                        encoderPreset: mode == .remux ? nil : preset.description,
+                        encodeVideo: effectiveMode == .remux ? false : (mode == .smart ? true : encodeVideo),
+                        encodeAudio: effectiveMode == .remux ? false : (mode == .smart ? true : encodeAudio),
+                        crfValue: effectiveMode == .remux ? nil : crfValue,
+                        resolution: effectiveMode == .remux ? nil : resolution.description,
+                        encoderPreset: effectiveMode == .remux ? nil : preset.description,
                         createSubfolders: createSubfolders,
                         automaticRename: automaticRename,
                         deleteOriginal: deleteOriginal,
@@ -1558,6 +1572,7 @@ class VideoProcessor: ObservableObject {
             self.isProcessing = false
             self.processingStartedAt = nil
             self.activeMode = nil
+            self.activeItemMode = nil
             self.shouldCancelProcessing = false
             self.stopAfterCurrentFileRequested = false
             self.currentInputDurationSeconds = nil
@@ -1873,6 +1888,7 @@ class VideoProcessor: ObservableObject {
         inputFile: String,
         tempFile: String,
         mode: ProcessingMode,
+        smartRemuxMegabytesPerMinute: Double,
         crfValue: Int = 23,
         resolution: ResolutionOption = .default,
         preset: PresetOption = .fast,
@@ -1892,13 +1908,16 @@ class VideoProcessor: ObservableObject {
             return .failed(reason: "Failed to probe streams")
         }
 
+        let shouldEncodeVideo = mode == .smart ? true : encodeVideo
+        let shouldEncodeAudio = mode == .smart ? true : encodeAudio
+
         // Determine audio stream mappings
         let audioMappings = getAudioMappings(
             audioStreams: audioStreams,
             keepEnglishOnly: keepEnglishAudioOnly,
             keepAllEnglishTracks: keepAllEnglishAudioTracks
         )
-        if keepEnglishAudioOnly, encodeAudio, audioMappings.isEmpty {
+        if keepEnglishAudioOnly, shouldEncodeAudio, audioMappings.isEmpty {
             let reason = audioStreams.streams.isEmpty
                 ? "No audio tracks were found"
                 : "No English or undefined-language audio tracks were found"
@@ -1945,15 +1964,56 @@ class VideoProcessor: ObservableObject {
             addLog("Selected Audio: \(descriptions.joined(separator: ", "))")
         }
 
-        if mode == .remux,
-           let compatibilityIssue = await remuxCompatibilityIssue(
-            inputFile: inputFile,
-            videoCodec: videoCodec,
-            audioStreams: audioStreams,
-            selectedAudioStreamIndexes: Set(audioMappings.map(\.index))
-           ) {
+        var effectiveMode = mode
+        if mode == .smart {
+            let inputBytes = (try? FileManager.default.attributesOfItem(
+                atPath: inputFile
+            ))?[.size] as? Int64 ?? 0
+
+            if let sourceDuration, sourceDuration > 0, inputBytes > 0 {
+                let durationMinutes = sourceDuration / 60
+                let megabytesPerMinute = Double(inputBytes) / 1_000_000 / durationMinutes
+                addLog(
+                    "Smart Analysis: \(String(format: "%.1f", megabytesPerMinute)) MB/min "
+                    + "(target ≤ \(String(format: "%.0f", smartRemuxMegabytesPerMinute)) MB/min)"
+                )
+                effectiveMode = megabytesPerMinute <= smartRemuxMegabytesPerMinute
+                    ? .remux
+                    : .encodeH265
+            } else {
+                addLog("Smart Analysis: File size or runtime is unavailable")
+                effectiveMode = .encodeH265
+            }
+
+            if effectiveMode == .remux,
+               let compatibilityIssue = await remuxCompatibilityIssue(
+                inputFile: inputFile,
+                videoCodec: videoCodec,
+                audioStreams: audioStreams,
+                selectedAudioStreamIndexes: Set(audioMappings.map(\.index))
+               ) {
+                addLog("Smart Remux unavailable: \(compatibilityIssue)")
+                effectiveMode = .encodeH265
+            }
+
+            addLog(
+                effectiveMode == .remux
+                    ? "Smart Decision: Remux"
+                    : "Smart Decision: Encode H.265"
+            )
+        } else if mode == .remux,
+                  let compatibilityIssue = await remuxCompatibilityIssue(
+                    inputFile: inputFile,
+                    videoCodec: videoCodec,
+                    audioStreams: audioStreams,
+                    selectedAudioStreamIndexes: Set(audioMappings.map(\.index))
+                  ) {
             addLog("􀁡 \(compatibilityIssue). Please use encode mode.")
             return .failed(reason: "\(compatibilityIssue) - use encode mode instead")
+        }
+
+        await MainActor.run {
+            self.activeItemMode = effectiveMode
         }
 
         // Determine subtitle stream mappings
@@ -1992,7 +2052,7 @@ class VideoProcessor: ObservableObject {
         // exit 0 while the encoded video is still incomplete. Keep subtitles out
         // of the expensive encode and add them afterward with a fast stream-copy
         // remux. The final validation still protects the source/output duration.
-        let usesSeparateSubtitleMux = mode != .remux && !subtitleMappings.isEmpty
+        let usesSeparateSubtitleMux = effectiveMode != .remux && !subtitleMappings.isEmpty
         let encodedAVFile: String? = usesSeparateSubtitleMux
             ? (tempFile as NSString).deletingPathExtension + "-av.mp4"
             : nil
@@ -2012,12 +2072,12 @@ class VideoProcessor: ObservableObject {
         let cmd = buildFFmpegCommand(
             inputFile: inputFile,
             tempFile: primaryOutputFile,
-            mode: mode,
+            mode: effectiveMode,
             crfValue: crfValue,
             resolution: resolution,
             preset: preset,
-            encodeVideo: encodeVideo,
-            encodeAudio: encodeAudio,
+            encodeVideo: shouldEncodeVideo,
+            encodeAudio: shouldEncodeAudio,
             videoCodec: videoCodec,
             videoWidth: videoDimensions?.width,
             videoHeight: videoDimensions?.height,
@@ -2026,14 +2086,14 @@ class VideoProcessor: ObservableObject {
         )
 
         // Log the ffmpeg command being run
-        addLog("􀅴 Running in \(mode.rawValue) mode")
+        addLog("􀅴 Running in \(effectiveMode.rawValue) mode")
         if usesSeparateSubtitleMux {
             addLog("􀅴 Encoding video and audio first; subtitles will be added in a separate remux")
         }
         addLog("􀅴 FFmpeg command:")
         let commandString = shellCommand(executable: ffmpegPath, arguments: cmd)
         addLog("  \(commandString)")
-        if mode == .encodeH265 || mode == .encodeH264 {
+        if effectiveMode == .encodeH265 || effectiveMode == .encodeH264 {
             addLog("􀐱 Encoding started - this may take a while...")
             activeFramePreviewInputFile = inputFile
             if framePreviewsEnabled {
@@ -2088,7 +2148,7 @@ class VideoProcessor: ObservableObject {
         // even though FFmpeg exits successfully and the other streams finish.
         // Re-encode only the affected audio from the source, while stream-copying
         // the already completed video and healthy audio tracks.
-        if encodeAudio, mode != .remux {
+        if shouldEncodeAudio, effectiveMode != .remux {
             let mismatchedAudioIndexes = await audioTrackDurationMismatchIndexes(
                 outputFile: primaryOutputFile,
                 audioMappings: audioMappings
@@ -2101,7 +2161,7 @@ class VideoProcessor: ObservableObject {
                     sourceFile: inputFile,
                     audioMappings: audioMappings,
                     mismatchedIndexes: Set(mismatchedAudioIndexes),
-                    outputVideoCodec: mode == .encodeH265 ? "hevc" : videoCodec
+                    outputVideoCodec: effectiveMode == .encodeH265 ? "hevc" : videoCodec
                 )
                 guard repaired else {
                     return .failed(reason: "Could not rebuild incomplete audio track(s)")
@@ -2124,7 +2184,7 @@ class VideoProcessor: ObservableObject {
             if let validationFailure = await outputValidationFailure(
                 outputFile: primaryOutputFile,
                 expectedAudioTrackCount: audioMappings.count,
-                expectedAudioLayouts: encodeAudio
+                expectedAudioLayouts: shouldEncodeAudio
                     ? audioMappings.map(\.channelLayout)
                     : [],
                 expectedAudioDurations: audioMappings.map(\.duration),
@@ -2142,7 +2202,7 @@ class VideoProcessor: ObservableObject {
                 encodedAVFile: encodedAVFile,
                 sourceFile: inputFile,
                 outputFile: tempFile,
-                videoCodec: mode == .encodeH265 ? "hevc" : videoCodec,
+                videoCodec: effectiveMode == .encodeH265 ? "hevc" : videoCodec,
                 audioMappings: audioMappings,
                 subtitleMappings: subtitleMappings
             )
@@ -2163,7 +2223,7 @@ class VideoProcessor: ObservableObject {
         if let validationFailure = await outputValidationFailure(
             outputFile: tempFile,
             expectedAudioTrackCount: audioMappings.count,
-            expectedAudioLayouts: encodeAudio && mode != .remux
+            expectedAudioLayouts: shouldEncodeAudio && effectiveMode != .remux
                 ? audioMappings.map(\.channelLayout)
                 : [],
             expectedAudioDurations: audioMappings.map(\.duration),
@@ -2174,7 +2234,7 @@ class VideoProcessor: ObservableObject {
         }
 
         addLog("􀁢 Output validation passed")
-        return .success
+        return .success(mode: effectiveMode)
     }
 
     private func probeStreams(inputFile: String, selectStreams: String?) async -> FFProbeOutput? {

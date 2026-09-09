@@ -10,6 +10,7 @@ import AppKit
 
 struct SettingsView: View {
     @Binding var selectedMode: ProcessingMode
+    @Binding var smartRemuxMegabytesPerMinute: Double
     @Binding var crfValue: Double
     @Binding var selectedResolution: ResolutionOption
     @Binding var selectedPreset: PresetOption
@@ -43,6 +44,9 @@ struct SettingsView: View {
         }
         for index in presets.indices where presets[index].keepAllEnglishSubtitleTracks == nil {
             presets[index].keepAllEnglishSubtitleTracks = false
+        }
+        for index in presets.indices where presets[index].smartRemuxMegabytesPerMinute == nil {
+            presets[index].smartRemuxMegabytesPerMinute = ProcessingMode.defaultSmartRemuxMegabytesPerMinute
         }
         return presets.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -83,6 +87,16 @@ struct SettingsView: View {
         }
     }
 
+    private var smartTargetSubtitle: String {
+        "Remux at or below this rate · About \(smartTargetSize(minutes: 45)) for a 45 min TV episode or \(smartTargetSize(minutes: 120)) for a 2 hr movie"
+    }
+
+    private func smartTargetSize(minutes: Double) -> String {
+        let gigabytes = smartRemuxMegabytesPerMinute * minutes / 1_000
+        let format = gigabytes.rounded() == gigabytes ? "%.0f GB" : "%.2f GB"
+        return String(format: format, gigabytes)
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             ScrollView {
@@ -91,7 +105,7 @@ struct SettingsView: View {
 
                     GroupBox {
                         VStack(spacing: 12) {
-                        SettingsRow("Mode", subtitle: "Choose encoding codec or remux without re-encoding") {
+                        SettingsRow("Mode", subtitle: "Choose automatic, encode, or remux processing") {
                             Picker("", selection: $selectedMode) {
                                 ForEach(ProcessingMode.allCases, id: \.self) { mode in
                                     Text(mode.description).tag(mode)
@@ -99,6 +113,27 @@ struct SettingsView: View {
                             }
                             .pickerStyle(.menu)
                             .disabled(isProcessing)
+                        }
+
+                        if selectedMode == .smart {
+                            SettingsRow(
+                                "Smart Target",
+                                subtitle: smartTargetSubtitle
+                            ) {
+                                HStack {
+                                    Slider(
+                                        value: $smartRemuxMegabytesPerMinute,
+                                        in: 5...100,
+                                        step: 1
+                                    )
+                                    .frame(minWidth: 120, idealWidth: 200, maxWidth: 200)
+                                    .disabled(isProcessing)
+
+                                    Text("\(Int(smartRemuxMegabytesPerMinute.rounded())) MB/min")
+                                        .frame(width: 78, alignment: .trailing)
+                                        .monospacedDigit()
+                                }
+                            }
                         }
 
                         if selectedMode == .encodeH265 || selectedMode == .encodeH264 {
@@ -114,35 +149,53 @@ struct SettingsView: View {
                                     .disabled(isProcessing || !encodeVideo)
                             }
 
-                            SettingsRow("Quality (CRF)", subtitle: "Lower = better quality, larger file. Default 23.") {
+                        }
+
+                        if selectedMode == .smart || selectedMode == .encodeH265 || selectedMode == .encodeH264 {
+                            SettingsRow(
+                                "Quality (CRF)",
+                                subtitle: selectedMode == .smart
+                                    ? "Used when Smart chooses H.265 encoding"
+                                    : "Lower = better quality, larger file. Default 23."
+                            ) {
                                 HStack {
                                     Slider(value: $crfValue, in: 0...50, step: 1)
                                         .frame(minWidth: 120, idealWidth: 200, maxWidth: 200)
-                                        .disabled(isProcessing || !encodeVideo)
+                                        .disabled(isProcessing || (selectedMode != .smart && !encodeVideo))
                                     Text("\(Int(crfValue))")
                                         .frame(width: 30)
                                         .monospacedDigit()
                                 }
                             }
 
-                            SettingsRow("Resolution", subtitle: "Scale video to specified resolution") {
+                            SettingsRow(
+                                "Resolution",
+                                subtitle: selectedMode == .smart
+                                    ? "Used when Smart chooses H.265 encoding"
+                                    : "Scale video to specified resolution"
+                            ) {
                                 Picker("", selection: $selectedResolution) {
                                     ForEach(ResolutionOption.allCases, id: \.self) { resolution in
                                         Text(resolution.description).tag(resolution)
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .disabled(isProcessing || !encodeVideo)
+                                .disabled(isProcessing || (selectedMode != .smart && !encodeVideo))
                             }
 
-                            SettingsRow("Encoder Preset", subtitle: "Slower = better compression. Default: fast") {
+                            SettingsRow(
+                                "Encoder Preset",
+                                subtitle: selectedMode == .smart
+                                    ? "Used when Smart chooses H.265 encoding"
+                                    : "Slower = better compression. Default: fast"
+                            ) {
                                 Picker("", selection: $selectedPreset) {
                                     ForEach(PresetOption.allCases, id: \.self) { preset in
                                         Text(preset.description).tag(preset)
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .disabled(isProcessing || !encodeVideo)
+                                .disabled(isProcessing || (selectedMode != .smart && !encodeVideo))
                             }
                         }
 
@@ -363,6 +416,7 @@ struct SettingsView: View {
             id: id,
             name: name,
             modeRawValue: selectedMode.rawValue,
+            smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
             crfValue: crfValue,
             resolutionRawValue: selectedResolution.rawValue,
             encoderPresetRawValue: selectedPreset.rawValue,
@@ -452,6 +506,14 @@ struct SettingsView: View {
 
     private func apply(_ preset: ProcessingPreset) {
         selectedMode = preset.mode
+        smartRemuxMegabytesPerMinute = min(
+            max(
+                preset.smartRemuxMegabytesPerMinute
+                    ?? ProcessingMode.defaultSmartRemuxMegabytesPerMinute,
+                5
+            ),
+            100
+        )
         crfValue = min(max(preset.crfValue, 0), 50)
         selectedResolution = preset.resolution
         selectedPreset = preset.encoderPreset

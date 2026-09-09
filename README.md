@@ -70,9 +70,10 @@ Scans your given directory to ensure that MP4 files are in a format natively rea
 - Keyboard shortcuts: `⌘O` for input and `⌘⇧O` for output.
 
 ### 2. Choose Mode
+- `Smart`: Measures each file's size against its runtime. Its adjustable storage target defaults to 25 MB per minute; files at or below the target are remuxed, while larger or incompatible files fall back to H.265 encoding.
 - `Encode`: Converts videos to H.265/H.264 (HEVC) for smaller files while preserving good quality.
 - `Remux`: Copies existing streams without re-encoding for a fast, lossless workflow.
-- Both modes save results as MP4 files.
+- All modes save results as MP4 files.
 
 ### 3. Adjust Settings
 - In Encode mode, configure the CRF quality (recommended range 18–28, where lower values produce higher quality).
@@ -127,6 +128,7 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 - Added conservative codec- and channel-aware audio-quality reporting that flags only tracks clearly degraded enough to warrant replacement, with sortable priority and recommendation fields in CSV exports.
 - Added persistent Run History with runtime tracking, drill-down diagnostics, recorded FFmpeg commands, multi-selection, and deletion.
 - Added reusable encoding and remux presets.
+- Added Smart processing, which chooses remux or H.265 encoding per file using a customizable runtime-adjusted storage target (25 MB per minute by default) and compatibility fallback.
 
 #### Processing improvements
 

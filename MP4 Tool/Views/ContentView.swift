@@ -12,6 +12,7 @@ import UserNotifications
 
 private struct ProcessingSettingsSnapshot: Equatable {
     let selectedModeRaw: String
+    let smartRemuxMegabytesPerMinute: Double
     let crfValue: Double
     let selectedResolutionRaw: String
     let selectedPresetRaw: String
@@ -36,6 +37,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     private let windowID: UUID
     @AppStorage("defaultSelectedMode") private var selectedModeRaw: String = ProcessingMode.encodeH265.rawValue
+    @AppStorage("defaultSmartRemuxMegabytesPerMinute") private var smartRemuxMegabytesPerMinute: Double = ProcessingMode.defaultSmartRemuxMegabytesPerMinute
     @AppStorage("defaultCrfValue") private var crfValue: Double = 23
     @AppStorage("defaultSelectedResolution") private var selectedResolutionRaw: String = ResolutionOption.default.rawValue
     @AppStorage("defaultSelectedPreset") private var selectedPresetRaw: String = PresetOption.fast.rawValue
@@ -189,6 +191,7 @@ struct ContentView: View {
     private var processingSettingsSnapshot: ProcessingSettingsSnapshot {
         ProcessingSettingsSnapshot(
             selectedModeRaw: selectedModeRaw,
+            smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
             crfValue: crfValue,
             selectedResolutionRaw: selectedResolutionRaw,
             selectedPresetRaw: selectedPresetRaw,
@@ -304,6 +307,7 @@ struct ContentView: View {
         guard viewModel.canStartProcessing, !viewModel.processor.isProcessing else { return }
         viewModel.startProcessing(
             mode: selectedMode,
+            smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
             crfValue: Int(crfValue),
             resolution: selectedResolution,
             preset: selectedPreset,
@@ -449,6 +453,7 @@ struct ContentView: View {
         let selectedMode = selectedMode
         let selectedResolution = selectedResolution
         let selectedPreset = selectedPreset
+        let smartRemuxMegabytesPerMinute = smartRemuxMegabytesPerMinute
         let crfValue = Int(crfValue)
         let encodeVideo = encodeVideo
         let encodeAudio = encodeAudio
@@ -467,6 +472,7 @@ struct ContentView: View {
         Task { @MainActor in
             viewModel.startProcessing(
                 mode: selectedMode,
+                smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
                 crfValue: crfValue,
                 resolution: selectedResolution,
                 preset: selectedPreset,
@@ -570,6 +576,7 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: settingsColumnVisibilityBinding) {
             ExpandedSettingsPanel(
                 selectedMode: selectedModeBinding,
+                smartRemuxMegabytesPerMinute: $smartRemuxMegabytesPerMinute,
                 crfValue: $crfValue,
                 selectedResolution: selectedResolutionBinding,
                 selectedPreset: selectedPresetBinding,
@@ -627,6 +634,7 @@ struct ContentView: View {
 
             CompactProcessingSetupView(
                 selectedMode: selectedModeBinding,
+                smartRemuxMegabytesPerMinute: $smartRemuxMegabytesPerMinute,
                 crfValue: $crfValue,
                 selectedResolution: selectedResolutionBinding,
                 encoderPreset: selectedPresetBinding,
@@ -768,6 +776,7 @@ struct ContentView: View {
                         Button(action: {
                             viewModel.startProcessing(
                                 mode: selectedMode,
+                                smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
                                 crfValue: Int(crfValue),
                                 resolution: selectedResolution,
                                 preset: selectedPreset,
@@ -922,6 +931,7 @@ struct ContentView: View {
 
 private struct CompactProcessingSetupView: View {
     @Binding var selectedMode: ProcessingMode
+    @Binding var smartRemuxMegabytesPerMinute: Double
     @Binding var crfValue: Double
     @Binding var selectedResolution: ResolutionOption
     @Binding var encoderPreset: PresetOption
@@ -967,6 +977,9 @@ private struct CompactProcessingSetupView: View {
         for index in presets.indices where presets[index].keepAllEnglishSubtitleTracks == nil {
             presets[index].keepAllEnglishSubtitleTracks = false
         }
+        for index in presets.indices where presets[index].smartRemuxMegabytesPerMinute == nil {
+            presets[index].smartRemuxMegabytesPerMinute = ProcessingMode.defaultSmartRemuxMegabytesPerMinute
+        }
         return presets.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
@@ -1003,6 +1016,8 @@ private struct CompactProcessingSetupView: View {
 
     private var settingsSummary: String {
         switch selectedMode {
+        case .smart:
+            return "Smart • Remux ≤ \(Int(smartRemuxMegabytesPerMinute.rounded())) MB/min • H.265 fallback"
         case .remux:
             return "Remux • Copy streams without re-encoding"
         case .encodeH264, .encodeH265:
@@ -1329,6 +1344,7 @@ private struct CompactProcessingSetupView: View {
             id: id,
             name: name,
             modeRawValue: selectedMode.rawValue,
+            smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
             crfValue: crfValue,
             resolutionRawValue: selectedResolution.rawValue,
             encoderPresetRawValue: encoderPreset.rawValue,
@@ -1351,6 +1367,14 @@ private struct CompactProcessingSetupView: View {
 
     private func apply(_ preset: ProcessingPreset) {
         selectedMode = preset.mode
+        smartRemuxMegabytesPerMinute = min(
+            max(
+                preset.smartRemuxMegabytesPerMinute
+                    ?? ProcessingMode.defaultSmartRemuxMegabytesPerMinute,
+                5
+            ),
+            100
+        )
         crfValue = min(max(preset.crfValue, 0), 50)
         selectedResolution = preset.resolution
         encoderPreset = preset.encoderPreset
@@ -1533,6 +1557,7 @@ private struct LogInspectorView: View {
 // Expanded Settings Panel
 struct ExpandedSettingsPanel: View {
     @Binding var selectedMode: ProcessingMode
+    @Binding var smartRemuxMegabytesPerMinute: Double
     @Binding var crfValue: Double
     @Binding var selectedResolution: ResolutionOption
     @Binding var selectedPreset: PresetOption
@@ -1554,6 +1579,7 @@ struct ExpandedSettingsPanel: View {
     var body: some View {
         SettingsView(
             selectedMode: $selectedMode,
+            smartRemuxMegabytesPerMinute: $smartRemuxMegabytesPerMinute,
             crfValue: $crfValue,
             selectedResolution: $selectedResolution,
             selectedPreset: $selectedPreset,
