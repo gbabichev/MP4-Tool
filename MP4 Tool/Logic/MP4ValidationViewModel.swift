@@ -931,7 +931,7 @@ final class MP4ValidationViewModel: ObservableObject {
                         "-channel_layout:a:\(outputAudioIndex)", "mono"
                     ])
                 case .restoreLayout(let layout):
-                    let bitrate = layout == "7.1" ? "512k" : "256k"
+                    let bitrate = layout == "7.1" ? "768k" : "512k"
                     arguments.append(contentsOf: [
                         "-c:a:\(outputAudioIndex)", "aac",
                         "-b:a:\(outputAudioIndex)", bitrate,

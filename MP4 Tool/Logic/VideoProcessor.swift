@@ -85,6 +85,7 @@ struct FFProbeOutput: Codable {
 
 private struct AudioMapping {
     let index: Int
+    let codecName: String?
     let language: String?
     let channels: Int?
     let channelLayout: String?
@@ -1034,6 +1035,7 @@ class VideoProcessor: ObservableObject {
         if mode == .smart {
             addLog("Smart Target: \(String(format: "%.0f", smartRemuxMegabytesPerMinute)) MB/min")
             addLog("Smart Fallback: Encode H.265 · CRF \(crfValue) · \(resolution.description) · \(preset.description)")
+            addLog("Smart Audio: Copy compatible audio · High-quality AAC fallback")
         } else if mode == .encodeH265 || mode == .encodeH264 {
             addLog("􀈄 Encode Video: \(encodeVideo)")
             addLog("􀀁 Encode Audio: \(encodeAudio)")
@@ -2016,6 +2018,20 @@ class VideoProcessor: ObservableObject {
             self.activeItemMode = effectiveMode
         }
 
+        for (outputIndex, mapping) in audioMappings.enumerated() {
+            let sourceCodec = normalizedProbeValue(mapping.codecName).uppercased()
+            if shouldCopyAudio(mapping, mode: effectiveMode, encodeAudio: shouldEncodeAudio) {
+                addLog("Audio Track \(outputIndex + 1): \(sourceCodec.isEmpty ? "Unknown" : sourceCodec) copied without re-encoding")
+            } else {
+                addLog("Audio Track \(outputIndex + 1): \(sourceCodec.isEmpty ? "Unknown" : sourceCodec) → AAC \(aacBitrate(for: mapping))")
+            }
+        }
+        let expectedEncodedAudioLayouts = audioMappings.map { mapping in
+            shouldCopyAudio(mapping, mode: effectiveMode, encodeAudio: shouldEncodeAudio)
+                ? nil
+                : mapping.channelLayout
+        }
+
         // Determine subtitle stream mappings
         let subtitleMappings = await getSubtitleMappings(
             inputFile: inputFile,
@@ -2184,9 +2200,7 @@ class VideoProcessor: ObservableObject {
             if let validationFailure = await outputValidationFailure(
                 outputFile: primaryOutputFile,
                 expectedAudioTrackCount: audioMappings.count,
-                expectedAudioLayouts: shouldEncodeAudio
-                    ? audioMappings.map(\.channelLayout)
-                    : [],
+                expectedAudioLayouts: expectedEncodedAudioLayouts,
                 expectedAudioDurations: audioMappings.map(\.duration),
                 sourceDuration: sourceDuration
             ) {
@@ -2223,9 +2237,7 @@ class VideoProcessor: ObservableObject {
         if let validationFailure = await outputValidationFailure(
             outputFile: tempFile,
             expectedAudioTrackCount: audioMappings.count,
-            expectedAudioLayouts: shouldEncodeAudio && effectiveMode != .remux
-                ? audioMappings.map(\.channelLayout)
-                : [],
+            expectedAudioLayouts: expectedEncodedAudioLayouts,
             expectedAudioDurations: audioMappings.map(\.duration),
             sourceDuration: sourceDuration
         ) {
@@ -2335,15 +2347,19 @@ class VideoProcessor: ObservableObject {
         for (outputIndex, mapping) in audioMappings.enumerated() {
             if mismatchedIndexes.contains(outputIndex) {
                 arguments.append(contentsOf: ["-map", "1:\(mapping.index)"])
-                arguments.append(contentsOf: ["-c:a:\(outputIndex)", "aac"])
-                if let channelLayout = mapping.channelLayout {
+                if isAppleCompatibleAudioCodec(normalizedProbeValue(mapping.codecName)) {
+                    arguments.append(contentsOf: ["-c:a:\(outputIndex)", "copy"])
+                } else {
+                    arguments.append(contentsOf: ["-c:a:\(outputIndex)", "aac"])
+                    if let channelLayout = mapping.channelLayout {
+                        arguments.append(contentsOf: [
+                            "-channel_layout:a:\(outputIndex)", channelLayout
+                        ])
+                    }
                     arguments.append(contentsOf: [
-                        "-channel_layout:a:\(outputIndex)", channelLayout
+                        "-b:a:\(outputIndex)", aacBitrate(for: mapping)
                     ])
                 }
-                arguments.append(contentsOf: [
-                    "-b:a:\(outputIndex)", aacBitrate(for: mapping)
-                ])
             } else {
                 arguments.append(contentsOf: ["-map", "0:a:\(outputIndex)"])
                 arguments.append(contentsOf: ["-c:a:\(outputIndex)", "copy"])
@@ -2530,6 +2546,7 @@ class VideoProcessor: ObservableObject {
                 ?? (keepEnglishOnly ? "und" : nil)
             return AudioMapping(
                 index: stream.index,
+                codecName: stream.codecName,
                 language: language,
                 channels: stream.channels,
                 channelLayout: resolvedAudioChannelLayout(for: stream),
@@ -2579,11 +2596,24 @@ class VideoProcessor: ObservableObject {
     }
 
     private func aacBitrate(for mapping: AudioMapping) -> String {
-        switch mapping.channels {
-        case 6: return "256k"
-        case 8: return "512k"
-        default: return "192k"
+        switch mapping.channels ?? 0 {
+        case 1: return "128k"
+        case 2: return "256k"
+        case 3...4: return "384k"
+        case 5...6: return "512k"
+        case 7...8: return "768k"
+        default: return "256k"
         }
+    }
+
+    private func shouldCopyAudio(
+        _ mapping: AudioMapping,
+        mode: ProcessingMode,
+        encodeAudio: Bool
+    ) -> Bool {
+        mode == .remux
+            || !encodeAudio
+            || isAppleCompatibleAudioCodec(normalizedProbeValue(mapping.codecName))
     }
 
     private func remuxCompatibilityIssue(
@@ -2846,16 +2876,7 @@ class VideoProcessor: ObservableObject {
                     cmd.insert(contentsOf: ["-c:v", "copy"], at: insertIndex)
                 }
             }
-            // Add audio codec parameters only if there are audio tracks
-            if !audioMappings.isEmpty {
-                if let insertIndex = cmd.firstIndex(of: "-map") {
-                    if encodeAudio {
-                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k"], at: insertIndex)
-                    } else {
-                        cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
-                    }
-                }
-            } else {
+            if audioMappings.isEmpty {
                 // No audio tracks - add -an flag
                 if let insertIndex = cmd.firstIndex(of: "-map") {
                     cmd.insert("-an", at: insertIndex)
@@ -2884,16 +2905,7 @@ class VideoProcessor: ObservableObject {
                     cmd.insert(contentsOf: ["-c:v", "copy"], at: insertIndex)
                 }
             }
-            // Add audio codec parameters only if there are audio tracks
-            if !audioMappings.isEmpty {
-                if let insertIndex = cmd.firstIndex(of: "-map") {
-                    if encodeAudio {
-                        cmd.insert(contentsOf: ["-c:a", "aac", "-b:a", "192k"], at: insertIndex)
-                    } else {
-                        cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
-                    }
-                }
-            } else {
+            if audioMappings.isEmpty {
                 // No audio tracks - add -an flag
                 if let insertIndex = cmd.firstIndex(of: "-map") {
                     cmd.insert("-an", at: insertIndex)
@@ -2915,12 +2927,7 @@ class VideoProcessor: ObservableObject {
                 "-movflags", "+faststart",
                 "-loglevel", "error", "-nostats", "-progress", "pipe:2"
             ]
-            // Add audio copy only if there are audio tracks
-            if !audioMappings.isEmpty {
-                if let insertIndex = cmd.firstIndex(of: "-map") {
-                    cmd.insert(contentsOf: ["-c:a", "copy"], at: insertIndex)
-                }
-            } else {
+            if audioMappings.isEmpty {
                 // No audio tracks - add -an flag
                 if let insertIndex = cmd.firstIndex(of: "-map") {
                     cmd.insert("-an", at: insertIndex)
@@ -2939,6 +2946,14 @@ class VideoProcessor: ObservableObject {
         // Map audio tracks respecting language metadata when available
         for (outputIndex, mapping) in audioMappings.enumerated() {
             cmd.append(contentsOf: ["-map", "0:\(mapping.index)"])
+            let copiesAudio = shouldCopyAudio(
+                mapping,
+                mode: mode,
+                encodeAudio: encodeAudio
+            )
+            cmd.append(contentsOf: [
+                "-c:a:\(outputIndex)", copiesAudio ? "copy" : "aac"
+            ])
             if let language = mapping.language {
                 cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "language=\(language)"])
             }
@@ -2946,9 +2961,7 @@ class VideoProcessor: ObservableObject {
             // FFmpeg may still emit its generic SoundHandler container fallback.
             cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "title="])
             cmd.append(contentsOf: ["-metadata:s:a:\(outputIndex)", "handler_name="])
-            if encodeAudio,
-               mode != .remux,
-               let channelLayout = mapping.channelLayout {
+            if !copiesAudio, let channelLayout = mapping.channelLayout {
                 cmd.append(
                     contentsOf: [
                         "-channel_layout:a:\(outputIndex)",
@@ -2956,7 +2969,7 @@ class VideoProcessor: ObservableObject {
                     ]
                 )
             }
-            if encodeAudio, mode != .remux {
+            if !copiesAudio {
                 cmd.append(contentsOf: ["-b:a:\(outputIndex)", aacBitrate(for: mapping)])
             }
             cmd.append(

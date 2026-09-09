@@ -1011,10 +1011,13 @@ final class TrackEditorViewModel: ObservableObject {
     }
 
     private func aacBitrate(channels: Int?) -> String {
-        switch channels {
-        case 6: return "256k"
-        case 8: return "512k"
-        default: return "192k"
+        switch channels ?? 0 {
+        case 1: return "128k"
+        case 2: return "256k"
+        case 3...4: return "384k"
+        case 5...6: return "512k"
+        case 7...8: return "768k"
+        default: return "256k"
         }
     }
 

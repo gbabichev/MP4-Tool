@@ -133,6 +133,7 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 #### Processing improvements
 
 - Added output validation for stream presence, duration, readability, and truncation.
+- Compatible AAC, AC-3, E-AC-3, ALAC, and MP3 audio is now copied without re-encoding during video encodes; incompatible audio uses a higher-quality, channel-aware AAC fallback.
 - Improved AAC multichannel encoding and Apple playback compatibility.
 - Encoding and remuxing now keep one preferred main English audio track by default, avoiding commentary, audio-description, and dubbed tracks; a new setting can preserve every English track when needed.
 - Encoding and remuxing now choose one complete English subtitle track by default, preferring ordinary subtitles over SDH and forced-only variants. When labels are unclear, cue counts and accessibility markers help identify the best track.

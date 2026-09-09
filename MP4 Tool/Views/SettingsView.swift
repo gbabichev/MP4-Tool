@@ -143,7 +143,7 @@ struct SettingsView: View {
                                     .disabled(isProcessing || !encodeAudio)
                             }
 
-                            SettingsRow("Encode Audio", subtitle: "Turn off to copy existing compatible audio") {
+                            SettingsRow("Encode Audio", subtitle: "Copies compatible audio; converts only incompatible formats") {
                                 Toggle("", isOn: $encodeAudio)
                                     .toggleStyle(.switch)
                                     .disabled(isProcessing || !encodeVideo)
