@@ -27,7 +27,6 @@ final class NonMP4ScannerViewModel: ObservableObject {
 
     private var scanTask: Task<Void, Never>?
     private var scanToken = UUID()
-    private var exportDialogHostWindow: NSWindow?
 
     private static let videoExtensions: Set<String> = [
         "mkv", "mp4", "avi", "mov", "m4v", "flv", "wmv", "webm", "mpeg", "mpg"
@@ -98,24 +97,14 @@ final class NonMP4ScannerViewModel: ObservableObject {
             return
         }
 
-        let hostWindow = makeHiddenChromeHostWindow()
-        exportDialogHostWindow = hostWindow
-        hostWindow.makeKeyAndOrderFront(nil)
-
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = "non-mp4-files.txt"
 
-        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
             Task { @MainActor in
                 guard let self else { return }
-
-                defer {
-                    self.exportDialogHostWindow?.orderOut(nil)
-                    self.exportDialogHostWindow = nil
-                }
-
                 guard response == .OK, let url = panel.url else {
                     return
                 }
@@ -230,29 +219,4 @@ final class NonMP4ScannerViewModel: ObservableObject {
         }
     }
 
-    private func makeHiddenChromeHostWindow() -> NSWindow {
-        let size = NSSize(width: 640, height: 480)
-        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let origin = NSPoint(
-            x: visibleFrame.midX - (size.width / 2),
-            y: visibleFrame.midY - (size.height / 2)
-        )
-
-        let window = NSWindow(
-            contentRect: NSRect(origin: origin, size: size),
-            styleMask: [.titled, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.standardWindowButton(.closeButton)?.isHidden = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.isMovable = false
-        window.hasShadow = false
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        return window
-    }
 }

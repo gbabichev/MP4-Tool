@@ -76,7 +76,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     private nonisolated(unsafe) var currentProcess: Process?
     private var scanToken = UUID()
     private var fixToken = UUID()
-    private var exportDialogHostWindow: NSWindow?
 
     init() {
         locateTools()
@@ -241,24 +240,14 @@ final class OffsetStartCheckerViewModel: ObservableObject {
             return
         }
 
-        let hostWindow = makeHiddenChromeHostWindow()
-        exportDialogHostWindow = hostWindow
-        hostWindow.makeKeyAndOrderFront(nil)
-
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = "offset-failures.txt"
 
-        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
             Task { @MainActor in
                 guard let self else { return }
-
-                defer {
-                    self.exportDialogHostWindow?.orderOut(nil)
-                    self.exportDialogHostWindow = nil
-                }
-
                 guard response == .OK, let url = panel.url else {
                     return
                 }
@@ -288,23 +277,15 @@ final class OffsetStartCheckerViewModel: ObservableObject {
             return
         }
 
-        let hostWindow = makeHiddenChromeHostWindow()
-        exportDialogHostWindow = hostWindow
-        hostWindow.makeKeyAndOrderFront(nil)
-
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.commaSeparatedText]
         panel.nameFieldStringValue = includeAll
             ? "mp4-timing-all.csv" : "mp4-timing-issues.csv"
 
-        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
             Task { @MainActor in
                 guard let self else { return }
-                defer {
-                    self.exportDialogHostWindow?.orderOut(nil)
-                    self.exportDialogHostWindow = nil
-                }
                 guard response == .OK, let url = panel.url else { return }
 
                 let header = ["Item Name", "Path", "Timing Issue"]
@@ -603,32 +584,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
     private func csvField(_ value: String) -> String {
         "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-    }
-
-    private func makeHiddenChromeHostWindow() -> NSWindow {
-        let size = NSSize(width: 640, height: 480)
-        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let origin = NSPoint(
-            x: visibleFrame.midX - (size.width / 2),
-            y: visibleFrame.midY - (size.height / 2)
-        )
-
-        let window = NSWindow(
-            contentRect: NSRect(origin: origin, size: size),
-            styleMask: [.titled, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.standardWindowButton(.closeButton)?.isHidden = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.isMovable = false
-        window.hasShadow = false
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        return window
     }
 
     private func collectVideoFilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {

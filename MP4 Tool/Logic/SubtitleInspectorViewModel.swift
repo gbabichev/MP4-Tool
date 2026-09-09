@@ -93,7 +93,6 @@ final class SubtitleInspectorViewModel: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private let processLock = NSLock()
     private nonisolated(unsafe) var currentProcess: Process?
-    private var exportDialogHostWindow: NSWindow?
 
     var canScan: Bool { !inputPath.isEmpty && !ffprobePath.isEmpty && !isScanning }
     var attentionResults: [SubtitleInspectionResult] { results.filter(\.needsAttention) }
@@ -173,22 +172,14 @@ final class SubtitleInspectorViewModel: ObservableObject {
         }
         guard !reportRows.isEmpty else { return }
 
-        let hostWindow = makeHiddenChromeHostWindow()
-        exportDialogHostWindow = hostWindow
-        hostWindow.makeKeyAndOrderFront(nil)
-
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.commaSeparatedText]
         panel.nameFieldStringValue = includeAll
             ? "mp4-subtitles-all.csv" : "mp4-subtitles-issues.csv"
-        panel.beginSheetModal(for: hostWindow) { [weak self] response in
+        CleanFilePanelPresenter.present(panel) { [weak self] response in
             Task { @MainActor in
                 guard let self else { return }
-                defer {
-                    self.exportDialogHostWindow?.orderOut(nil)
-                    self.exportDialogHostWindow = nil
-                }
                 guard response == .OK, let url = panel.url else { return }
 
                 let header = ["Item Name", "Path", "Subtitle Issue"]
@@ -366,32 +357,6 @@ final class SubtitleInspectorViewModel: ObservableObject {
 
     private func csvField(_ value: String) -> String {
         "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-    }
-
-    private func makeHiddenChromeHostWindow() -> NSWindow {
-        let size = NSSize(width: 640, height: 480)
-        let visibleFrame = NSScreen.main?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let origin = NSPoint(
-            x: visibleFrame.midX - (size.width / 2),
-            y: visibleFrame.midY - (size.height / 2)
-        )
-        let window = NSWindow(
-            contentRect: NSRect(origin: origin, size: size),
-            styleMask: [.titled, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.standardWindowButton(.closeButton)?.isHidden = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.isMovable = false
-        window.hasShadow = false
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        return window
     }
 
     private nonisolated static func collectFiles(
