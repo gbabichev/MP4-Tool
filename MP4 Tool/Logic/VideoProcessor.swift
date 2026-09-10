@@ -88,6 +88,7 @@ private struct AudioMapping {
     let codecName: String?
     let language: String?
     let channels: Int?
+    let sourceChannelLayout: String?
     let channelLayout: String?
     let duration: TimeInterval?
 }
@@ -2564,7 +2565,8 @@ class VideoProcessor: ObservableObject {
         for (outputIndex, mapping) in audioMappings.enumerated() {
             if mismatchedIndexes.contains(outputIndex) {
                 arguments.append(contentsOf: ["-map", "1:\(mapping.index)"])
-                if isAppleCompatibleAudioCodec(normalizedProbeValue(mapping.codecName)) {
+                if isAppleCompatibleAudioCodec(normalizedProbeValue(mapping.codecName)),
+                   !audioRequiresLayoutNormalization(mapping) {
                     arguments.append(contentsOf: ["-c:a:\(outputIndex)", "copy"])
                 } else {
                     arguments.append(contentsOf: ["-c:a:\(outputIndex)", "aac"])
@@ -2766,6 +2768,7 @@ class VideoProcessor: ObservableObject {
                 codecName: stream.codecName,
                 language: language,
                 channels: stream.channels,
+                sourceChannelLayout: stream.channelLayout,
                 channelLayout: resolvedAudioChannelLayout(for: stream),
                 duration: streamDurationSeconds(stream)
             )
@@ -2828,9 +2831,58 @@ class VideoProcessor: ObservableObject {
         mode: ProcessingMode,
         encodeAudio: Bool
     ) -> Bool {
-        mode == .remux
+        // AAC stores its channel arrangement in-band. Copying ambiguous
+        // multichannel AAC into MP4 can produce a valid-looking file whose
+        // audio track AVFoundation does not expose at all. Safety takes
+        // precedence over the copy-audio preference for these tracks.
+        if audioRequiresLayoutNormalization(mapping) {
+            return false
+        }
+
+        return mode == .remux
             || !encodeAudio
             || isAppleCompatibleAudioCodec(normalizedProbeValue(mapping.codecName))
+    }
+
+    private func audioRequiresLayoutNormalization(_ mapping: AudioMapping) -> Bool {
+        guard normalizedProbeValue(mapping.codecName) == "aac",
+              let channels = mapping.channels,
+              channels > 2 else {
+            return false
+        }
+
+        return !isCanonicalAppleAACLayout(
+            mapping.sourceChannelLayout,
+            channels: channels
+        )
+    }
+
+    private func audioRequiresLayoutNormalization(_ stream: VideoStream) -> Bool {
+        guard normalizedProbeValue(stream.codecName) == "aac",
+              let channels = stream.channels,
+              channels > 2 else {
+            return false
+        }
+
+        return !isCanonicalAppleAACLayout(stream.channelLayout, channels: channels)
+    }
+
+    private func isCanonicalAppleAACLayout(_ layout: String?, channels: Int) -> Bool {
+        let normalizedLayout = normalizedProbeValue(layout)
+        guard !normalizedLayout.isEmpty, normalizedLayout != "unknown" else {
+            return false
+        }
+
+        switch channels {
+        case 6:
+            return normalizedLayout == "5.1"
+        case 8:
+            return normalizedLayout == "7.1"
+        default:
+            // Named 3-, 4-, 5-, and 7-channel layouts can be represented by
+            // AAC without guessing. Only reject a layout that is absent.
+            return true
+        }
     }
 
     private func remuxCompatibilityIssue(
@@ -2855,6 +2907,10 @@ class VideoProcessor: ObservableObject {
 
         if filteredStreams.contains(where: isFloatingPointPCMAudio) {
             return "PCM float audio detected. Remux requires re-encoding"
+        }
+
+        if filteredStreams.contains(where: audioRequiresLayoutNormalization) {
+            return "Ambiguous multichannel AAC layout detected. Remux requires audio normalization"
         }
 
         if let unsupportedCodec = filteredStreams
