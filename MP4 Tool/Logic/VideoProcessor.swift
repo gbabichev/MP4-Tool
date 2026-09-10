@@ -108,6 +108,12 @@ private struct SubtitleSelectionPlan {
     let isExternal: Bool
 }
 
+private struct SmartPreflightItem {
+    let mode: ProcessingMode
+    let duration: TimeInterval?
+    let inputBytes: Int64
+}
+
 enum ProcessingMode: String, CaseIterable {
     case smart = "smart"
     case encodeH264 = "encode_h264"
@@ -345,6 +351,8 @@ class VideoProcessor: ObservableObject {
     private var framePreviewToken = UUID()
     private var activeFramePreviewInputFile: String?
     private var activeHistoryFFmpegCommands: [String] = []
+    private var activeProcessingFilePath: String?
+    private var smartPreflightItems: [String: SmartPreflightItem] = [:]
 
     // Batch processing tracking
     private var pendingBatchFiles: [VideoFileInfo] = []
@@ -780,6 +788,12 @@ class VideoProcessor: ObservableObject {
             return nil
         }
 
+        if activeMode == .smart {
+            return currentFileETA + estimatePendingSmartWorkSeconds(
+                currentFileEstimatedTotalWallSeconds: currentFileEstimatedTotalWallSeconds
+            )
+        }
+
         let remainingAfterCurrent = max(totalFiles - currentFileIndex, 0)
         let completedDurations = videoFiles.compactMap { file -> TimeInterval? in
             guard file.status == .completed else {
@@ -802,6 +816,87 @@ class VideoProcessor: ObservableObject {
         }
 
         return currentFileETA + (Double(remainingAfterCurrent) * perFileEstimate)
+    }
+
+    private func estimatePendingSmartWorkSeconds(
+        currentFileEstimatedTotalWallSeconds: TimeInterval?
+    ) -> TimeInterval {
+        let completed = videoFiles.filter { $0.status == .completed }
+        var encodeWallSecondsPerMediaSecond: [Double] = []
+        var remuxBytesPerSecond: [Double] = []
+
+        for file in completed {
+            guard let plan = smartPreflightItems[file.filePath],
+                  let startedAt = file.processingStartTime,
+                  let endedAt = file.processingEndTime else {
+                continue
+            }
+            let wallSeconds = max(endedAt.timeIntervalSince(startedAt), 0.1)
+            switch plan.mode {
+            case .remux:
+                if plan.inputBytes > 0 {
+                    remuxBytesPerSecond.append(Double(plan.inputBytes) / wallSeconds)
+                }
+            case .encodeH264, .encodeH265, .smart:
+                if let duration = plan.duration, duration > 0 {
+                    encodeWallSecondsPerMediaSecond.append(wallSeconds / duration)
+                }
+            }
+        }
+
+        if activeItemMode == .encodeH264 || activeItemMode == .encodeH265,
+           let activeProcessingFilePath,
+           let activePlan = smartPreflightItems[activeProcessingFilePath],
+           let duration = activePlan.duration,
+           duration > 0,
+           let currentFileEstimatedTotalWallSeconds,
+           currentFileEstimatedTotalWallSeconds > 0 {
+            encodeWallSecondsPerMediaSecond.append(currentFileEstimatedTotalWallSeconds / duration)
+        }
+
+        if activeItemMode == .remux,
+           let activeProcessingFilePath,
+           let activePlan = smartPreflightItems[activeProcessingFilePath],
+           activePlan.inputBytes > 0,
+           let currentFileEstimatedTotalWallSeconds,
+           currentFileEstimatedTotalWallSeconds > 0 {
+            remuxBytesPerSecond.append(
+                Double(activePlan.inputBytes) / currentFileEstimatedTotalWallSeconds
+            )
+        }
+
+        let encodeRate = encodeWallSecondsPerMediaSecond.isEmpty
+            ? nil
+            : encodeWallSecondsPerMediaSecond.reduce(0, +) / Double(encodeWallSecondsPerMediaSecond.count)
+        // Until this run observes a remux, use a conservative local/network copy
+        // rate. Once a remux finishes, its measured end-to-end wall time replaces
+        // this fallback and naturally accounts for a slow destination share.
+        let remuxThroughput = remuxBytesPerSecond.isEmpty
+            ? 50_000_000
+            : remuxBytesPerSecond.reduce(0, +) / Double(remuxBytesPerSecond.count)
+
+        return videoFiles
+            .filter { $0.status == .pending && $0.filePath != activeProcessingFilePath }
+            .reduce(0) { total, file in
+                guard let plan = smartPreflightItems[file.filePath] else {
+                    // A file added during an active batch has not been preflighted.
+                    // Retain the previous per-file behavior until it is analyzed.
+                    return total + (currentFileEstimatedTotalWallSeconds ?? 0)
+                }
+
+                switch plan.mode {
+                case .remux:
+                    let estimate = plan.inputBytes > 0
+                        ? Double(plan.inputBytes) / max(remuxThroughput, 1)
+                        : 2
+                    return total + max(estimate, 2)
+                case .encodeH264, .encodeH265, .smart:
+                    if let encodeRate, let duration = plan.duration, duration > 0 {
+                        return total + (duration * encodeRate)
+                    }
+                    return total + (currentFileEstimatedTotalWallSeconds ?? 0)
+                }
+            }
     }
 
     private func continuousBatchETASeconds(
@@ -980,6 +1075,8 @@ class VideoProcessor: ObservableObject {
         var failedFileCount = 0
         var skippedFileCount = 0
         stopFramePreviewUpdates(clearPreview: true)
+        activeProcessingFilePath = nil
+        smartPreflightItems = [:]
 
         // Gather the diagnostic header before replacing the launch-time log so the
         // inspector never passes through an empty state at the start of a run.
@@ -1162,6 +1259,21 @@ class VideoProcessor: ObservableObject {
             self.totalFiles = filesToProcess.count
         }
 
+        if mode == .smart {
+            addLog("Analyzing Smart queue…")
+            smartPreflightItems = await buildSmartPreflight(
+                files: filesToProcess,
+                targetMegabytesPerMinute: smartRemuxMegabytesPerMinute,
+                keepEnglishAudioOnly: keepEnglishAudioOnly,
+                keepAllEnglishAudioTracks: keepAllEnglishAudioTracks
+            )
+            let remuxCount = smartPreflightItems.values.filter { $0.mode == .remux }.count
+            let encodeCount = smartPreflightItems.count - remuxCount
+            addLog("Smart Queue: \(encodeCount) encode · \(remuxCount) remux")
+        } else {
+            smartPreflightItems = [:]
+        }
+
         // Set initial dock badge with total files
         updateDockBadge(filesRemaining: filesToProcess.count)
 
@@ -1212,9 +1324,15 @@ class VideoProcessor: ObservableObject {
             addLog("􀅴 Processing: \(fileInfo.name)")
 
             let inputFilePath = fileInfo.path
+            activeProcessingFilePath = inputFilePath
             let outputFileName = makeOutputFileName(fromInputFileName: fileInfo.name, automaticRename: automaticRename)
 
-            let sourceDuration = await probeDurationSeconds(inputFile: inputFilePath)
+            let sourceDuration: TimeInterval?
+            if let preflightItem = smartPreflightItems[inputFilePath] {
+                sourceDuration = preflightItem.duration
+            } else {
+                sourceDuration = await probeDurationSeconds(inputFile: inputFilePath)
+            }
             DispatchQueue.main.async {
                 self.currentInputDurationSeconds = sourceDuration
                 self.currentInputFrameRate = nil
@@ -1276,7 +1394,8 @@ class VideoProcessor: ObservableObject {
                     keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                     keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                     keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
-                    sourceDuration: sourceDuration
+                    sourceDuration: sourceDuration,
+                    smartPreflightMode: smartPreflightItems[inputFilePath]?.mode
                 )
             }
             let conversionEndTime = Date()
@@ -1581,6 +1700,8 @@ class VideoProcessor: ObservableObject {
             self.processingStartedAt = nil
             self.activeMode = nil
             self.activeItemMode = nil
+            self.activeProcessingFilePath = nil
+            self.smartPreflightItems = [:]
             self.shouldCancelProcessing = false
             self.stopAfterCurrentFileRequested = false
             self.currentInputDurationSeconds = nil
@@ -1892,6 +2013,60 @@ class VideoProcessor: ObservableObject {
         }
     }
 
+    private func buildSmartPreflight(
+        files: [(path: String, name: String)],
+        targetMegabytesPerMinute: Double,
+        keepEnglishAudioOnly: Bool,
+        keepAllEnglishAudioTracks: Bool
+    ) async -> [String: SmartPreflightItem] {
+        var results: [String: SmartPreflightItem] = [:]
+
+        for (offset, file) in files.enumerated() {
+            guard !shouldCancelProcessing else { break }
+
+            DispatchQueue.main.async {
+                self.scanProgress = "Analyzing \(offset + 1) of \(files.count)…"
+            }
+
+            let inputBytes = (try? FileManager.default.attributesOfItem(
+                atPath: file.path
+            ))?[.size] as? Int64 ?? 0
+            let duration = await probeDurationSeconds(inputFile: file.path)
+            var resolvedMode: ProcessingMode = .encodeH265
+
+            if let duration, duration > 0, inputBytes > 0 {
+                let megabytesPerMinute = Double(inputBytes) / 1_000_000 / (duration / 60)
+                if megabytesPerMinute <= targetMegabytesPerMinute,
+                   let audioStreams = await probeStreams(inputFile: file.path, selectStreams: "a"),
+                   let videoStreams = await probeStreams(inputFile: file.path, selectStreams: nil) {
+                    let audioMappings = getAudioMappings(
+                        audioStreams: audioStreams,
+                        keepEnglishOnly: keepEnglishAudioOnly,
+                        keepAllEnglishTracks: keepAllEnglishAudioTracks
+                    )
+                    let compatibilityIssue = await remuxCompatibilityIssue(
+                        inputFile: file.path,
+                        videoCodec: getVideoCodec(videoStreams: videoStreams),
+                        audioStreams: audioStreams,
+                        selectedAudioStreamIndexes: Set(audioMappings.map(\.index))
+                    )
+                    resolvedMode = compatibilityIssue == nil ? .remux : .encodeH265
+                }
+            }
+
+            results[file.path] = SmartPreflightItem(
+                mode: resolvedMode,
+                duration: duration,
+                inputBytes: inputBytes
+            )
+        }
+
+        DispatchQueue.main.async {
+            self.scanProgress = ""
+        }
+        return results
+    }
+
     private func convertToMP4(
         inputFile: String,
         tempFile: String,
@@ -1906,7 +2081,8 @@ class VideoProcessor: ObservableObject {
         keepAllEnglishAudioTracks: Bool,
         keepEnglishSubtitlesOnly: Bool,
         keepAllEnglishSubtitleTracks: Bool,
-        sourceDuration: TimeInterval?
+        sourceDuration: TimeInterval?,
+        smartPreflightMode: ProcessingMode? = nil
     ) async -> ConversionOutcome {
         // Probe streams
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
@@ -1985,15 +2161,15 @@ class VideoProcessor: ObservableObject {
                     "Smart Analysis: \(String(format: "%.1f", megabytesPerMinute)) MB/min "
                     + "(target ≤ \(String(format: "%.0f", smartRemuxMegabytesPerMinute)) MB/min)"
                 )
-                effectiveMode = megabytesPerMinute <= smartRemuxMegabytesPerMinute
-                    ? .remux
-                    : .encodeH265
+                effectiveMode = smartPreflightMode
+                    ?? (megabytesPerMinute <= smartRemuxMegabytesPerMinute ? .remux : .encodeH265)
             } else {
                 addLog("Smart Analysis: File size or runtime is unavailable")
-                effectiveMode = .encodeH265
+                effectiveMode = smartPreflightMode ?? .encodeH265
             }
 
-            if effectiveMode == .remux,
+            if smartPreflightMode == nil,
+               effectiveMode == .remux,
                let compatibilityIssue = await remuxCompatibilityIssue(
                 inputFile: inputFile,
                 videoCodec: videoCodec,
