@@ -114,16 +114,18 @@ struct SubtitleInspectorView: View {
 
                                 Spacer()
 
-                                ControlGroup {
+                                HStack(spacing: 6) {
                                     Button {
                                         showNeedsAttentionOnly.toggle()
                                     } label: {
                                         Label(
-                                            showNeedsAttentionOnly ? "Show All" : "Issues Only",
+                                            showNeedsAttentionOnly ? "Show All" : "Show Issues",
                                             systemImage: showNeedsAttentionOnly
                                                 ? "list.bullet" : "captions.bubble.fill"
                                         )
+                                        .labelStyle(.titleAndIcon)
                                     }
+                                    .buttonStyle(.bordered)
                                     .disabled(viewModel.results.isEmpty)
 
                                     Button {
@@ -138,7 +140,9 @@ struct SubtitleInspectorView: View {
                                             systemImage: allAttentionResultsSelected
                                                 ? "checkmark.circle.fill" : "checkmark.circle"
                                         )
+                                        .labelStyle(.titleAndIcon)
                                     }
+                                    .buttonStyle(.bordered)
                                     .disabled(attentionResultIDs.isEmpty || viewModel.isScanning)
                                 }
                                 .controlSize(.small)
@@ -295,10 +299,12 @@ struct SubtitleInspectorView: View {
     }
 
     private var resultsSummary: String {
-        if showNeedsAttentionOnly {
-            return "\(displayedResults.count) need attention of \(viewModel.results.count)"
+        let totalCount = viewModel.results.count
+        let issueCount = viewModel.attentionResults.count
+        if issueCount > 0 {
+            return "\(issueCount) need attention of \(totalCount) file\(totalCount == 1 ? "" : "s")"
         }
-        return "\(viewModel.results.count) file\(viewModel.results.count == 1 ? "" : "s")"
+        return "\(totalCount) file\(totalCount == 1 ? "" : "s") · No issues found"
     }
 
     private var emptyResultsMessage: String {

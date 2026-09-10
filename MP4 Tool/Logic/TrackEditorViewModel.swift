@@ -734,10 +734,11 @@ final class TrackEditorViewModel: ObservableObject {
             arguments.append(contentsOf: ["-metadata:s:\(kindSpecifier):\(outputIndex)", "language=\(language)"])
         }
         let title = track.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !title.isEmpty {
-            arguments.append(contentsOf: ["-metadata:s:\(kindSpecifier):\(outputIndex)", "title=\(title)"])
-            arguments.append(contentsOf: ["-metadata:s:\(kindSpecifier):\(outputIndex)", "handler_name=\(title)"])
-        }
+        // Always write these keys, including an empty value. Omitting the
+        // arguments for a blank field tells FFmpeg to preserve the source
+        // metadata, which made an existing title impossible to clear.
+        arguments.append(contentsOf: ["-metadata:s:\(kindSpecifier):\(outputIndex)", "title=\(title)"])
+        arguments.append(contentsOf: ["-metadata:s:\(kindSpecifier):\(outputIndex)", "handler_name=\(title)"])
     }
 
     private func validationIssue(

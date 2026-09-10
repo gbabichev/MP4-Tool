@@ -139,16 +139,18 @@ struct MetadataCleanerView: View {
 
                             Spacer()
 
-                            ControlGroup {
+                            HStack(spacing: 6) {
                                 Button {
                                     showNeedsCleaningOnly.toggle()
                                 } label: {
                                     Label(
-                                        showNeedsCleaningOnly ? "Show All" : "Needs Cleanup",
+                                        showNeedsCleaningOnly ? "Show All" : "Show Issues",
                                         systemImage: showNeedsCleaningOnly
                                             ? "list.bullet" : "exclamationmark.triangle"
                                     )
+                                    .labelStyle(.titleAndIcon)
                                 }
+                                .buttonStyle(.bordered)
                                 .disabled(viewModel.results.isEmpty)
 
                                 Button {
@@ -163,7 +165,9 @@ struct MetadataCleanerView: View {
                                         systemImage: allCleanableSelected
                                             ? "checkmark.circle.fill" : "checkmark.circle"
                                     )
+                                    .labelStyle(.titleAndIcon)
                                 }
+                                .buttonStyle(.bordered)
                                 .disabled(viewModel.isBusy || cleanableIDs.isEmpty)
                             }
                             .controlSize(.small)
@@ -337,10 +341,12 @@ struct MetadataCleanerView: View {
     }
 
     private var metadataResultsSummary: String {
-        if showNeedsCleaningOnly {
-            return "\(displayedResults.count) need cleanup of \(viewModel.results.count)"
+        let totalCount = viewModel.results.count
+        let issueCount = viewModel.cleanableResults.count
+        if issueCount > 0 {
+            return "\(issueCount) need cleanup of \(totalCount) file\(totalCount == 1 ? "" : "s")"
         }
-        return "\(viewModel.results.count) file\(viewModel.results.count == 1 ? "" : "s")"
+        return "\(totalCount) file\(totalCount == 1 ? "" : "s") · No issues found"
     }
 
     private var emptyResultsMessage: String {

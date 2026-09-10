@@ -130,16 +130,18 @@ struct OffsetStartCheckerView: View {
 
                             Spacer()
 
-                            ControlGroup {
+                            HStack(spacing: 6) {
                                 Button {
                                     showNeedsActionOnly.toggle()
                                 } label: {
                                     Label(
-                                        showNeedsActionOnly ? "Show All" : "Needs Action",
+                                        showNeedsActionOnly ? "Show All" : "Show Issues",
                                         systemImage: showNeedsActionOnly
                                             ? "list.bullet" : "exclamationmark.circle"
                                     )
+                                    .labelStyle(.titleAndIcon)
                                 }
+                                .buttonStyle(.bordered)
                                 .disabled(viewModel.results.isEmpty)
 
                                 Button {
@@ -154,7 +156,9 @@ struct OffsetStartCheckerView: View {
                                         systemImage: allRepairableSelected
                                             ? "checkmark.circle.fill" : "checkmark.circle"
                                     )
+                                    .labelStyle(.titleAndIcon)
                                 }
+                                .buttonStyle(.bordered)
                                 .disabled(
                                     repairableResultIDs.isEmpty
                                         || viewModel.isScanning
@@ -343,10 +347,12 @@ struct OffsetStartCheckerView: View {
     }
 
     private var offsetResultsSummary: String {
-        if showNeedsActionOnly {
-            return "\(displayedResults.count) need action"
+        let totalCount = viewModel.results.count
+        let issueCount = viewModel.actionRequiredResults.count
+        if issueCount > 0 {
+            return "\(issueCount) need action of \(totalCount) file\(totalCount == 1 ? "" : "s")"
         }
-        return "\(viewModel.results.count) file\(viewModel.results.count == 1 ? "" : "s")"
+        return "\(totalCount) file\(totalCount == 1 ? "" : "s") · No issues found"
     }
 
     private var repairableResultIDs: Set<UUID> {
