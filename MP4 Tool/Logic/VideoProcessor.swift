@@ -1371,6 +1371,7 @@ class VideoProcessor: ObservableObject {
             ))?[.size] as? Int64 ?? 0
 
             // Process the video
+            let conversionStartTime = Date()
             let conversionOutcome: ConversionOutcome
             if let storageIssue = ProcessingStagingStorage.capacityIssue(
                 estimatedOutputBytes: estimatedInputBytes,
@@ -1505,12 +1506,20 @@ class VideoProcessor: ObservableObject {
                 let duration = fileEndTime.timeIntervalSince(fileStartTime)
                 let savedBytes = inputSize - outputSize
                 let savedPercentage = inputSize > 0 ? Double(savedBytes) / Double(inputSize) * 100 : 0
+                let encodingRuntime = conversionEndTime.timeIntervalSince(conversionStartTime)
                 addLog("⏱ End time: \(getTimestampString())")
                 addLog("􀁢 Done processing")
                 addLog("Final Output: \(outputFilePath)")
                 addLog("Size: \(formattedByteCount(inputSize)) → \(formattedByteCount(outputSize))")
                 addLog("Space Saved: \(formattedByteCount(savedBytes)) (\(String(format: "%.1f", savedPercentage))%)")
                 addLog("Completed in \(formatDuration(seconds: Int(duration)))")
+                if effectiveMode != .remux,
+                   let sourceDuration,
+                   encodingRuntime > 0 {
+                    addLog(
+                        "Encode Speed: \(String(format: "%.2f", sourceDuration / encodingRuntime))× realtime"
+                    )
+                }
 
                 let historyWasSaved = ProcessingHistoryStore.shared.record(
                     fileName: URL(fileURLWithPath: outputFilePath).lastPathComponent,
@@ -1527,6 +1536,7 @@ class VideoProcessor: ObservableObject {
                             ? "Smart → \(effectiveMode.description)"
                             : effectiveMode.description,
                         sourceDurationSeconds: sourceDuration,
+                        encodingRuntimeSeconds: effectiveMode == .remux ? nil : encodingRuntime,
                         encodeVideo: effectiveMode == .remux ? false : (mode == .smart ? true : encodeVideo),
                         encodeAudio: effectiveMode == .remux ? false : (mode == .smart ? true : encodeAudio),
                         crfValue: effectiveMode == .remux ? nil : crfValue,

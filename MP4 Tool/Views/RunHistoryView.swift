@@ -6,6 +6,11 @@
 import SwiftUI
 import AppKit
 
+private func formattedEncodeSpeed(_ speed: Double?) -> String {
+    guard let speed, speed.isFinite, speed > 0 else { return "—" }
+    return String(format: "%.2f×", speed)
+}
+
 struct RunHistoryView: View {
     @ObservedObject private var history = ProcessingHistoryStore.shared
     @State private var selection: Set<ProcessingHistoryEntry.ID> = []
@@ -64,6 +69,12 @@ struct RunHistoryView: View {
                                 .monospacedDigit()
                         }
                         .width(min: 75, ideal: 90)
+
+                        TableColumn("Encode Speed") { entry in
+                            Text(formattedEncodeSpeed(entry.encodeSpeedMultiple))
+                                .monospacedDigit()
+                        }
+                        .width(min: 85, ideal: 100)
 
                         TableColumn("Started") { entry in
                             if let startedAt = entry.startedAt {
@@ -164,6 +175,20 @@ struct RunHistoryView: View {
         let savedPercentage = originalBytes > 0
             ? Double(savedBytes) / Double(originalBytes) * 100
             : 0
+        let benchmarkEntries = history.entries.compactMap { entry -> (TimeInterval, TimeInterval)? in
+            guard entry.encodeSpeedMultiple != nil,
+                  let details = entry.details,
+                  let sourceDuration = details.sourceDurationSeconds,
+                  let encodingRuntime = details.encodingRuntimeSeconds else {
+                return nil
+            }
+            return (sourceDuration, encodingRuntime)
+        }
+        let benchmarkMediaSeconds = benchmarkEntries.reduce(0) { $0 + $1.0 }
+        let benchmarkRuntimeSeconds = benchmarkEntries.reduce(0) { $0 + $1.1 }
+        let benchmarkSpeed = benchmarkRuntimeSeconds > 0
+            ? benchmarkMediaSeconds / benchmarkRuntimeSeconds
+            : nil
 
         return HStack(spacing: 18) {
             Image(systemName: "internaldrive.fill")
@@ -197,6 +222,17 @@ struct RunHistoryView: View {
                 "\(formattedBytes(savedBytes)) · \(savedPercentage.formatted(.number.precision(.fractionLength(1))))%",
                 accent: true
             )
+
+            if let benchmarkSpeed {
+                Divider()
+                    .frame(height: 36)
+
+                historyMetric(
+                    "Encode Benchmark · \(benchmarkEntries.count) \(benchmarkEntries.count == 1 ? "file" : "files")",
+                    formattedEncodeSpeed(benchmarkSpeed),
+                    accent: true
+                )
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -325,6 +361,13 @@ private struct ProcessingHistoryDetailView: View {
                 entry.runtimeSeconds.map(Self.formattedDuration) ?? "—",
                 systemImage: "clock"
             )
+            if let encodeSpeed = entry.encodeSpeedMultiple {
+                metricCard(
+                    "Encode Speed",
+                    formattedEncodeSpeed(encodeSpeed),
+                    systemImage: "gauge.with.dots.needle.67percent"
+                )
+            }
         }
     }
 
@@ -371,6 +414,10 @@ private struct ProcessingHistoryDetailView: View {
                 if let duration = details.sourceDurationSeconds {
                     Divider()
                     detailRow("Source Duration", Self.formattedDuration(duration))
+                }
+                if let encodeSpeed = entry.encodeSpeedMultiple {
+                    Divider()
+                    detailRow("Encode Speed", "\(formattedEncodeSpeed(encodeSpeed)) realtime")
                 }
                 Divider()
                 detailRow("Run ID", details.runID)

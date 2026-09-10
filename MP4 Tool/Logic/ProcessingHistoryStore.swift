@@ -12,6 +12,7 @@ struct ProcessingHistoryDetails: Codable, Equatable {
     let outputPath: String
     let mode: String
     let sourceDurationSeconds: TimeInterval?
+    let encodingRuntimeSeconds: TimeInterval?
     let encodeVideo: Bool
     let encodeAudio: Bool
     let crfValue: Int?
@@ -48,6 +49,19 @@ struct ProcessingHistoryEntry: Codable, Identifiable, Equatable {
     var savedPercentage: Double {
         guard originalBytes > 0 else { return 0 }
         return Double(savedBytes) / Double(originalBytes) * 100
+    }
+
+    var encodeSpeedMultiple: Double? {
+        guard let details,
+              details.encodeVideo,
+              !details.mode.localizedCaseInsensitiveContains("remux"),
+              let sourceDuration = details.sourceDurationSeconds,
+              let encodingRuntime = details.encodingRuntimeSeconds,
+              sourceDuration > 0,
+              encodingRuntime > 0 else {
+            return nil
+        }
+        return sourceDuration / encodingRuntime
     }
 }
 
