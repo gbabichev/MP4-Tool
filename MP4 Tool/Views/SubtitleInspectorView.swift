@@ -7,7 +7,6 @@ struct SubtitleInspectorView: View {
 
     @StateObject private var viewModel = SubtitleInspectorViewModel()
     @State private var showNeedsAttentionOnly = false
-    @State private var selectedResultIDs: Set<UUID> = []
     @State private var lastAppliedSharedInputPath: String?
     @AppStorage("subtitleInspectorRequireEnglish") private var requireEnglishSubtitles = false
 
@@ -114,38 +113,19 @@ struct SubtitleInspectorView: View {
 
                                 Spacer()
 
-                                HStack(spacing: 6) {
-                                    Button {
-                                        showNeedsAttentionOnly.toggle()
-                                    } label: {
-                                        Label(
-                                            showNeedsAttentionOnly ? "Show All" : "Show Issues",
-                                            systemImage: showNeedsAttentionOnly
-                                                ? "list.bullet" : "captions.bubble.fill"
-                                        )
-                                        .labelStyle(.titleAndIcon)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .disabled(viewModel.results.isEmpty)
-
-                                    Button {
-                                        if allAttentionResultsSelected {
-                                            selectedResultIDs.subtract(attentionResultIDs)
-                                        } else {
-                                            selectedResultIDs.formUnion(attentionResultIDs)
-                                        }
-                                    } label: {
-                                        Label(
-                                            allAttentionResultsSelected ? "Deselect All" : "Select All",
-                                            systemImage: allAttentionResultsSelected
-                                                ? "checkmark.circle.fill" : "checkmark.circle"
-                                        )
-                                        .labelStyle(.titleAndIcon)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .disabled(attentionResultIDs.isEmpty || viewModel.isScanning)
+                                Button {
+                                    showNeedsAttentionOnly.toggle()
+                                } label: {
+                                    Label(
+                                        showNeedsAttentionOnly ? "Show All" : "Show Issues",
+                                        systemImage: showNeedsAttentionOnly
+                                            ? "list.bullet" : "captions.bubble.fill"
+                                    )
+                                    .labelStyle(.titleAndIcon)
                                 }
+                                .buttonStyle(.bordered)
                                 .controlSize(.small)
+                                .disabled(viewModel.results.isEmpty)
                             }
                             .padding(.horizontal, 8)
                             .padding(.top, 4)
@@ -159,14 +139,6 @@ struct SubtitleInspectorView: View {
                             } else {
                                 List(displayedResults) { result in
                                     HStack(spacing: 12) {
-                                        if result.needsAttention {
-                                            Toggle("Select", isOn: selectionBinding(for: result.id))
-                                                .labelsHidden()
-                                                .toggleStyle(.checkbox)
-                                                .disabled(viewModel.isScanning)
-                                                .help("Select this subtitle issue")
-                                        }
-
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(URL(fileURLWithPath: result.filePath).lastPathComponent)
                                                 .lineLimit(1)
@@ -187,7 +159,6 @@ struct SubtitleInspectorView: View {
                                             .help(result.issue)
 
                                         Button(role: .destructive) {
-                                            selectedResultIDs.remove(result.id)
                                             viewModel.removeResult(id: result.id)
                                         } label: {
                                             Image(systemName: "trash")
@@ -200,7 +171,6 @@ struct SubtitleInspectorView: View {
                                     }
                                     .contextMenu {
                                         Button(role: .destructive) {
-                                            selectedResultIDs.remove(result.id)
                                             viewModel.removeResult(id: result.id)
                                         } label: {
                                             Label("Remove from Results", systemImage: "trash")
@@ -227,18 +197,13 @@ struct SubtitleInspectorView: View {
         .onChange(of: viewModel.isScanning) { _, isScanning in
             if !isScanning { applySharedInput() }
         }
-        .onChange(of: attentionResultIDs) { _, newIDs in
-            selectedResultIDs.formIntersection(newIDs)
-        }
         .onChange(of: requireEnglishSubtitles) { _, _ in
-            selectedResultIDs = []
             showNeedsAttentionOnly = false
             viewModel.resetResultsForOptionChange()
         }
         .onAppear(perform: applySharedInput)
         .onReceive(NotificationCenter.default.publisher(for: inspectRepairResetAllNotification)) { _ in
             showNeedsAttentionOnly = false
-            selectedResultIDs.removeAll()
             lastAppliedSharedInputPath = nil
             viewModel.resetAll()
         }
@@ -274,7 +239,6 @@ struct SubtitleInspectorView: View {
                         .toolbarStopActionStyle()
                     } else {
                         Button {
-                            selectedResultIDs = []
                             viewModel.scan(requireEnglish: requireEnglishSubtitles)
                         } label: {
                             Label("Scan", systemImage: "magnifyingglass")
@@ -284,14 +248,6 @@ struct SubtitleInspectorView: View {
                 }
             }
         }
-    }
-
-    private var attentionResultIDs: Set<UUID> {
-        Set(viewModel.attentionResults.map(\.id))
-    }
-
-    private var allAttentionResultsSelected: Bool {
-        !attentionResultIDs.isEmpty && attentionResultIDs.isSubset(of: selectedResultIDs)
     }
 
     private var displayedResults: [SubtitleInspectionResult] {
@@ -321,16 +277,6 @@ struct SubtitleInspectorView: View {
             return "Find MP4 files that do not contain a subtitle track explicitly tagged English. Files with subtitles in other languages are distinguished from files with no subtitle tracks."
         }
         return "Find MP4 files that do not contain any subtitle tracks. Files that cannot be inspected are called out separately rather than being reported as missing subtitles."
-    }
-
-    private func selectionBinding(for id: UUID) -> Binding<Bool> {
-        Binding(
-            get: { selectedResultIDs.contains(id) },
-            set: { selected in
-                if selected { selectedResultIDs.insert(id) }
-                else { selectedResultIDs.remove(id) }
-            }
-        )
     }
 
     private func resultColor(_ result: SubtitleInspectionResult) -> Color {
