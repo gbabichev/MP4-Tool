@@ -727,7 +727,7 @@ struct ContentView: View {
                                 Button {
                                     viewModel.processor.cancelStopAfterCurrentFile()
                                 } label: {
-                                    Label("Continue Batch", systemImage: "play.fill")
+                                    Label("Resume Batch", systemImage: "play.fill")
                                 }
                             } else {
                                 Button {
@@ -759,15 +759,23 @@ struct ContentView: View {
                                             ? "hourglass"
                                             : "stop.fill"
                                     )
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(
+                                        viewModel.processor.stopAfterCurrentFileRequested
+                                            ? Color.primary
+                                            : Color.red
+                                    )
                                 }
                             )
                         } primaryAction: {
-                            viewModel.processor.cancelScan()
+                            if viewModel.processor.stopAfterCurrentFileRequested {
+                                viewModel.processor.cancelStopAfterCurrentFile()
+                            } else {
+                                viewModel.processor.cancelScan()
+                            }
                         }
                         .help(
                             viewModel.processor.stopAfterCurrentFileRequested
-                                ? "The current file will finish, then the batch will stop"
+                                ? "Cancel the pending stop and continue processing the batch"
                                 : "Stop now, or use the menu to stop after the current file"
                         )
                     } else {
