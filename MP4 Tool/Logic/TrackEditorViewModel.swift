@@ -554,10 +554,22 @@ final class TrackEditorViewModel: ObservableObject {
 
         let externalInputs = Dictionary(grouping: includedTracks.filter(\.isExternal), by: \.inputOrdinal)
             .compactMapValues { $0.first?.sourcePath }
+        let externalSubtitleInputOrdinals = Set(
+            includedTracks
+                .filter { $0.isExternal && $0.kind == .subtitle }
+                .map(\.inputOrdinal)
+        )
 
         var arguments = ["-hide_banner", overwrite ? "-y" : "-n", "-i", inputPath]
         for ordinal in externalInputs.keys.sorted() {
             if let path = externalInputs[ordinal] {
+                // SRT files found in the wild sometimes contain a cue whose end
+                // timestamp is hours beyond its start. That duration can overflow
+                // the MP4 mov_text timing field and abort an otherwise safe remux.
+                // Clamp overlapping/overlong cues to the next subtitle packet.
+                if externalSubtitleInputOrdinals.contains(ordinal) {
+                    arguments.append("-fix_sub_duration")
+                }
                 arguments.append(contentsOf: ["-i", path])
             }
         }
