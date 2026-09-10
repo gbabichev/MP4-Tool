@@ -102,6 +102,12 @@ private struct SubtitleMapping {
     let selectionRationale: String?
 }
 
+private struct SubtitleSelectionPlan {
+    let sourceFile: String
+    let mappings: [SubtitleMapping]
+    let isExternal: Bool
+}
+
 enum ProcessingMode: String, CaseIterable {
     case smart = "smart"
     case encodeH264 = "encode_h264"
@@ -2033,12 +2039,35 @@ class VideoProcessor: ObservableObject {
         }
 
         // Determine subtitle stream mappings
-        let subtitleMappings = await getSubtitleMappings(
+        let embeddedSubtitleMappings = await getSubtitleMappings(
             inputFile: inputFile,
             subtitleStreams: subtitleStreams,
             keepEnglishOnly: keepEnglishSubtitlesOnly,
             keepAllEnglishTracks: keepAllEnglishSubtitleTracks
         )
+
+        // A usable embedded subtitle is authoritative. Only look beside the
+        // video when no embedded track can be written to MP4 under the selected
+        // language policy. This also gives image-only PGS sources a text-based
+        // fallback without letting a loose sidecar replace embedded SRT/ASS.
+        let subtitlePlan: SubtitleSelectionPlan
+        if !embeddedSubtitleMappings.isEmpty {
+            subtitlePlan = SubtitleSelectionPlan(
+                sourceFile: inputFile,
+                mappings: embeddedSubtitleMappings,
+                isExternal: false
+            )
+        } else if let siblingSubtitle = siblingSRTSelection(for: inputFile) {
+            subtitlePlan = siblingSubtitle
+            addLog("Selected sibling subtitle: \(URL(fileURLWithPath: siblingSubtitle.sourceFile).lastPathComponent)")
+        } else {
+            subtitlePlan = SubtitleSelectionPlan(
+                sourceFile: inputFile,
+                mappings: [],
+                isExternal: false
+            )
+        }
+        let subtitleMappings = subtitlePlan.mappings
 
         if subtitleMappings.isEmpty,
            keepEnglishSubtitlesOnly,
@@ -2055,7 +2084,8 @@ class VideoProcessor: ObservableObject {
                 if subtitle.isHearingImpaired { traits.append("hearing impaired") }
                 if subtitle.isCaptions { traits.append("captions") }
                 let traitDescription = traits.isEmpty ? "" : " · \(traits.joined(separator: ", "))"
-                return "0:\(subtitle.index) (\(subtitle.language ?? "und")\(traitDescription))"
+                let source = subtitlePlan.isExternal ? "sidecar" : "0:\(subtitle.index)"
+                return "\(source) (\(subtitle.language ?? "und")\(traitDescription))"
             }
             addLog("Selected Subtitles: \(descriptions.joined(separator: ", "))")
             if let rationale = subtitleMappings.compactMap(\.selectionRationale).first {
@@ -2068,7 +2098,8 @@ class VideoProcessor: ObservableObject {
         // exit 0 while the encoded video is still incomplete. Keep subtitles out
         // of the expensive encode and add them afterward with a fast stream-copy
         // remux. The final validation still protects the source/output duration.
-        let usesSeparateSubtitleMux = effectiveMode != .remux && !subtitleMappings.isEmpty
+        let usesSeparateSubtitleMux = !subtitleMappings.isEmpty
+            && (effectiveMode != .remux || subtitlePlan.isExternal)
         let encodedAVFile: String? = usesSeparateSubtitleMux
             ? (tempFile as NSString).deletingPathExtension + "-av.mp4"
             : nil
@@ -2214,7 +2245,7 @@ class VideoProcessor: ObservableObject {
 
             let subtitleMuxCommand = buildSubtitleMuxCommand(
                 encodedAVFile: encodedAVFile,
-                sourceFile: inputFile,
+                sourceFile: subtitlePlan.sourceFile,
                 outputFile: tempFile,
                 videoCodec: effectiveMode == .encodeH265 ? "hevc" : videoCodec,
                 audioMappings: audioMappings,
@@ -2840,6 +2871,107 @@ class VideoProcessor: ObservableObject {
             "-map", "0:\(streamIndex)", "-f", "srt", "-"
         ]
         guard let text = await runCommandWithOutput(path: ffmpegPath, arguments: arguments) else {
+            return nil
+        }
+        return SubtitleTrackSelectionPolicy.contentMetrics(from: text)
+    }
+
+    private func siblingSRTSelection(for inputFile: String) -> SubtitleSelectionPlan? {
+        let inputURL = URL(fileURLWithPath: inputFile)
+        let directory = inputURL.deletingLastPathComponent()
+        let sourceStem = inputURL.deletingPathExtension().lastPathComponent
+        let normalizedSourceStem = sourceStem.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        )
+
+        guard let directoryContents = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        let allSRTs = directoryContents.filter { $0.pathExtension.lowercased() == "srt" }
+        var matchingSRTs = allSRTs.filter { url in
+            let stem = url.deletingPathExtension().lastPathComponent.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            return stem == normalizedSourceStem
+                || stem.hasPrefix(normalizedSourceStem + ".")
+                || stem.hasPrefix(normalizedSourceStem + " ")
+        }
+
+        // A conventional movie folder containing exactly one video and one SRT
+        // is unambiguous even when the release names differ. Never use this
+        // fallback in a flat folder containing several videos.
+        if matchingSRTs.isEmpty, allSRTs.count == 1 {
+            let videoExtensions = Set(["mkv", "mp4", "avi", "mov", "m4v"])
+            let videoCount = directoryContents.filter {
+                videoExtensions.contains($0.pathExtension.lowercased())
+            }.count
+            if videoCount == 1 {
+                matchingSRTs = allSRTs
+            }
+        }
+
+        guard !matchingSRTs.isEmpty else { return nil }
+
+        let candidates = matchingSRTs.enumerated().map { subtitleIndex, url in
+            let label = url.deletingPathExtension().lastPathComponent.lowercased()
+            let metrics = subtitleMetrics(at: url)
+            let forced = label.range(of: #"(^|[ ._-])forced($|[ ._-])"#, options: .regularExpression) != nil
+            let hearingImpaired = label.range(
+                of: #"(^|[ ._-])(sdh|hi|hearing[ ._-]?impaired)($|[ ._-])"#,
+                options: .regularExpression
+            ) != nil
+            return SubtitleTrackSelectionCandidate(
+                streamIndex: subtitleIndex,
+                subtitleIndex: subtitleIndex,
+                language: "eng",
+                title: label,
+                handlerName: nil,
+                cueCount: metrics?.cueCount,
+                accessibilityMarkerCount: metrics?.accessibilityMarkerCount ?? 0,
+                isDefault: false,
+                isForced: forced,
+                isHearingImpaired: hearingImpaired,
+                isCaptions: hearingImpaired
+            )
+        }
+
+        guard let selected = SubtitleTrackSelectionPolicy.preferredFullTrack(from: candidates),
+              matchingSRTs.indices.contains(selected.subtitleIndex) else {
+            return nil
+        }
+        let selectedURL = matchingSRTs[selected.subtitleIndex]
+        let rationale = SubtitleTrackSelectionPolicy.rationale(for: selected, among: candidates)
+        return SubtitleSelectionPlan(
+            sourceFile: selectedURL.path,
+            mappings: [
+                SubtitleMapping(
+                    index: 0,
+                    language: "eng",
+                    isDefault: true,
+                    isForced: selected.isForced,
+                    isHearingImpaired: selected.isHearingImpaired,
+                    isCaptions: selected.isCaptions,
+                    selectionRationale: "sibling SRT · \(rationale)"
+                )
+            ],
+            isExternal: true
+        )
+    }
+
+    private func subtitleMetrics(
+        at url: URL
+    ) -> (cueCount: Int, accessibilityMarkerCount: Int)? {
+        guard let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8)
+                ?? String(data: data, encoding: .windowsCP1252)
+                ?? String(data: data, encoding: .isoLatin1) else {
             return nil
         }
         return SubtitleTrackSelectionPolicy.contentMetrics(from: text)
