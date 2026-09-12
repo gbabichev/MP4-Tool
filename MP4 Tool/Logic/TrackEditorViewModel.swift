@@ -927,7 +927,7 @@ final class TrackEditorViewModel: ObservableObject {
             note = nil
         }
         let title = meaningfulTrackTitle(from: stream.tags)
-        let sourceLanguage = stream.tags?["language"]?
+        let sourceLanguage = stream.tags?.caseInsensitiveValue(forKey: "language")?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         let language = isExternal && kind == .subtitle && (sourceLanguage == nil || sourceLanguage == "" || sourceLanguage == "und")
@@ -966,11 +966,11 @@ final class TrackEditorViewModel: ObservableObject {
     }
 
     private func meaningfulTrackTitle(from tags: [String: String]?) -> String {
-        if let title = tags?["title"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+        if let title = tags?.caseInsensitiveValue(forKey: "title")?.trimmingCharacters(in: .whitespacesAndNewlines),
            !title.isEmpty {
             return title
         }
-        let handlerName = tags?["handler_name"]?
+        let handlerName = tags?.caseInsensitiveValue(forKey: "handler_name")?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let genericHandlerNames = [
             "soundhandler",

@@ -57,6 +57,14 @@ struct VideoStream: Codable {
     }
 }
 
+extension Dictionary where Key == String, Value == String {
+    func caseInsensitiveValue(forKey requestedKey: String) -> String? {
+        first { key, _ in
+            key.caseInsensitiveCompare(requestedKey) == .orderedSame
+        }?.value
+    }
+}
+
 struct VideoStreamDisposition: Codable {
     let isDefault: Int?
     let isForced: Int?
@@ -2103,6 +2111,13 @@ class VideoProcessor: ObservableObject {
             return .failed(reason: "Failed to probe streams")
         }
 
+        guard let sourceVideoStream = videoStreams.streams.first(where: { $0.codecType == "video" }) else {
+            let reason = "No video track was found"
+            addLog("Skipping before encode: \(reason)")
+            return .skipped(reason: reason)
+        }
+        let sourceVideoDuration = streamDurationSeconds(sourceVideoStream) ?? sourceDuration
+
         let shouldEncodeVideo = mode == .smart ? true : encodeVideo
         let shouldEncodeAudio = mode == .smart ? true : encodeAudio
 
@@ -2420,6 +2435,7 @@ class VideoProcessor: ObservableObject {
                 expectedAudioTrackCount: audioMappings.count,
                 expectedAudioLayouts: expectedEncodedAudioLayouts,
                 expectedAudioDurations: audioMappings.map(\.duration),
+                expectedVideoDuration: sourceVideoDuration,
                 sourceDuration: sourceDuration
             ) {
                 addLog("􀁡 Intermediate output validation failed: \(validationFailure)")
@@ -2457,6 +2473,7 @@ class VideoProcessor: ObservableObject {
             expectedAudioTrackCount: audioMappings.count,
             expectedAudioLayouts: expectedEncodedAudioLayouts,
             expectedAudioDurations: audioMappings.map(\.duration),
+            expectedVideoDuration: sourceVideoDuration,
             sourceDuration: sourceDuration
         ) {
             addLog("􀁡 Output validation failed: \(validationFailure)")
@@ -2635,6 +2652,7 @@ class VideoProcessor: ObservableObject {
         expectedAudioTrackCount: Int,
         expectedAudioLayouts: [String?],
         expectedAudioDurations: [TimeInterval?],
+        expectedVideoDuration: TimeInterval?,
         sourceDuration: TimeInterval?
     ) async -> String? {
         guard FileManager.default.fileExists(atPath: outputFile) else {
@@ -2651,9 +2669,22 @@ class VideoProcessor: ObservableObject {
             return "FFprobe could not read the temporary output"
         }
 
-        let videoTrackCount = outputStreams.streams.filter { $0.codecType == "video" }.count
+        let outputVideoStreams = outputStreams.streams.filter { $0.codecType == "video" }
+        let videoTrackCount = outputVideoStreams.count
         guard videoTrackCount > 0 else {
             return "temporary output contains no video stream"
+        }
+
+        if let expectedVideoDuration,
+           let outputVideoDuration = outputVideoStreams.first.flatMap(streamDurationSeconds) {
+            let tolerance = max(5, min(30, expectedVideoDuration * 0.005))
+            if expectedVideoDuration - outputVideoDuration > tolerance {
+                return String(
+                    format: "video duration mismatch: source %.2fs, output %.2fs",
+                    expectedVideoDuration,
+                    outputVideoDuration
+                )
+            }
         }
 
         let auxiliaryTrackCount = outputStreams.streams.filter { $0.codecType == "data" }.count
@@ -2736,9 +2767,9 @@ class VideoProcessor: ObservableObject {
             AudioTrackSelectionCandidate(
                 streamIndex: stream.index,
                 audioIndex: audioIndex,
-                language: stream.tags?["language"],
-                title: stream.tags?["title"],
-                handlerName: stream.tags?["handler_name"],
+                language: stream.tags?.caseInsensitiveValue(forKey: "language"),
+                title: stream.tags?.caseInsensitiveValue(forKey: "title"),
+                handlerName: stream.tags?.caseInsensitiveValue(forKey: "handler_name"),
                 codec: stream.codecName,
                 channels: stream.channels,
                 channelLayout: stream.channelLayout,
@@ -2760,7 +2791,7 @@ class VideoProcessor: ObservableObject {
 
         return streams.compactMap { stream in
             guard selectedIndexes.contains(stream.index) else { return nil }
-            let language = stream.tags?["language"]?.lowercased()
+            let language = stream.tags?.caseInsensitiveValue(forKey: "language")?.lowercased()
                 ?? (keepEnglishOnly ? "und" : nil)
             return AudioMapping(
                 index: stream.index,
@@ -2781,8 +2812,7 @@ class VideoProcessor: ObservableObject {
             return seconds
         }
 
-        guard let taggedDuration = stream.tags?["DURATION"]
-                ?? stream.tags?["duration"] else {
+        guard let taggedDuration = stream.tags?.caseInsensitiveValue(forKey: "duration") else {
             return nil
         }
 
@@ -2838,9 +2868,10 @@ class VideoProcessor: ObservableObject {
             return false
         }
 
-        return mode == .remux
-            || !encodeAudio
-            || isAppleCompatibleAudioCodec(normalizedProbeValue(mapping.codecName))
+        // A request to copy audio applies only to codecs that are safe in the
+        // Apple playback profile. Unsupported codecs still require AAC so the
+        // app never knowingly creates an MP4 that AVFoundation cannot read.
+        return isAppleCompatibleAudioCodec(normalizedProbeValue(mapping.codecName))
     }
 
     private func audioRequiresLayoutNormalization(_ mapping: AudioMapping) -> Bool {
@@ -2945,7 +2976,6 @@ class VideoProcessor: ObservableObject {
         [
             "aac",
             "alac",
-            "mp3",
             "ac3",
             "eac3"
         ].contains(codec)
@@ -3028,9 +3058,9 @@ class VideoProcessor: ObservableObject {
                 continue
             }
 
-            let language = stream.tags?["language"]?.lowercased()
-            let title = stream.tags?["title"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let handlerName = stream.tags?["handler_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let language = stream.tags?.caseInsensitiveValue(forKey: "language")?.lowercased()
+            let title = stream.tags?.caseInsensitiveValue(forKey: "title")?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let handlerName = stream.tags?.caseInsensitiveValue(forKey: "handler_name")?.trimmingCharacters(in: .whitespacesAndNewlines)
             let normalizedTitle = title?.lowercased() ?? ""
             let forced = stream.disposition?.isForced == 1 || normalizedTitle.contains("forced")
             let hearingImpaired = stream.disposition?.isHearingImpaired == 1
@@ -3463,6 +3493,9 @@ class VideoProcessor: ObservableObject {
         var qualifiers: [String] = []
         if subtitle.isForced { qualifiers.append("Forced") }
         if subtitle.isHearingImpaired || subtitle.isCaptions { qualifiers.append("SDH") }
+        guard !languageName.isEmpty else {
+            return qualifiers.joined(separator: ", ")
+        }
         return qualifiers.isEmpty
             ? languageName
             : "\(languageName) (\(qualifiers.joined(separator: ", ")))"
@@ -3473,7 +3506,7 @@ class VideoProcessor: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? "und"
         let knownNames = [
-            "und": "Undefined", "eng": "English", "spa": "Spanish",
+            "und": "", "eng": "English", "spa": "Spanish",
             "fra": "French", "fre": "French", "deu": "German", "ger": "German",
             "ita": "Italian", "por": "Portuguese", "nld": "Dutch", "dut": "Dutch",
             "pol": "Polish", "rus": "Russian", "ukr": "Ukrainian",
@@ -3604,16 +3637,16 @@ class VideoProcessor: ObservableObject {
                     }
 
                     if exitCode == 0 {
-                        if let expectedDuration,
-                           let expectedFrameRate,
-                           let finalFrame {
+                        // FFmpeg's media timestamp is authoritative when available.
+                        // Frame count divided by a nominal frame rate is only a
+                        // fallback because malformed/VFR sources frequently report
+                        // a rate that does not match their packet timeline.
+                        if let expectedDuration, let finalMediaTime {
                             let tolerance = max(5, min(30, expectedDuration * 0.005))
-                            let videoTime = TimeInterval(finalFrame) / expectedFrameRate
-                            if expectedDuration - videoTime > tolerance {
+                            if expectedDuration - finalMediaTime > tolerance {
                                 let message = String(
-                                    format: "FFmpeg exited successfully but video ended prematurely at frame %d (%.2fs of %.2fs)",
-                                    finalFrame,
-                                    videoTime,
+                                    format: "FFmpeg exited successfully but ended prematurely at %.2fs of %.2fs",
+                                    finalMediaTime,
                                     expectedDuration
                                 )
                                 DispatchQueue.main.async {
@@ -3622,12 +3655,16 @@ class VideoProcessor: ObservableObject {
                                 continuation.resume(returning: (false, message))
                                 return
                             }
-                        } else if let expectedDuration, let finalMediaTime {
+                        } else if let expectedDuration,
+                                  let expectedFrameRate,
+                                  let finalFrame {
                             let tolerance = max(5, min(30, expectedDuration * 0.005))
-                            if expectedDuration - finalMediaTime > tolerance {
+                            let videoTime = TimeInterval(finalFrame) / expectedFrameRate
+                            if expectedDuration - videoTime > tolerance {
                                 let message = String(
-                                    format: "FFmpeg exited successfully but ended prematurely at %.2fs of %.2fs",
-                                    finalMediaTime,
+                                    format: "FFmpeg exited successfully but video ended prematurely at frame %d (%.2fs of %.2fs)",
+                                    finalFrame,
+                                    videoTime,
                                     expectedDuration
                                 )
                                 DispatchQueue.main.async {

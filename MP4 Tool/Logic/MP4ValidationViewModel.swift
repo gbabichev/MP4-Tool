@@ -880,7 +880,10 @@ final class MP4ValidationViewModel: ObservableObject {
                let preferredSubtitleStreamIndex = result.preferredSubtitleStreamIndex {
                 for (outputSubtitleIndex, stream) in retainedSubtitleStreams.enumerated() {
                     guard stream.index == preferredSubtitleStreamIndex else { continue }
-                    let label = [stream.tags?["title"], stream.tags?["handler_name"]]
+                    let label = [
+                        stream.tags?.caseInsensitiveValue(forKey: "title"),
+                        stream.tags?.caseInsensitiveValue(forKey: "handler_name")
+                    ]
                         .compactMap { $0 }
                         .joined(separator: " ")
                         .lowercased()
@@ -1104,7 +1107,7 @@ final class MP4ValidationViewModel: ObservableObject {
     ) -> [Int: String] {
         let indexedStreams = Array(compatibility.streams.enumerated())
         let languageGroups = Dictionary(grouping: indexedStreams) { indexedStream in
-            normalizedProbeValue(indexedStream.element.tags?["language"])
+            normalizedProbeValue(indexedStream.element.tags?.caseInsensitiveValue(forKey: "language"))
         }
         var names: [Int: String] = [:]
 
@@ -1170,7 +1173,7 @@ final class MP4ValidationViewModel: ObservableObject {
         _ streams: [MP4ValidationAudioStream]
     ) -> Bool {
         let languageGroups = Dictionary(grouping: streams) { stream in
-            normalizedProbeValue(stream.tags?["language"])
+            normalizedProbeValue(stream.tags?.caseInsensitiveValue(forKey: "language"))
         }
 
         for group in languageGroups.values where group.count > 1 {
@@ -1899,9 +1902,9 @@ final class MP4ValidationViewModel: ObservableObject {
 
         var candidates: [SubtitleTrackSelectionCandidate] = []
         for (subtitleIndex, stream) in supportedStreams.enumerated() {
-            let language = stream.tags?["language"]
-            let title = stream.tags?["title"]
-            let handlerName = stream.tags?["handler_name"]
+            let language = stream.tags?.caseInsensitiveValue(forKey: "language")
+            let title = stream.tags?.caseInsensitiveValue(forKey: "title")
+            let handlerName = stream.tags?.caseInsensitiveValue(forKey: "handler_name")
             let normalizedLabel = [title, handlerName]
                 .compactMap { $0 }
                 .joined(separator: " ")
@@ -2053,7 +2056,7 @@ final class MP4ValidationViewModel: ObservableObject {
         }
 
         let languageGroups = Dictionary(grouping: streams) { stream in
-            normalizedProbeValue(stream.tags?["language"])
+            normalizedProbeValue(stream.tags?.caseInsensitiveValue(forKey: "language"))
         }
         for language in languageGroups.keys.sorted()
             where !language.isEmpty {
@@ -2240,9 +2243,9 @@ final class MP4ValidationViewModel: ObservableObject {
         AudioTrackSelectionCandidate(
             streamIndex: stream.index,
             audioIndex: audioIndex,
-            language: stream.tags?["language"],
-            title: stream.tags?["title"],
-            handlerName: stream.tags?["handler_name"],
+            language: stream.tags?.caseInsensitiveValue(forKey: "language"),
+            title: stream.tags?.caseInsensitiveValue(forKey: "title"),
+            handlerName: stream.tags?.caseInsensitiveValue(forKey: "handler_name"),
             codec: stream.codecName,
             channels: stream.channels,
             channelLayout: stream.channelLayout,
@@ -2256,11 +2259,11 @@ final class MP4ValidationViewModel: ObservableObject {
     }
 
     private func audioTrackName(_ stream: MP4ValidationAudioStream) -> String {
-        let title = normalizedProbeValue(stream.tags?["title"])
+        let title = normalizedProbeValue(stream.tags?.caseInsensitiveValue(forKey: "title"))
         if !title.isEmpty {
             return title
         }
-        return normalizedProbeValue(stream.tags?["handler_name"])
+        return normalizedProbeValue(stream.tags?.caseInsensitiveValue(forKey: "handler_name"))
     }
 
     private func lowBitRateAudioFinding(
@@ -2462,7 +2465,6 @@ final class MP4ValidationViewModel: ObservableObject {
         [
             "aac",
             "alac",
-            "mp3",
             "ac3",
             "eac3"
         ].contains(codec)

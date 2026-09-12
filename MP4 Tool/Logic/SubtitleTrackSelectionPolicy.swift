@@ -141,11 +141,21 @@ enum SubtitleTrackSelectionPolicy {
     ) -> String {
         let maximumCueCount = candidates.compactMap(\.cueCount).max()
         let role = role(of: candidate, maximumCueCount: maximumCueCount)
+        let isExplicitlyEnglish = isEnglish(candidate)
         let roleName: String
         switch role {
-        case .ordinary: roleName = "complete ordinary English"
-        case .sdh: roleName = "complete English SDH"
-        case .forced: roleName = "English forced-only fallback"
+        case .ordinary:
+            roleName = isExplicitlyEnglish
+                ? "complete ordinary English"
+                : "preferred complete unlabeled subtitle"
+        case .sdh:
+            roleName = isExplicitlyEnglish
+                ? "complete English SDH"
+                : "preferred SDH-style unlabeled subtitle"
+        case .forced:
+            roleName = isExplicitlyEnglish
+                ? "English forced-only fallback"
+                : "forced-only unlabeled subtitle fallback"
         }
 
         var details = [roleName]
