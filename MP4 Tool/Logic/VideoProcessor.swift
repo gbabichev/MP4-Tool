@@ -2740,7 +2740,6 @@ class VideoProcessor: ObservableObject {
                 title: stream.tags?["title"],
                 handlerName: stream.tags?["handler_name"],
                 codec: stream.codecName,
-                profile: stream.profile,
                 channels: stream.channels,
                 channelLayout: stream.channelLayout,
                 bitRate: stream.bitRate.flatMap(Int.init),

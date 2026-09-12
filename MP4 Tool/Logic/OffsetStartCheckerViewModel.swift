@@ -4,9 +4,6 @@ import SwiftUI
 import Combine
 import UniformTypeIdentifiers
 
-let queueOffsetCheckerFailuresNotification = Notification.Name("MP4Tool.QueueOffsetCheckerFailures")
-let queueOffsetCheckerFailuresPathsKey = "paths"
-
 enum OffsetFixOutcome: String {
     case notAttempted
     case fixedByRemux
@@ -54,7 +51,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     @Published var inputFolderPath: String = ""
     @Published var isScanning = false
     @Published var isFixing = false
-    @Published var hasCompletedFixPass = false
     @Published var scanProgress = ""
     @Published var fixProgress = ""
     @Published var scanAlertText = ""
@@ -89,16 +85,8 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         !isScanning && !isFixing && ffmpegAvailable && ffprobeAvailable && results.contains(where: { $0.hasOffsetStart })
     }
 
-    var failureResults: [OffsetStartCheckResult] {
-        results.filter(isFailureResult)
-    }
-
     var actionRequiredResults: [OffsetStartCheckResult] {
         results.filter(isActionRequiredResult)
-    }
-
-    var canExportFailures: Bool {
-        !isScanning && !isFixing && !failureResults.isEmpty
     }
 
     var canExportReport: Bool {
@@ -107,10 +95,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
     var canExportAll: Bool {
         !isScanning && !isFixing && !results.isEmpty
-    }
-
-    var canSendFailuresToMainApp: Bool {
-        !isScanning && !isFixing && hasCompletedFixPass && !failureResults.isEmpty
     }
 
     func selectInputFolder() {
@@ -162,7 +146,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
 
     func scanOffsetStarts() {
         guard canScan else { return }
-        hasCompletedFixPass = false
         results = []
         scanProgress = "Preparing scan..."
         fixProgress = ""
@@ -222,7 +205,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         scanProgress = ""
         fixProgress = ""
         scanAlertText = ""
-        hasCompletedFixPass = false
         isScanning = false
         isFixing = false
         resetOperationProgress()
@@ -231,36 +213,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
     func removeResult(id: UUID) {
         guard !isScanning && !isFixing else { return }
         results.removeAll { $0.id == id }
-    }
-
-    func exportFailuresToFile() {
-        let failedPaths = failureResults.map(\.filePath)
-        guard !failedPaths.isEmpty else {
-            scanAlertText = "No failures to export."
-            return
-        }
-
-        let panel = NSSavePanel()
-        panel.canCreateDirectories = true
-        panel.allowedContentTypes = [.plainText]
-        panel.nameFieldStringValue = "offset-failures.txt"
-
-        CleanFilePanelPresenter.present(panel) { [weak self] response in
-            Task { @MainActor in
-                guard let self else { return }
-                guard response == .OK, let url = panel.url else {
-                    return
-                }
-
-                let body = failedPaths.joined(separator: "\n")
-                do {
-                    try body.write(to: url, atomically: true, encoding: .utf8)
-                    self.scanAlertText = "Exported \(failedPaths.count) failure path(s) to \(url.path)."
-                } catch {
-                    self.scanAlertText = "Failed to export failures: \(error.localizedDescription)"
-                }
-            }
-        }
     }
 
     func exportCSVReport(includeAll: Bool) {
@@ -305,21 +257,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
                 }
             }
         }
-    }
-
-    func sendFailuresToMainApp() {
-        let failedPaths = failureResults.map(\.filePath)
-        guard !failedPaths.isEmpty else {
-            scanAlertText = "No failed files to send to main app."
-            return
-        }
-
-        NotificationCenter.default.post(
-            name: queueOffsetCheckerFailuresNotification,
-            object: nil,
-            userInfo: [queueOffsetCheckerFailuresPathsKey: failedPaths]
-        )
-        scanAlertText = "Sent \(failedPaths.count) failed file(s) to main app."
     }
 
     private func runScan(token: UUID) async {
@@ -471,7 +408,6 @@ final class OffsetStartCheckerViewModel: ObservableObject {
         }
 
         scanAlertText = statusParts.joined(separator: ". ") + "."
-        hasCompletedFixPass = true
         isFixing = false
     }
 

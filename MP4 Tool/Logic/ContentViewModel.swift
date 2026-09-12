@@ -33,13 +33,6 @@ class ContentViewModel: ObservableObject {
         !outputFolderPath.isEmpty && !processor.videoFiles.isEmpty
     }
 
-    func formattedTime(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let remainingSeconds = totalSeconds % 60
-        return "\(minutes)m \(remainingSeconds)s"
-    }
-
     func selectInputFile() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true

@@ -60,10 +60,6 @@ final class CLICommandCenter {
         self.handler = handler
     }
 
-    func unregister() {
-        handler = nil
-    }
-
     func handle(_ command: MP4ToolCLICommand) -> MP4ToolCLIResponse {
         guard let handler else {
             return .failure("MP4 Tool main window is not ready.")

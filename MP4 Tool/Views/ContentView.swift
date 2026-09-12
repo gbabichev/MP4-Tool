@@ -215,30 +215,8 @@ struct ContentView: View {
         registerWindowCommands()
     }
 
-    private func enqueueQueuedOffsetFailures(_ notification: Notification) {
-        guard let paths = notification.userInfo?[queueOffsetCheckerFailuresPathsKey] as? [String],
-              !paths.isEmpty else {
-            return
-        }
-
-        for path in paths {
-            viewModel.addVideoFile(url: URL(fileURLWithPath: path))
-        }
-    }
-
     private func enqueueQueuedNonMP4FlaggedFiles(_ notification: Notification) {
         guard let paths = notification.userInfo?[queueNonMP4FlaggedFilesPathsKey] as? [String],
-              !paths.isEmpty else {
-            return
-        }
-
-        for path in paths {
-            viewModel.addVideoFile(url: URL(fileURLWithPath: path))
-        }
-    }
-
-    private func enqueueQueuedMP4ValidationFlaggedFiles(_ notification: Notification) {
-        guard let paths = notification.userInfo?[queueMP4ValidationFlaggedFilesPathsKey] as? [String],
               !paths.isEmpty else {
             return
         }
@@ -848,14 +826,8 @@ struct ContentView: View {
                     )
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: queueOffsetCheckerFailuresNotification)) { notification in
-                enqueueQueuedOffsetFailures(notification)
-            }
             .onReceive(NotificationCenter.default.publisher(for: queueNonMP4FlaggedFilesNotification)) { notification in
                 enqueueQueuedNonMP4FlaggedFiles(notification)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: queueMP4ValidationFlaggedFilesNotification)) { notification in
-                enqueueQueuedMP4ValidationFlaggedFiles(notification)
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 clearCompletionNotificationsIfPossible()

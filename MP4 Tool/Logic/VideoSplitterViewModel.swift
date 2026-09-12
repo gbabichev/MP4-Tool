@@ -40,7 +40,6 @@ final class VideoSplitterViewModel: ObservableObject {
     @Published var splitProgress = ""
     @Published var ffmpegAvailable = false
     @Published var ffmpegMissingMessage = ""
-    @Published var isUsingSystemFFmpeg = false
 
     private var ffmpegPath: String = ""
     private var ffprobePath: String = ""
@@ -71,23 +70,6 @@ final class VideoSplitterViewModel: ObservableObject {
         return selectedResults.allSatisfy { hasValidSplitTime(for: $0) }
     }
     
-    var canCancelScan: Bool {
-        isScanning
-    }
-
-    var ffmpegStatusLabel: String {
-        if ffmpegAvailable {
-            let ffmpegLabel = isUsingSystemFFmpeg ? "FFmpeg: System" : "FFmpeg: Bundled"
-            let ffprobeLabel = ffprobeAvailable ? "FFprobe: Available" : "FFprobe: Missing"
-            return "\(ffmpegLabel) • \(ffprobeLabel)"
-        }
-        return "FFmpeg: Not Available"
-    }
-
-    var mediaToolsStatusIsWarning: Bool {
-        !ffmpegAvailable || !ffprobeAvailable
-    }
-
     func selectFolder(isInput: Bool) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -848,7 +830,6 @@ final class VideoSplitterViewModel: ObservableObject {
         if hasBundled {
             ffmpegPath = bundledPath
             ffmpegAvailable = true
-            isUsingSystemFFmpeg = false
             ffprobePath = findBundledFFprobe() ?? ""
             ffprobeAvailable = !ffprobePath.isEmpty
             return
@@ -857,7 +838,6 @@ final class VideoSplitterViewModel: ObservableObject {
         if let systemFFmpeg = Self.findInPath(command: "ffmpeg") {
             ffmpegPath = systemFFmpeg
             ffmpegAvailable = true
-            isUsingSystemFFmpeg = true
             ffprobePath = Self.findInPath(command: "ffprobe") ?? ""
             ffprobeAvailable = !ffprobePath.isEmpty
             return

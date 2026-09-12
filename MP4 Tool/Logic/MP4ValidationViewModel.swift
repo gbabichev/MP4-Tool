@@ -5,9 +5,6 @@ import Combine
 import Darwin
 import UniformTypeIdentifiers
 
-let queueMP4ValidationFlaggedFilesNotification = Notification.Name("MP4Tool.QueueMP4ValidationFlaggedFiles")
-let queueMP4ValidationFlaggedFilesPathsKey = "paths"
-
 private struct MP4ValidationAudioProbeOutput: Decodable {
     let streams: [MP4ValidationAudioStream]
     let format: MP4ValidationProbeFormat?
@@ -312,8 +309,6 @@ private struct MP4ValidationSubtitleAuthoringAnalysis {
     let warnings: [String]
     let streamIndexesToRemove: Set<Int>
     let preferredStreamIndex: Int?
-    let rationale: String?
-    let streams: [VideoStream]
 }
 
 private enum MP4AudioChannelScanDepth {
@@ -434,10 +429,6 @@ final class MP4ValidationViewModel: ObservableObject {
 
     var canImportSnapshot: Bool {
         !isScanning && !isRepairing
-    }
-
-    var canSendFlaggedToMainApp: Bool {
-        !isScanning && !isRepairing && !flaggedResults.isEmpty
     }
 
     init() {
@@ -1212,36 +1203,6 @@ final class MP4ValidationViewModel: ObservableObject {
         }
     }
 
-    func exportFlaggedToFile() {
-        let flaggedPaths = flaggedResults.map(\.filePath)
-        guard !flaggedPaths.isEmpty else {
-            scanAlertText = "No flagged files to export."
-            return
-        }
-
-        let panel = NSSavePanel()
-        panel.canCreateDirectories = true
-        panel.allowedContentTypes = [.plainText]
-        panel.nameFieldStringValue = "validate-mp4-flagged-files.txt"
-
-        CleanFilePanelPresenter.present(panel) { [weak self] response in
-            Task { @MainActor in
-                guard let self else { return }
-                guard response == .OK, let url = panel.url else {
-                    return
-                }
-
-                let body = flaggedPaths.joined(separator: "\n")
-                do {
-                    try body.write(to: url, atomically: true, encoding: .utf8)
-                    self.scanAlertText = "Exported \(flaggedPaths.count) flagged path(s) to \(url.path)."
-                } catch {
-                    self.scanAlertText = "Failed to export flagged files: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
     func exportCSVReport(includeAll: Bool) {
         let sourceResults = includeAll ? results : flaggedResults
         let reportRows = sourceResults.map { result in
@@ -1428,21 +1389,6 @@ final class MP4ValidationViewModel: ObservableObject {
 
     private func csvField(_ value: String) -> String {
         "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-    }
-
-    func sendFlaggedToMainApp() {
-        let flaggedPaths = flaggedResults.map(\.filePath)
-        guard !flaggedPaths.isEmpty else {
-            scanAlertText = "No flagged files to send to main app."
-            return
-        }
-
-        NotificationCenter.default.post(
-            name: queueMP4ValidationFlaggedFilesNotification,
-            object: nil,
-            userInfo: [queueMP4ValidationFlaggedFilesPathsKey: flaggedPaths]
-        )
-        scanAlertText = "Sent \(flaggedPaths.count) flagged file(s) to main app."
     }
 
     private func runScan(token: UUID) async {
@@ -1986,9 +1932,7 @@ final class MP4ValidationViewModel: ObservableObject {
             return MP4ValidationSubtitleAuthoringAnalysis(
                 warnings: [],
                 streamIndexesToRemove: [],
-                preferredStreamIndex: nil,
-                rationale: nil,
-                streams: supportedStreams
+                preferredStreamIndex: nil
             )
         }
         guard ffmpegAvailable
@@ -1996,9 +1940,7 @@ final class MP4ValidationViewModel: ObservableObject {
             return MP4ValidationSubtitleAuthoringAnalysis(
                 warnings: ["multiple English subtitle tracks require a deeper review"],
                 streamIndexesToRemove: [],
-                preferredStreamIndex: nil,
-                rationale: nil,
-                streams: supportedStreams
+                preferredStreamIndex: nil
             )
         }
 
@@ -2031,9 +1973,7 @@ final class MP4ValidationViewModel: ObservableObject {
             return MP4ValidationSubtitleAuthoringAnalysis(
                 warnings: [],
                 streamIndexesToRemove: [],
-                preferredStreamIndex: nil,
-                rationale: nil,
-                streams: supportedStreams
+                preferredStreamIndex: nil
             )
         }
 
@@ -2049,9 +1989,7 @@ final class MP4ValidationViewModel: ObservableObject {
         return MP4ValidationSubtitleAuthoringAnalysis(
             warnings: ["multiple English subtitle tracks; preferred track is \(rationale)"],
             streamIndexesToRemove: indexesToRemove,
-            preferredStreamIndex: preferred.streamIndex,
-            rationale: rationale,
-            streams: supportedStreams
+            preferredStreamIndex: preferred.streamIndex
         )
     }
 
@@ -2306,7 +2244,6 @@ final class MP4ValidationViewModel: ObservableObject {
             title: stream.tags?["title"],
             handlerName: stream.tags?["handler_name"],
             codec: stream.codecName,
-            profile: stream.profile,
             channels: stream.channels,
             channelLayout: stream.channelLayout,
             bitRate: stream.bitRate.flatMap(Int.init),
@@ -2562,33 +2499,6 @@ final class MP4ValidationViewModel: ObservableObject {
     private func displayProbeValue(_ value: String?) -> String {
         let normalizedValue = normalizedProbeValue(value)
         return normalizedValue.isEmpty ? "unknown" : normalizedValue
-    }
-
-    private func validationETA(elapsed: TimeInterval, completedCount: Int, totalCount: Int) -> String {
-        guard completedCount > 0, totalCount > completedCount else {
-            return "(ETA calculating...)"
-        }
-
-        let averageSecondsPerFile = elapsed / Double(completedCount)
-        let remainingSeconds = averageSecondsPerFile * Double(totalCount - completedCount)
-        return "(ETA \(Self.formatDuration(remainingSeconds)))"
-    }
-
-    nonisolated private static func formatDuration(_ duration: TimeInterval) -> String {
-        let totalSeconds = max(0, Int(duration.rounded()))
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        }
-
-        if minutes > 0 {
-            return "\(minutes)m \(seconds)s"
-        }
-
-        return "\(seconds)s"
     }
 
     nonisolated private static func collectMP4FilesRecursively(in rootPath: String) -> [(relativePath: String, fullPath: String)] {

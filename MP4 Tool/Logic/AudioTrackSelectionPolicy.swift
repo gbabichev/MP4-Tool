@@ -7,7 +7,6 @@ struct AudioTrackSelectionCandidate {
     let title: String?
     let handlerName: String?
     let codec: String?
-    let profile: String?
     let channels: Int?
     let channelLayout: String?
     let bitRate: Int?
