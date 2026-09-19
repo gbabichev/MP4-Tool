@@ -64,6 +64,20 @@ struct SettingsView: View {
         nonmutating set { selectedProcessingPresetIDRawValue = newValue?.uuidString ?? "" }
     }
 
+    private var selectedProcessingPresetIDBinding: Binding<UUID?> {
+        Binding(
+            get: { selectedProcessingPresetID },
+            set: { presetID in
+                selectedProcessingPresetID = presetID
+                guard let presetID,
+                      let preset = processingPresets.first(where: { $0.id == presetID }) else {
+                    return
+                }
+                apply(preset)
+            }
+        )
+    }
+
     private var selectedProcessingPreset: ProcessingPreset? {
         guard let selectedProcessingPresetID else { return nil }
         return processingPresets.first { $0.id == selectedProcessingPresetID }
@@ -411,13 +425,18 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: true, vertical: false)
 
-            Text(
-                selectedProcessingPreset.map(presetDisplayName)
-                    ?? "Custom Settings"
-            )
-            .font(.subheadline.weight(.medium))
-            .lineLimit(1)
-            .truncationMode(.tail)
+            Picker("Selected Preset", selection: selectedProcessingPresetIDBinding) {
+                Text("Custom Settings")
+                    .tag(nil as UUID?)
+                ForEach(processingPresets) { preset in
+                    Text(presetDisplayName(preset))
+                        .tag(Optional(preset.id))
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .disabled(isProcessing)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
