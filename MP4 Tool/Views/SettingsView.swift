@@ -100,13 +100,12 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            ScrollView {
-                VStack(spacing: 12) {
-                    processingPresetsSection
+        ScrollView {
+            VStack(spacing: 12) {
+                processingPresetsSection
 
-                    GroupBox {
-                        VStack(spacing: 12) {
+                GroupBox {
+                    VStack(spacing: 12) {
                         SettingsRow("Mode", subtitle: "Choose automatic, encode, or remux processing") {
                             Picker("", selection: $selectedMode) {
                                 ForEach(ProcessingMode.allCases, id: \.self) { mode in
@@ -262,17 +261,15 @@ struct SettingsView: View {
                             timeoutMinutes: $postProcessScriptTimeoutMinutes,
                             isProcessing: isProcessing
                         )
-                        }
-                        .padding(.vertical, 4)
-                        .padding(.trailing, 14)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.vertical, 4)
+                    .padding(.trailing, 14)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             clearInvalidPresetSelection()

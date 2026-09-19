@@ -1104,35 +1104,37 @@ private struct CompactProcessingSetupView: View {
             }
 
             if !isCollapsed {
-                HStack(spacing: 12) {
-                    Picker("Preset", selection: selectedPresetIDBinding) {
-                        Text("Custom Settings")
-                            .tag(nil as UUID?)
-                        ForEach(presets) { preset in
-                            Text(presetDisplayName(preset))
-                                .tag(Optional(preset.id))
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 12) {
+                        Picker("Preset", selection: selectedPresetIDBinding) {
+                            Text("Custom Settings")
+                                .tag(nil as UUID?)
+                            ForEach(presets) { preset in
+                                Text(presetDisplayName(preset))
+                                    .tag(Optional(preset.id))
+                            }
                         }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: 220)
-                    .disabled(isProcessing)
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 220)
+                        .disabled(isProcessing)
 
-                    Button("Customize Presets") {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isSettingsExpanded.toggle()
+                        Button("Customize Presets") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isSettingsExpanded.toggle()
+                            }
                         }
+                        .controlSize(.small)
+                        .disabled(isProcessing)
+
+                        Spacer(minLength: 0)
                     }
-                    .controlSize(.small)
-                    .disabled(isProcessing)
 
                     Text(settingsSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
-
-                    Spacer(minLength: 0)
                 }
 
                 Divider()
