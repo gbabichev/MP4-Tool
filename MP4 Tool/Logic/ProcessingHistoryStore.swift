@@ -6,6 +6,15 @@
 import Foundation
 import Combine
 
+struct PostProcessHistoryDetails: Codable, Equatable {
+    let scriptName: String
+    let timing: String
+    let status: String
+    let exitCode: Int32?
+    let runtimeSeconds: TimeInterval
+    let diagnostic: String?
+}
+
 struct ProcessingHistoryDetails: Codable, Equatable {
     let runID: String
     let inputPath: String
@@ -30,6 +39,7 @@ struct ProcessingHistoryDetails: Codable, Equatable {
     let appVersion: String
     let appBuild: String
     let ffmpegCommands: [String]
+    var postProcess: PostProcessHistoryDetails?
 }
 
 struct ProcessingHistoryEntry: Codable, Identifiable, Equatable {
@@ -40,7 +50,7 @@ struct ProcessingHistoryEntry: Codable, Identifiable, Equatable {
     let startedAt: Date?
     let processedAt: Date
     let runtimeSeconds: TimeInterval?
-    let details: ProcessingHistoryDetails?
+    var details: ProcessingHistoryDetails?
 
     var savedBytes: Int64 {
         originalBytes - outputBytes
@@ -128,6 +138,24 @@ final class ProcessingHistoryStore: ObservableObject {
 
         let previousEntries = entries
         entries.removeAll { ids.contains($0.id) }
+
+        guard persist() else {
+            entries = previousEntries
+            return
+        }
+    }
+
+    func recordPostProcess(
+        runID: String,
+        details postProcess: PostProcessHistoryDetails
+    ) {
+        let previousEntries = entries
+        for index in entries.indices {
+            guard var details = entries[index].details,
+                  details.runID == runID else { continue }
+            details.postProcess = postProcess
+            entries[index].details = details
+        }
 
         guard persist() else {
             entries = previousEntries

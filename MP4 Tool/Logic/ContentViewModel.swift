@@ -191,7 +191,8 @@ class ContentViewModel: ObservableObject {
         keepAllEnglishSubtitleTracks: Bool,
         postProcessScriptPath: String,
         postProcessScriptRunTiming: PostProcessScriptRunTiming,
-        postProcessScriptPassFileNameAsFirstArgument: Bool,
+        postProcessScriptFailurePolicy: PostProcessScriptFailurePolicy,
+        postProcessScriptTimeoutMinutes: Int,
         stageTemporaryFilesOnDestinationVolume: Bool
     ) {
         guard validateOutputFolderForProcessing() else { return }
@@ -250,7 +251,8 @@ class ContentViewModel: ObservableObject {
                 keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
                 postProcessScriptPath: postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTiming,
-                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
+                postProcessScriptFailurePolicy: postProcessScriptFailurePolicy,
+                postProcessScriptTimeoutMinutes: postProcessScriptTimeoutMinutes,
                 stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
             )
         }

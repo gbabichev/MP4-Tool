@@ -21,11 +21,17 @@ struct ProcessingCompletionOverlayView: View {
   }
 
   private var actionTitle: String {
-    if summary.failedFileCount > 0 || summary.skippedFileCount > 0 {
+    if hasAttentionItems {
       return "Processing Complete"
     }
     if isSmart { return "Smart Processing Complete" }
     return isRemux ? "Remux Complete" : "Encoding Complete"
+  }
+
+  private var hasAttentionItems: Bool {
+    summary.failedFileCount > 0
+      || summary.skippedFileCount > 0
+      || summary.postProcessFailureCount > 0
   }
 
   private var fileMetricTitle: String {
@@ -48,7 +54,7 @@ struct ProcessingCompletionOverlayView: View {
   }
 
   private var completionMessage: String {
-    guard summary.failedFileCount > 0 || summary.skippedFileCount > 0 else {
+    guard hasAttentionItems else {
       return "Your batch finished successfully."
     }
     var results: [String] = []
@@ -57,6 +63,9 @@ struct ProcessingCompletionOverlayView: View {
     }
     if summary.failedFileCount > 0 {
       results.append("\(summary.failedFileCount) failed")
+    }
+    if summary.postProcessFailureCount > 0 {
+      results.append("\(summary.postProcessFailureCount) post-process script failure(s)")
     }
     return "Batch finished with \(results.joined(separator: " and "))."
   }
@@ -68,6 +77,9 @@ struct ProcessingCompletionOverlayView: View {
     }
     if summary.failedFileCount > 0 {
       results.append("\(summary.failedFileCount) failed")
+    }
+    if summary.postProcessFailureCount > 0 {
+      results.append("\(summary.postProcessFailureCount) script failure(s)")
     }
     return results.isEmpty ? nil : results.joined(separator: " • ")
   }
@@ -87,12 +99,12 @@ struct ProcessingCompletionOverlayView: View {
               VStack(spacing: 20) {
             VStack(spacing: 8) {
               Image(
-                systemName: summary.failedFileCount > 0 || summary.skippedFileCount > 0
+                systemName: hasAttentionItems
                   ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
               )
                 .font(.system(size: 46))
                 .foregroundStyle(
-                  summary.failedFileCount > 0 || summary.skippedFileCount > 0 ? .orange : .green
+                  hasAttentionItems ? .orange : .green
                 )
 
               Text(actionTitle)

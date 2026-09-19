@@ -219,8 +219,20 @@ enum PostProcessScriptRunTiming: String, CaseIterable {
 
     var description: String {
         switch self {
-        case .afterEachItem: return "Run after each item"
-        case .atEnd: return "Run at the end"
+        case .afterEachItem: return "After Each Successful File"
+        case .atEnd: return "After the Batch Finishes"
+        }
+    }
+}
+
+enum PostProcessScriptFailurePolicy: String, CaseIterable {
+    case markRunFailed = "mark_run_failed"
+    case continueWithWarning = "continue_with_warning"
+
+    var description: String {
+        switch self {
+        case .markRunFailed: return "Mark Run as Needing Attention"
+        case .continueWithWarning: return "Log Warning and Continue"
         }
     }
 }
@@ -259,6 +271,7 @@ struct ProcessingCompletionSummary: Equatable {
     let completedFileCount: Int
     let skippedFileCount: Int
     let failedFileCount: Int
+    let postProcessFailureCount: Int
     let originalBytes: Int64
     let outputBytes: Int64
     let startedAt: Date
@@ -284,6 +297,49 @@ private struct PostProcessScriptResult {
     let outputText: String
     let errorText: String
     let startErrorMessage: String?
+    let runtimeSeconds: TimeInterval
+    let timedOut: Bool
+
+    var succeeded: Bool {
+        terminationStatus == 0 && startErrorMessage == nil && !timedOut
+    }
+
+    func historyDetails(scriptPath: String, timing: PostProcessScriptRunTiming) -> PostProcessHistoryDetails {
+        let trimmedError = errorText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedOutput = outputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let diagnostic = startErrorMessage
+            ?? (!trimmedError.isEmpty ? trimmedError : nil)
+            ?? (!succeeded && !trimmedOutput.isEmpty ? trimmedOutput : nil)
+        let status: String
+        if timedOut {
+            status = "Timed Out"
+        } else if succeeded {
+            status = "Succeeded"
+        } else {
+            status = "Failed"
+        }
+        return PostProcessHistoryDetails(
+            scriptName: URL(fileURLWithPath: scriptPath).lastPathComponent,
+            timing: timing.description,
+            status: status,
+            exitCode: terminationStatus,
+            runtimeSeconds: runtimeSeconds,
+            diagnostic: diagnostic
+        )
+    }
+}
+
+private struct PostProcessManifest: Codable {
+    let phase: String
+    let mode: String
+    let outputDirectory: String
+    let files: [PostProcessManifestFile]
+}
+
+private struct PostProcessManifestFile: Codable {
+    let inputPath: String
+    let outputPath: String
+    let fileName: String
 }
 
 private final class ThreadSafeDataBuffer: @unchecked Sendable {
@@ -309,6 +365,24 @@ private final class ThreadSafeDataBuffer: @unchecked Sendable {
         let copy = data
         lock.unlock()
         return copy
+    }
+}
+
+private final class ThreadSafeFlag: @unchecked Sendable {
+    private nonisolated(unsafe) var value = false
+    private let lock = NSLock()
+
+    nonisolated func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+
+    nonisolated func read() -> Bool {
+        lock.lock()
+        let currentValue = value
+        lock.unlock()
+        return currentValue
     }
 }
 
@@ -716,8 +790,16 @@ class VideoProcessor: ObservableObject {
             : 0
 
         addLog("\n═══ Batch Summary ═══")
-        addLog("Status: \(cancelled ? "Cancelled" : "Completed")")
+        let status = cancelled
+            ? "Cancelled"
+            : (summary.failedFileCount > 0 || summary.postProcessFailureCount > 0
+                ? "Completed with Issues"
+                : "Completed")
+        addLog("Status: \(status)")
         addLog("Files: \(summary.completedFileCount) completed, \(summary.skippedFileCount) skipped, \(summary.failedFileCount) failed")
+        if summary.postProcessFailureCount > 0 {
+            addLog("Post-Process: \(summary.postProcessFailureCount) script failure(s)")
+        }
         addLog("Original Size: \(formattedByteCount(summary.originalBytes))")
         addLog("Output Size: \(formattedByteCount(summary.outputBytes))")
         addLog("Space Saved: \(formattedByteCount(savedBytes)) (\(String(format: "%.1f", savedPercentage))%)")
@@ -1072,7 +1154,8 @@ class VideoProcessor: ObservableObject {
         keepAllEnglishSubtitleTracks: Bool = false,
         postProcessScriptPath: String = "",
         postProcessScriptRunTiming: PostProcessScriptRunTiming = .afterEachItem,
-        postProcessScriptPassFileNameAsFirstArgument: Bool = false,
+        postProcessScriptFailurePolicy: PostProcessScriptFailurePolicy = .markRunFailed,
+        postProcessScriptTimeoutMinutes: Int = 30,
         stageTemporaryFilesOnDestinationVolume: Bool = false
     ) async {
         let sleepAssertion = SystemSleepAssertion(reason: "MP4 Tool is processing video files")
@@ -1083,6 +1166,7 @@ class VideoProcessor: ObservableObject {
         var totalOutputBytes: Int64 = 0
         var failedFileCount = 0
         var skippedFileCount = 0
+        var postProcessFailureCount = 0
         stopFramePreviewUpdates(clearPreview: true)
         activeProcessingFilePath = nil
         smartPreflightItems = [:]
@@ -1165,13 +1249,34 @@ class VideoProcessor: ObservableObject {
         addLog("Enable Notifications: \(notificationsEnabled)")
         addLog("Enable Previews: \(framePreviewsEnabled)")
 
+        let postProcessScriptWasConfigured = !postProcessScriptPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
         let activePostProcessScriptPath = validatedPostProcessScriptPath(postProcessScriptPath)
+        let unavailablePostProcessHistory: PostProcessHistoryDetails? =
+            postProcessScriptWasConfigured && activePostProcessScriptPath == nil
+            ? PostProcessHistoryDetails(
+                scriptName: URL(fileURLWithPath: postProcessScriptPath).lastPathComponent,
+                timing: postProcessScriptRunTiming.description,
+                status: "Unavailable",
+                exitCode: nil,
+                runtimeSeconds: 0,
+                diagnostic: "The selected script was not found"
+            )
+            : nil
+        if postProcessScriptWasConfigured && activePostProcessScriptPath == nil {
+            postProcessFailureCount += 1
+            if postProcessScriptFailurePolicy == .markRunFailed {
+                DispatchQueue.main.async {
+                    self.processingHadError = true
+                }
+            }
+        }
         if let activePostProcessScriptPath {
             addLog("Post-Process Script: \(activePostProcessScriptPath)")
             addLog("Post-Process Script Timing: \(postProcessScriptRunTiming.description)")
-            if postProcessScriptRunTiming == .afterEachItem {
-                addLog("Post-Process Script Pass File Name First: \(postProcessScriptPassFileNameAsFirstArgument)")
-            }
+            addLog("Post-Process Script Failure Policy: \(postProcessScriptFailurePolicy.description)")
+            addLog("Post-Process Script Timeout: \(postProcessScriptTimeoutMinutes) minutes")
         }
 
         // Verify output directory exists, recreating it if a previously selected folder was deleted.
@@ -1287,6 +1392,7 @@ class VideoProcessor: ObservableObject {
         updateDockBadge(filesRemaining: filesToProcess.count)
 
         var completedPostProcessFiles: [CompletedPostProcessFile] = []
+        var deferredOriginalDeletions: [String] = []
         var index = 0
         while index < filesToProcess.count {
             reorderPendingProcessingFiles(&filesToProcess, startingAt: index)
@@ -1475,18 +1581,6 @@ class VideoProcessor: ObservableObject {
                 totalOriginalBytes += inputSize
                 totalOutputBytes += outputSize
 
-                // Delete original file if requested (run in background to avoid blocking on network shares)
-                if deleteOriginal {
-                    let deleteSuccess = await deleteFileAsync(at: inputFilePath)
-                    if deleteSuccess {
-                        addLog("􀈑 Deleted original file")
-                    } else {
-                        addLog("􀇾 Warning: Could not delete original file")
-                    }
-                } else {
-                    addLog("􀅴 Kept original file")
-                }
-
                 let filesRemaining = filesToProcess.count - (index + 1)
                 let completedPostProcessFile = CompletedPostProcessFile(
                     inputPath: inputFilePath,
@@ -1495,20 +1589,49 @@ class VideoProcessor: ObservableObject {
                 )
                 completedPostProcessFiles.append(completedPostProcessFile)
 
+                var itemPostProcessResult: PostProcessScriptResult?
                 if let activePostProcessScriptPath,
                    postProcessScriptRunTiming == .afterEachItem,
                    !shouldCancelProcessing {
-                    let scriptSucceeded = await runPostProcessScriptForItem(
+                    let scriptResult = await runPostProcessScriptForItem(
                         scriptPath: activePostProcessScriptPath,
                         completedFile: completedPostProcessFile,
                         mode: effectiveMode,
-                        passFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+                        timeoutMinutes: postProcessScriptTimeoutMinutes
                     )
-                    if !scriptSucceeded {
-                        DispatchQueue.main.async {
-                            self.processingHadError = true
+                    itemPostProcessResult = scriptResult
+                    if !scriptResult.succeeded {
+                        postProcessFailureCount += 1
+                        if postProcessScriptFailurePolicy == .markRunFailed {
+                            DispatchQueue.main.async {
+                                self.processingHadError = true
+                            }
                         }
                     }
+                }
+
+                // Never remove the source before a configured script has had a
+                // chance to use it. End-of-batch scripts defer every deletion;
+                // per-item failures retain that item's source for recovery.
+                if deleteOriginal {
+                    if postProcessScriptWasConfigured && activePostProcessScriptPath == nil {
+                        addLog("􀅴 Original retained because the configured post-process script is unavailable")
+                    } else if activePostProcessScriptPath != nil,
+                       postProcessScriptRunTiming == .atEnd {
+                        deferredOriginalDeletions.append(inputFilePath)
+                        addLog("􀅴 Original retained until the end-of-batch script succeeds")
+                    } else if let itemPostProcessResult, !itemPostProcessResult.succeeded {
+                        addLog("􀅴 Original retained because the post-process script did not succeed")
+                    } else {
+                        let deleteSuccess = await deleteFileAsync(at: inputFilePath)
+                        if deleteSuccess {
+                            addLog("􀈑 Deleted original file")
+                        } else {
+                            addLog("􀇾 Warning: Could not delete original file")
+                        }
+                    }
+                } else {
+                    addLog("􀅴 Kept original file")
                 }
 
                 let fileEndTime = Date()
@@ -1562,7 +1685,13 @@ class VideoProcessor: ObservableObject {
                         ffmpegVersion: ffmpegVersion,
                         appVersion: appVersion,
                         appBuild: appBuild,
-                        ffmpegCommands: activeHistoryFFmpegCommands
+                        ffmpegCommands: activeHistoryFFmpegCommands,
+                        postProcess: itemPostProcessResult.map {
+                            $0.historyDetails(
+                                scriptPath: activePostProcessScriptPath ?? "",
+                                timing: .afterEachItem
+                            )
+                        } ?? unavailablePostProcessHistory
                     )
                 )
                 if !historyWasSaved {
@@ -1677,15 +1806,41 @@ class VideoProcessor: ObservableObject {
             if completedPostProcessFiles.isEmpty {
                 addLog("Post-Process Script skipped: no successful output files")
             } else {
-                let scriptSucceeded = await runPostProcessScriptAtEnd(
+                let scriptResult = await runPostProcessScriptAtEnd(
                     scriptPath: activePostProcessScriptPath,
                     outputPath: outputPath,
                     completedFiles: completedPostProcessFiles,
-                    mode: mode
+                    mode: mode,
+                    timeoutMinutes: postProcessScriptTimeoutMinutes
                 )
-                if !scriptSucceeded {
-                    DispatchQueue.main.async {
-                        self.processingHadError = true
+                let historyDetails = scriptResult.historyDetails(
+                    scriptPath: activePostProcessScriptPath,
+                    timing: .atEnd
+                )
+                await MainActor.run {
+                    ProcessingHistoryStore.shared.recordPostProcess(
+                        runID: runIdentifier,
+                        details: historyDetails
+                    )
+                }
+
+                if scriptResult.succeeded {
+                    for originalPath in deferredOriginalDeletions {
+                        let deleteSuccess = await deleteFileAsync(at: originalPath)
+                        if deleteSuccess {
+                            addLog("􀈑 Deleted original file: \(originalPath)")
+                        } else {
+                            addLog("􀇾 Warning: Could not delete original file: \(originalPath)")
+                        }
+                    }
+                    deferredOriginalDeletions.removeAll()
+                } else {
+                    postProcessFailureCount += 1
+                    addLog("􀅴 Original files retained because the end-of-batch script did not succeed")
+                    if postProcessScriptFailurePolicy == .markRunFailed {
+                        DispatchQueue.main.async {
+                            self.processingHadError = true
+                        }
                     }
                 }
             }
@@ -1699,6 +1854,7 @@ class VideoProcessor: ObservableObject {
             completedFileCount: completedPostProcessFiles.count,
             skippedFileCount: skippedFileCount,
             failedFileCount: failedFileCount,
+            postProcessFailureCount: postProcessFailureCount,
             originalBytes: totalOriginalBytes,
             outputBytes: totalOutputBytes,
             startedAt: runStartedAt,
@@ -1784,9 +1940,6 @@ class VideoProcessor: ObservableObject {
         let exists = FileManager.default.fileExists(atPath: trimmedPath, isDirectory: &isDirectory)
         guard exists, !isDirectory.boolValue else {
             addLog("Post-Process Script warning: selected script was not found: \(trimmedPath)")
-            DispatchQueue.main.async {
-                self.processingHadError = true
-            }
             return nil
         }
 
@@ -1820,14 +1973,11 @@ class VideoProcessor: ObservableObject {
         scriptPath: String,
         completedFile: CompletedPostProcessFile,
         mode: ProcessingMode,
-        passFileNameAsFirstArgument: Bool
-    ) async -> Bool {
+        timeoutMinutes: Int
+    ) async -> PostProcessScriptResult {
         let outputURL = URL(fileURLWithPath: completedFile.outputPath)
         let outputDirectoryURL = outputURL.deletingLastPathComponent()
-        var scriptArguments = [completedFile.inputPath, completedFile.outputPath]
-        if passFileNameAsFirstArgument {
-            scriptArguments.insert(completedFile.fileName, at: 0)
-        }
+        let scriptArguments = [completedFile.inputPath, completedFile.outputPath]
 
         return await runPostProcessScript(
             scriptPath: scriptPath,
@@ -1841,7 +1991,8 @@ class VideoProcessor: ObservableObject {
                 "MP4_TOOL_OUTPUT_DIR": outputDirectoryURL.path,
                 "MP4_TOOL_FILE_NAME": completedFile.fileName
             ],
-            currentDirectoryURL: outputDirectoryURL
+            currentDirectoryURL: outputDirectoryURL,
+            timeoutMinutes: timeoutMinutes
         )
     }
 
@@ -1849,24 +2000,72 @@ class VideoProcessor: ObservableObject {
         scriptPath: String,
         outputPath: String,
         completedFiles: [CompletedPostProcessFile],
-        mode: ProcessingMode
-    ) async -> Bool {
+        mode: ProcessingMode,
+        timeoutMinutes: Int
+    ) async -> PostProcessScriptResult {
         let outputFiles = completedFiles.map(\.outputPath)
         let inputFiles = completedFiles.map(\.inputPath)
+        let manifestURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mp4-tool-post-process-\(UUID().uuidString).json")
+        let manifest = PostProcessManifest(
+            phase: "end",
+            mode: mode.rawValue,
+            outputDirectory: outputPath,
+            files: completedFiles.map {
+                PostProcessManifestFile(
+                    inputPath: $0.inputPath,
+                    outputPath: $0.outputPath,
+                    fileName: $0.fileName
+                )
+            }
+        )
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(manifest).write(to: manifestURL, options: .atomic)
+        } catch {
+            addLog("Post-Process Script warning: could not create batch manifest: \(error.localizedDescription)")
+            return PostProcessScriptResult(
+                terminationStatus: nil,
+                outputText: "",
+                errorText: "",
+                startErrorMessage: "Could not create batch manifest: \(error.localizedDescription)",
+                runtimeSeconds: 0,
+                timedOut: false
+            )
+        }
+        defer { try? FileManager.default.removeItem(at: manifestURL) }
+
+        // Preserve the original positional contract for ordinary batches. Large
+        // batches use the manifest so they cannot exceed macOS argument limits.
+        let legacyArgumentBytes = outputFiles.reduce(outputPath.utf8.count) {
+            $0 + $1.utf8.count + 1
+        }
+        let useManifestOnly = completedFiles.count > 100 || legacyArgumentBytes > 64 * 1024
+        let scriptArguments = useManifestOnly
+            ? [outputPath, manifestURL.path]
+            : [outputPath] + outputFiles
+
+        var scriptEnvironment = [
+            "MP4_TOOL_POST_PROCESS_PHASE": "end",
+            "MP4_TOOL_MODE": mode.rawValue,
+            "MP4_TOOL_OUTPUT_DIR": outputPath,
+            "MP4_TOOL_OUTPUT_COUNT": "\(outputFiles.count)",
+            "MP4_TOOL_MANIFEST_FILE": manifestURL.path
+        ]
+        if !useManifestOnly {
+            scriptEnvironment["MP4_TOOL_OUTPUT_FILES"] = outputFiles.joined(separator: "\n")
+            scriptEnvironment["MP4_TOOL_INPUT_FILES"] = inputFiles.joined(separator: "\n")
+        }
 
         return await runPostProcessScript(
             scriptPath: scriptPath,
             phaseLabel: "end",
-            scriptArguments: [outputPath] + outputFiles,
-            environment: [
-                "MP4_TOOL_POST_PROCESS_PHASE": "end",
-                "MP4_TOOL_MODE": mode.rawValue,
-                "MP4_TOOL_OUTPUT_DIR": outputPath,
-                "MP4_TOOL_OUTPUT_FILES": outputFiles.joined(separator: "\n"),
-                "MP4_TOOL_INPUT_FILES": inputFiles.joined(separator: "\n"),
-                "MP4_TOOL_OUTPUT_COUNT": "\(outputFiles.count)"
-            ],
-            currentDirectoryURL: URL(fileURLWithPath: outputPath, isDirectory: true)
+            scriptArguments: scriptArguments,
+            environment: scriptEnvironment,
+            currentDirectoryURL: URL(fileURLWithPath: outputPath, isDirectory: true),
+            timeoutMinutes: timeoutMinutes
         )
     }
 
@@ -1875,14 +2074,17 @@ class VideoProcessor: ObservableObject {
         phaseLabel: String,
         scriptArguments: [String],
         environment: [String: String],
-        currentDirectoryURL: URL?
-    ) async -> Bool {
+        currentDirectoryURL: URL?,
+        timeoutMinutes: Int
+    ) async -> PostProcessScriptResult {
         let launchCommand = postProcessScriptLaunchCommand(
             scriptPath: scriptPath,
             scriptArguments: scriptArguments
         )
         let scriptName = URL(fileURLWithPath: scriptPath).lastPathComponent
         addLog("Running post-process script (\(phaseLabel)): \(scriptName)")
+        addLog("Post-process command: \(shellCommand(executable: launchCommand.executable, arguments: launchCommand.arguments))")
+        let scriptStartedAt = Date()
 
         let result: PostProcessScriptResult = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -1891,7 +2093,9 @@ class VideoProcessor: ObservableObject {
                         terminationStatus: nil,
                         outputText: "",
                         errorText: "",
-                        startErrorMessage: "Process initialization failed"
+                        startErrorMessage: "Process initialization failed",
+                        runtimeSeconds: 0,
+                        timedOut: false
                     ))
                     return
                 }
@@ -1915,6 +2119,8 @@ class VideoProcessor: ObservableObject {
 
                 let outputBuffer = ThreadSafeDataBuffer()
                 let errorBuffer = ThreadSafeDataBuffer()
+                let timedOut = ThreadSafeFlag()
+                var timeoutWorkItem: DispatchWorkItem?
 
                 outputPipe.fileHandleForReading.readabilityHandler = { handle in
                     let chunk = handle.availableData
@@ -1934,7 +2140,24 @@ class VideoProcessor: ObservableObject {
 
                 do {
                     try process.run()
+                    if timeoutMinutes > 0 {
+                        let workItem = DispatchWorkItem { [weak process] in
+                            guard let process, process.isRunning else { return }
+                            timedOut.set()
+                            process.terminate()
+                            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                                guard process.isRunning else { return }
+                                kill(process.processIdentifier, SIGKILL)
+                            }
+                        }
+                        timeoutWorkItem = workItem
+                        DispatchQueue.global(qos: .utility).asyncAfter(
+                            deadline: .now() + .seconds(timeoutMinutes * 60),
+                            execute: workItem
+                        )
+                    }
                     process.waitUntilExit()
+                    timeoutWorkItem?.cancel()
 
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     errorPipe.fileHandleForReading.readabilityHandler = nil
@@ -1963,9 +2186,12 @@ class VideoProcessor: ObservableObject {
                         terminationStatus: terminationStatus,
                         outputText: outputText,
                         errorText: errorText,
-                        startErrorMessage: nil
+                        startErrorMessage: nil,
+                        runtimeSeconds: Date().timeIntervalSince(scriptStartedAt),
+                        timedOut: timedOut.read()
                     ))
                 } catch {
+                    timeoutWorkItem?.cancel()
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     errorPipe.fileHandleForReading.readabilityHandler = nil
 
@@ -1983,7 +2209,9 @@ class VideoProcessor: ObservableObject {
                         terminationStatus: nil,
                         outputText: outputText,
                         errorText: errorText,
-                        startErrorMessage: errorMessage
+                        startErrorMessage: errorMessage,
+                        runtimeSeconds: Date().timeIntervalSince(scriptStartedAt),
+                        timedOut: timedOut.read()
                     ))
                 }
             }
@@ -1999,24 +2227,24 @@ class VideoProcessor: ObservableObject {
 
         if let startErrorMessage = result.startErrorMessage {
             addLog("Post-Process Script warning: failed to start: \(startErrorMessage)")
-            return false
+            return result
         }
 
         guard let terminationStatus = result.terminationStatus else {
             addLog("Post-Process Script warning: process did not return a status")
-            return false
+            return result
         }
 
-        if terminationStatus == 0 {
+        if result.timedOut {
+            addLog("Post-Process Script warning: timed out after \(timeoutMinutes) minutes")
+        } else if terminationStatus == 0 {
             addLog("Post-process script completed")
-            return true
         } else if shouldCancelProcessing {
             addLog("Post-process script cancelled")
-            return false
         } else {
             addLog("Post-Process Script warning: exited with code \(terminationStatus)")
-            return false
         }
+        return result
     }
 
     private func logPostProcessScriptOutput(_ output: String, label: String) {

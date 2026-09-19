@@ -296,6 +296,9 @@ private struct ProcessingHistoryDetailView: View {
                         fileSection(details)
                         processingSection(details)
                         settingsSection(details)
+                        if let postProcess = details.postProcess {
+                            postProcessSection(postProcess)
+                        }
                         commandSection(details.ffmpegCommands)
                     } else {
                         legacyEntryNotice
@@ -492,6 +495,28 @@ private struct ProcessingHistoryDetailView: View {
                                 .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
                         }
                     }
+                }
+            }
+        }
+    }
+
+    private func postProcessSection(_ details: PostProcessHistoryDetails) -> some View {
+        detailCard("Post-Process Script", systemImage: "terminal.fill") {
+            VStack(spacing: 0) {
+                detailRow("Script", details.scriptName)
+                Divider()
+                detailRow("Timing", details.timing)
+                Divider()
+                detailRow("Status", details.status)
+                Divider()
+                detailRow("Runtime", Self.formattedDuration(details.runtimeSeconds))
+                if let exitCode = details.exitCode {
+                    Divider()
+                    detailRow("Exit Code", "\(exitCode)")
+                }
+                if let diagnostic = details.diagnostic, !diagnostic.isEmpty {
+                    Divider()
+                    detailRow("Diagnostic", diagnostic)
                 }
             }
         }

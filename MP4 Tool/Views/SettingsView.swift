@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import Darwin
 
 struct SettingsView: View {
     @Binding var selectedMode: ProcessingMode
@@ -25,7 +26,8 @@ struct SettingsView: View {
     @Binding var keepAllEnglishSubtitleTracks: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
-    @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
+    @Binding var postProcessScriptFailurePolicy: PostProcessScriptFailurePolicy
+    @Binding var postProcessScriptTimeoutMinutes: Int
     let isProcessing: Bool
     @Binding var isExpanded: Bool
     @AppStorage("processingPresets") private var encodedPresets = ""
@@ -256,7 +258,8 @@ struct SettingsView: View {
                         PostProcessScriptSettingsSection(
                             scriptPath: $postProcessScriptPath,
                             runTiming: $postProcessScriptRunTiming,
-                            passFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+                            failurePolicy: $postProcessScriptFailurePolicy,
+                            timeoutMinutes: $postProcessScriptTimeoutMinutes,
                             isProcessing: isProcessing
                         )
                         }
@@ -431,7 +434,8 @@ struct SettingsView: View {
             keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+            postProcessScriptFailurePolicyRawValue: postProcessScriptFailurePolicy.rawValue,
+            postProcessScriptTimeoutMinutes: postProcessScriptTimeoutMinutes
         )
     }
 
@@ -528,9 +532,8 @@ struct SettingsView: View {
         keepAllEnglishSubtitleTracks = preset.keepAllEnglishSubtitleTracks ?? false
         postProcessScriptPath = preset.postProcessScriptPath
         postProcessScriptRunTiming = preset.postProcessScriptRunTiming
-        postProcessScriptPassFileNameAsFirstArgument =
-            preset.postProcessScriptRunTiming == .afterEachItem
-            && preset.postProcessScriptPassFileNameAsFirstArgument
+        postProcessScriptFailurePolicy = preset.postProcessScriptFailurePolicy
+        postProcessScriptTimeoutMinutes = preset.resolvedPostProcessScriptTimeoutMinutes
     }
 
 }
@@ -538,18 +541,13 @@ struct SettingsView: View {
 private struct PostProcessScriptSettingsSection: View {
     @Binding var scriptPath: String
     @Binding var runTiming: PostProcessScriptRunTiming
-    @Binding var passFileNameAsFirstArgument: Bool
+    @Binding var failurePolicy: PostProcessScriptFailurePolicy
+    @Binding var timeoutMinutes: Int
     let isProcessing: Bool
+    @State private var isTestingScript = false
 
     private var scriptSubtitle: String {
         scriptPath.isEmpty ? "Optional local script to run after processing" : scriptPath
-    }
-
-    private var passFileNameBinding: Binding<Bool> {
-        Binding(
-            get: { runTiming == .afterEachItem && passFileNameAsFirstArgument },
-            set: { passFileNameAsFirstArgument = runTiming == .afterEachItem ? $0 : false }
-        )
     }
 
     var body: some View {
@@ -562,12 +560,28 @@ private struct PostProcessScriptSettingsSection: View {
                     .disabled(isProcessing)
 
                     if !scriptPath.isEmpty {
-                        Button {
-                            scriptPath = ""
+                        Menu {
+                            Button("Test Script", systemImage: "play.circle") {
+                                testScriptLaunch()
+                            }
+                            .disabled(isTestingScript)
+
+                            Button("Reveal in Finder", systemImage: "folder") {
+                                NSWorkspace.shared.activateFileViewerSelecting([
+                                    URL(fileURLWithPath: scriptPath)
+                                ])
+                            }
+
+                            Divider()
+
+                            Button("Clear Script", systemImage: "xmark.circle") {
+                                scriptPath = ""
+                            }
                         } label: {
-                            Image(systemName: "xmark.circle")
+                            Image(systemName: "ellipsis.circle")
                         }
-                        .help("Clear selected script")
+                        .menuStyle(.borderlessButton)
+                        .help("Post-process script actions")
                         .disabled(isProcessing)
                     }
                 }
@@ -584,16 +598,27 @@ private struct PostProcessScriptSettingsSection: View {
                     .disabled(isProcessing)
                 }
 
-                SettingsRow("Pass File Name First", subtitle: "For per-item scripts, pass the output file name before input/output paths") {
-                    Toggle("", isOn: passFileNameBinding)
-                        .toggleStyle(.switch)
-                        .disabled(isProcessing || runTiming != .afterEachItem)
+                SettingsRow("On Script Failure", subtitle: "Choose whether script errors require attention") {
+                    Picker("", selection: $failurePolicy) {
+                        ForEach(PostProcessScriptFailurePolicy.allCases, id: \.self) { policy in
+                            Text(policy.description).tag(policy)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(isProcessing)
                 }
+
+                SettingsRow("Script Timeout", subtitle: "Stop a script that does not finish") {
+                    Picker("", selection: $timeoutMinutes) {
+                        ForEach([5, 15, 30, 60, 120], id: \.self) { minutes in
+                            Text("\(minutes) min").tag(minutes)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(isProcessing)
+                }
+
             }
-        }
-        .onAppear(perform: clearPassFileNameIfNeeded)
-        .onChange(of: runTiming) { _, _ in
-            clearPassFileNameIfNeeded()
         }
     }
 
@@ -651,8 +676,68 @@ private struct PostProcessScriptSettingsSection: View {
         alert.runModal()
     }
 
-    private func clearPassFileNameIfNeeded() {
-        guard runTiming != .afterEachItem else { return }
-        passFileNameAsFirstArgument = false
+    private func testScriptLaunch() {
+        let path = scriptPath
+        let timeout = timeoutMinutes
+        isTestingScript = true
+
+        Task {
+            let result = await Task.detached(priority: .utility) {
+                let command = scriptLaunchCommand(path: path)
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: command.executable)
+                process.arguments = command.arguments
+                var environment = ProcessInfo.processInfo.environment
+                environment["MP4_TOOL_POST_PROCESS_PHASE"] = "test"
+                environment["MP4_TOOL_POST_PROCESS_SCRIPT"] = path
+                process.environment = environment
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+
+                do {
+                    try process.run()
+                    let deadline = Date().addingTimeInterval(TimeInterval(timeout * 60))
+                    while process.isRunning && Date() < deadline {
+                        usleep(100_000)
+                    }
+                    if process.isRunning {
+                        process.terminate()
+                        usleep(250_000)
+                        if process.isRunning {
+                            kill(process.processIdentifier, SIGKILL)
+                        }
+                        process.waitUntilExit()
+                        return (false, "The script timed out after \(timeout) minutes.")
+                    }
+                    return process.terminationStatus == 0
+                        ? (true, "The script launched and exited successfully.")
+                        : (false, "The script exited with code \(process.terminationStatus).")
+                } catch {
+                    return (false, "The script could not start: \(error.localizedDescription)")
+                }
+            }.value
+
+            isTestingScript = false
+            let alert = NSAlert()
+            alert.messageText = result.0 ? "Post-Process Test Passed" : "Post-Process Test Failed"
+            alert.informativeText = result.1 + "\n\nTest runs receive MP4_TOOL_POST_PROCESS_PHASE=test and no media paths."
+            alert.alertStyle = result.0 ? .informational : .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
+    private nonisolated func scriptLaunchCommand(path: String) -> (executable: String, arguments: [String]) {
+        let scriptExtension = URL(fileURLWithPath: path).pathExtension.lowercased()
+        switch scriptExtension {
+        case "sh": return ("/bin/sh", [path])
+        case "bash": return ("/usr/bin/env", ["bash", path])
+        case "zsh": return ("/bin/zsh", [path])
+        case "py": return ("/usr/bin/env", ["python3", path])
+        default:
+            return FileManager.default.isExecutableFile(atPath: path)
+                ? (path, [])
+                : ("/bin/zsh", [path])
+        }
     }
 }

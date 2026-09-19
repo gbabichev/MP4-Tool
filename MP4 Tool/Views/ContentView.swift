@@ -27,7 +27,8 @@ private struct ProcessingSettingsSnapshot: Equatable {
     let keepAllEnglishSubtitleTracks: Bool
     let postProcessScriptPath: String
     let postProcessScriptRunTimingRaw: String
-    let postProcessScriptPassFileNameAsFirstArgument: Bool
+    let postProcessScriptFailurePolicyRaw: String
+    let postProcessScriptTimeoutMinutes: Int
 }
 
 struct ContentView: View {
@@ -52,7 +53,8 @@ struct ContentView: View {
     @AppStorage("defaultKeepAllEnglishSubtitleTracks") private var keepAllEnglishSubtitleTracks: Bool = false
     @AppStorage("defaultPostProcessScriptPath") private var postProcessScriptPath: String = ""
     @AppStorage("defaultPostProcessScriptRunTiming") private var postProcessScriptRunTimingRaw: String = PostProcessScriptRunTiming.afterEachItem.rawValue
-    @AppStorage("defaultPostProcessScriptPassFileNameAsFirstArgument") private var postProcessScriptPassFileNameAsFirstArgument: Bool = false
+    @AppStorage("defaultPostProcessScriptFailurePolicy") private var postProcessScriptFailurePolicyRaw: String = PostProcessScriptFailurePolicy.markRunFailed.rawValue
+    @AppStorage("defaultPostProcessScriptTimeoutMinutes") private var postProcessScriptTimeoutMinutes: Int = 30
     @AppStorage("defaultIsLogExpanded") private var prefersLogExpanded = true
     @SceneStorage("isSettingsExpanded") private var sceneIsSettingsExpanded: Bool?
     @AppStorage("defaultIsSettingsExpanded") private var defaultIsSettingsExpanded = false
@@ -92,12 +94,11 @@ struct ContentView: View {
 
     private var postProcessScriptRunTiming: PostProcessScriptRunTiming {
         get { PostProcessScriptRunTiming(rawValue: postProcessScriptRunTimingRaw) ?? .afterEachItem }
-        set {
-            postProcessScriptRunTimingRaw = newValue.rawValue
-            if newValue != .afterEachItem {
-                postProcessScriptPassFileNameAsFirstArgument = false
-            }
-        }
+        set { postProcessScriptRunTimingRaw = newValue.rawValue }
+    }
+
+    private var postProcessScriptFailurePolicy: PostProcessScriptFailurePolicy {
+        PostProcessScriptFailurePolicy(rawValue: postProcessScriptFailurePolicyRaw) ?? .markRunFailed
     }
 
     private var selectedModeBinding: Binding<ProcessingMode> {
@@ -124,12 +125,14 @@ struct ContentView: View {
     private var postProcessScriptRunTimingBinding: Binding<PostProcessScriptRunTiming> {
         Binding(
             get: { PostProcessScriptRunTiming(rawValue: postProcessScriptRunTimingRaw) ?? .afterEachItem },
-            set: { newValue in
-                postProcessScriptRunTimingRaw = newValue.rawValue
-                if newValue != .afterEachItem {
-                    postProcessScriptPassFileNameAsFirstArgument = false
-                }
-            }
+            set: { postProcessScriptRunTimingRaw = $0.rawValue }
+        )
+    }
+
+    private var postProcessScriptFailurePolicyBinding: Binding<PostProcessScriptFailurePolicy> {
+        Binding(
+            get: { PostProcessScriptFailurePolicy(rawValue: postProcessScriptFailurePolicyRaw) ?? .markRunFailed },
+            set: { postProcessScriptFailurePolicyRaw = $0.rawValue }
         )
     }
 
@@ -206,7 +209,8 @@ struct ContentView: View {
             keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRaw: postProcessScriptRunTimingRaw,
-            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument
+            postProcessScriptFailurePolicyRaw: postProcessScriptFailurePolicyRaw,
+            postProcessScriptTimeoutMinutes: postProcessScriptTimeoutMinutes
         )
     }
 
@@ -300,7 +304,8 @@ struct ContentView: View {
             keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTiming: postProcessScriptRunTiming,
-            postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
+            postProcessScriptFailurePolicy: postProcessScriptFailurePolicy,
+            postProcessScriptTimeoutMinutes: postProcessScriptTimeoutMinutes,
             stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
         )
     }
@@ -444,7 +449,6 @@ struct ContentView: View {
         let keepAllEnglishSubtitleTracks = keepAllEnglishSubtitleTracks
         let postProcessScriptPath = postProcessScriptPath
         let postProcessScriptRunTiming = postProcessScriptRunTiming
-        let postProcessScriptPassFileNameAsFirstArgument = postProcessScriptPassFileNameAsFirstArgument
         let stageTemporaryFilesOnDestinationVolume = stageTemporaryFilesOnDestinationVolume
 
         Task { @MainActor in
@@ -465,7 +469,8 @@ struct ContentView: View {
                 keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
                 postProcessScriptPath: postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTiming,
-                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
+                postProcessScriptFailurePolicy: postProcessScriptFailurePolicy,
+                postProcessScriptTimeoutMinutes: postProcessScriptTimeoutMinutes,
                 stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
             )
         }
@@ -569,7 +574,8 @@ struct ContentView: View {
                 keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
                 postProcessScriptPath: $postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
-                postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+                postProcessScriptFailurePolicy: postProcessScriptFailurePolicyBinding,
+                postProcessScriptTimeoutMinutes: $postProcessScriptTimeoutMinutes,
                 isProcessing: viewModel.processor.isProcessing,
                 isExpanded: isSettingsExpandedBinding
             )
@@ -627,7 +633,8 @@ struct ContentView: View {
                 keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
                 postProcessScriptPath: $postProcessScriptPath,
                 postProcessScriptRunTiming: postProcessScriptRunTimingBinding,
-                postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+                postProcessScriptFailurePolicy: postProcessScriptFailurePolicyBinding,
+                postProcessScriptTimeoutMinutes: $postProcessScriptTimeoutMinutes,
                 outputFolderPath: viewModel.outputFolderPath,
                 ffmpegAvailable: viewModel.processor.ffmpegAvailable,
                 hasBundledFFmpeg: viewModel.processor.hasBundledFFmpeg,
@@ -773,10 +780,11 @@ struct ContentView: View {
                                 keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
                                 keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
                                 keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
-                                postProcessScriptPath: postProcessScriptPath,
-                                postProcessScriptRunTiming: postProcessScriptRunTiming,
-                                postProcessScriptPassFileNameAsFirstArgument: postProcessScriptPassFileNameAsFirstArgument,
-                                stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
+            postProcessScriptPath: postProcessScriptPath,
+            postProcessScriptRunTiming: postProcessScriptRunTiming,
+            postProcessScriptFailurePolicy: postProcessScriptFailurePolicy,
+            postProcessScriptTimeoutMinutes: postProcessScriptTimeoutMinutes,
+            stageTemporaryFilesOnDestinationVolume: stageTemporaryFilesOnDestinationVolume
                             )
                         }) {
                             Label("Start Processing", systemImage: "play.fill")
@@ -924,7 +932,8 @@ private struct CompactProcessingSetupView: View {
     @Binding var keepAllEnglishSubtitleTracks: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
-    @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
+    @Binding var postProcessScriptFailurePolicy: PostProcessScriptFailurePolicy
+    @Binding var postProcessScriptTimeoutMinutes: Int
     let outputFolderPath: String
     let ffmpegAvailable: Bool
     let hasBundledFFmpeg: Bool
@@ -1337,9 +1346,8 @@ private struct CompactProcessingSetupView: View {
             keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
             postProcessScriptPath: postProcessScriptPath,
             postProcessScriptRunTimingRawValue: postProcessScriptRunTiming.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument:
-                postProcessScriptRunTiming == .afterEachItem
-                && postProcessScriptPassFileNameAsFirstArgument
+            postProcessScriptFailurePolicyRawValue: postProcessScriptFailurePolicy.rawValue,
+            postProcessScriptTimeoutMinutes: postProcessScriptTimeoutMinutes
         )
     }
 
@@ -1367,9 +1375,8 @@ private struct CompactProcessingSetupView: View {
         keepAllEnglishSubtitleTracks = preset.keepAllEnglishSubtitleTracks ?? false
         postProcessScriptPath = preset.postProcessScriptPath
         postProcessScriptRunTiming = preset.postProcessScriptRunTiming
-        postProcessScriptPassFileNameAsFirstArgument =
-            preset.postProcessScriptRunTiming == .afterEachItem
-            && preset.postProcessScriptPassFileNameAsFirstArgument
+        postProcessScriptFailurePolicy = preset.postProcessScriptFailurePolicy
+        postProcessScriptTimeoutMinutes = preset.resolvedPostProcessScriptTimeoutMinutes
     }
 }
 
@@ -1550,7 +1557,8 @@ struct ExpandedSettingsPanel: View {
     @Binding var keepAllEnglishSubtitleTracks: Bool
     @Binding var postProcessScriptPath: String
     @Binding var postProcessScriptRunTiming: PostProcessScriptRunTiming
-    @Binding var postProcessScriptPassFileNameAsFirstArgument: Bool
+    @Binding var postProcessScriptFailurePolicy: PostProcessScriptFailurePolicy
+    @Binding var postProcessScriptTimeoutMinutes: Int
     let isProcessing: Bool
     @Binding var isExpanded: Bool
     
@@ -1572,7 +1580,8 @@ struct ExpandedSettingsPanel: View {
             keepAllEnglishSubtitleTracks: $keepAllEnglishSubtitleTracks,
             postProcessScriptPath: $postProcessScriptPath,
             postProcessScriptRunTiming: $postProcessScriptRunTiming,
-            postProcessScriptPassFileNameAsFirstArgument: $postProcessScriptPassFileNameAsFirstArgument,
+            postProcessScriptFailurePolicy: $postProcessScriptFailurePolicy,
+            postProcessScriptTimeoutMinutes: $postProcessScriptTimeoutMinutes,
             isProcessing: isProcessing,
             isExpanded: $isExpanded
         )

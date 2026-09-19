@@ -19,7 +19,8 @@ struct ProcessingPreset: Codable, Identifiable, Equatable {
     var keepAllEnglishSubtitleTracks: Bool?
     var postProcessScriptPath: String
     var postProcessScriptRunTimingRawValue: String
-    var postProcessScriptPassFileNameAsFirstArgument: Bool
+    var postProcessScriptFailurePolicyRawValue: String? = nil
+    var postProcessScriptTimeoutMinutes: Int? = nil
 
     var mode: ProcessingMode {
         ProcessingMode(rawValue: modeRawValue) ?? .encodeH265
@@ -35,6 +36,15 @@ struct ProcessingPreset: Codable, Identifiable, Equatable {
 
     var postProcessScriptRunTiming: PostProcessScriptRunTiming {
         PostProcessScriptRunTiming(rawValue: postProcessScriptRunTimingRawValue) ?? .afterEachItem
+    }
+
+    var postProcessScriptFailurePolicy: PostProcessScriptFailurePolicy {
+        PostProcessScriptFailurePolicy(rawValue: postProcessScriptFailurePolicyRawValue ?? "")
+            ?? .markRunFailed
+    }
+
+    var resolvedPostProcessScriptTimeoutMinutes: Int {
+        max(postProcessScriptTimeoutMinutes ?? 30, 1)
     }
 }
 
@@ -58,8 +68,7 @@ extension ProcessingPreset {
             keepEnglishSubtitlesOnly: true,
             keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
-            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: false
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue
         ),
         ProcessingPreset(
             id: UUID(uuidString: "0D6086F3-F4CA-4AD7-96B3-C7095F548034")!,
@@ -79,8 +88,7 @@ extension ProcessingPreset {
             keepEnglishSubtitlesOnly: true,
             keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
-            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: false
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue
         ),
         ProcessingPreset(
             id: UUID(uuidString: "4B044067-0A67-4F23-B595-750C531C36CA")!,
@@ -100,8 +108,7 @@ extension ProcessingPreset {
             keepEnglishSubtitlesOnly: true,
             keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
-            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: false
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue
         ),
         ProcessingPreset(
             id: UUID(uuidString: "C0841EEB-374A-454E-9B22-197336362639")!,
@@ -120,8 +127,7 @@ extension ProcessingPreset {
             keepEnglishSubtitlesOnly: true,
             keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
-            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: false
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue
         ),
         ProcessingPreset(
             id: UUID(uuidString: "887384C7-6F3A-456A-B21D-E8240EFE97F8")!,
@@ -140,8 +146,7 @@ extension ProcessingPreset {
             keepEnglishSubtitlesOnly: true,
             keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
-            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: false
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue
         ),
         ProcessingPreset(
             id: UUID(uuidString: "648AF3DE-62F0-4ACF-90A4-840A421D9330")!,
@@ -160,8 +165,7 @@ extension ProcessingPreset {
             keepEnglishSubtitlesOnly: true,
             keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
-            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: false
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue
         ),
         ProcessingPreset(
             id: UUID(uuidString: "8E7773E3-65C5-4E37-98BD-F97C0452FE6B")!,
@@ -180,8 +184,7 @@ extension ProcessingPreset {
             keepEnglishSubtitlesOnly: false,
             keepAllEnglishSubtitleTracks: false,
             postProcessScriptPath: "",
-            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue,
-            postProcessScriptPassFileNameAsFirstArgument: false
+            postProcessScriptRunTimingRawValue: PostProcessScriptRunTiming.afterEachItem.rawValue
         )
     ]
 }

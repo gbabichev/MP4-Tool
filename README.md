@@ -84,6 +84,81 @@ Scans your given directory to ensure that MP4 files are in a format natively rea
 - Click **Start Processing** or press `⌘P` to run the selected jobs.
 - Watch progress and logs in the lower section of the window.
 
+## Post-Process Scripts
+
+MP4 Tool can run a local script after each successfully processed file or once
+after the batch finishes. Choose the script in Processing Setup, then configure:
+
+- **Script Timing:** Run after each successful file or after the batch finishes.
+- **On Script Failure:** Mark the run as needing attention, or log a warning and
+  continue.
+- **Script Timeout:** Stop scripts that do not finish within the selected time.
+
+Use **Test** to verify that the script can launch. Test runs receive
+`MP4_TOOL_POST_PROCESS_PHASE=test` and no media paths. Use **Reveal** to show the
+selected script in Finder.
+
+Post-process scripts run only after MP4 Tool has created and validated the final
+output. When **Delete Original** is enabled, MP4 Tool keeps the original until the
+configured script succeeds. A per-file script failure retains that file's source;
+end-of-batch timing defers all source deletions until the batch script succeeds.
+
+### Per-file script contract
+
+The default positional arguments are:
+
+```text
+script input-file output-file
+```
+
+The script also receives:
+
+```text
+MP4_TOOL_POST_PROCESS_PHASE=item
+MP4_TOOL_MODE=<effective processing mode>
+MP4_TOOL_INPUT_FILE=<source path>
+MP4_TOOL_OUTPUT_FILE=<validated output path>
+MP4_TOOL_OUTPUT_DIR=<output file's directory>
+MP4_TOOL_FILE_NAME=<output file name>
+MP4_TOOL_POST_PROCESS_SCRIPT=<selected script path>
+```
+
+Its working directory is the output file's directory.
+
+### End-of-batch script contract
+
+For ordinary batches, the existing positional contract is preserved:
+
+```text
+script output-directory output-file-1 output-file-2 ...
+```
+
+Every end-of-batch run also receives `MP4_TOOL_MANIFEST_FILE`, which points to a
+temporary JSON document containing the phase, processing mode, output directory,
+and the input path, output path, and file name for every successful item. For
+large batches, MP4 Tool passes only the output directory and manifest path as
+positional arguments to avoid macOS process argument limits.
+
+```text
+MP4_TOOL_POST_PROCESS_PHASE=end
+MP4_TOOL_MODE=<selected batch mode>
+MP4_TOOL_OUTPUT_DIR=<batch output directory>
+MP4_TOOL_OUTPUT_COUNT=<successful output count>
+MP4_TOOL_MANIFEST_FILE=<temporary JSON manifest path>
+MP4_TOOL_POST_PROCESS_SCRIPT=<selected script path>
+```
+
+For batches small enough to use positional arguments, `MP4_TOOL_OUTPUT_FILES` and
+`MP4_TOOL_INPUT_FILES` are also supplied as newline-separated values. Scripts
+intended for very large batches should read the manifest instead.
+
+MP4 Tool supports executable files plus `.sh`, `.bash`, `.zsh`, and `.py`
+scripts. Standard output, standard error, exit status, runtime, timeout status,
+and diagnostics are written to the processing log; results are also stored in
+Run History. Captured output is bounded so a noisy script cannot grow memory or
+the persistent log without limit. Immediate Stop also terminates the active
+post-process script.
+
 ## 🖥️ Install & Minimum Requirements
 
 - macOS 14.0 or later
@@ -144,6 +219,9 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 - Added configurable staging storage, disk-space reporting, and abandoned-file cleanup.
 - Prevented system sleep during long-running operations.
 - Improved handling of missing audio tracks and premature FFmpeg completion.
+- Reworked post-process scripts with Test and Reveal controls, explicit timing,
+  failure policy and timeout settings, Run History diagnostics, large-batch JSON
+  manifests, and safe original-file retention until scripts succeed.
 
 ### 1.8.2
 - Fixed UI lag when adding items to the table.
