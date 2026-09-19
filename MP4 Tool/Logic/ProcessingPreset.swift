@@ -46,6 +46,35 @@ struct ProcessingPreset: Codable, Identifiable, Equatable {
     var resolvedPostProcessScriptTimeoutMinutes: Int {
         max(postProcessScriptTimeoutMinutes ?? 30, 1)
     }
+
+    static func == (lhs: ProcessingPreset, rhs: ProcessingPreset) -> Bool {
+        lhs.id == rhs.id
+            && lhs.name == rhs.name
+            && lhs.mode == rhs.mode
+            && (lhs.smartRemuxMegabytesPerMinute
+                ?? ProcessingMode.defaultSmartRemuxMegabytesPerMinute)
+                == (rhs.smartRemuxMegabytesPerMinute
+                    ?? ProcessingMode.defaultSmartRemuxMegabytesPerMinute)
+            && lhs.crfValue == rhs.crfValue
+            && lhs.resolution == rhs.resolution
+            && lhs.encoderPreset == rhs.encoderPreset
+            && lhs.encodeVideo == rhs.encodeVideo
+            && lhs.encodeAudio == rhs.encodeAudio
+            && lhs.createSubfolders == rhs.createSubfolders
+            && lhs.automaticRename == rhs.automaticRename
+            && lhs.deleteOriginal == rhs.deleteOriginal
+            && lhs.keepEnglishAudioOnly == rhs.keepEnglishAudioOnly
+            && (lhs.keepAllEnglishAudioTracks ?? false)
+                == (rhs.keepAllEnglishAudioTracks ?? false)
+            && lhs.keepEnglishSubtitlesOnly == rhs.keepEnglishSubtitlesOnly
+            && (lhs.keepAllEnglishSubtitleTracks ?? false)
+                == (rhs.keepAllEnglishSubtitleTracks ?? false)
+            && lhs.postProcessScriptPath == rhs.postProcessScriptPath
+            && lhs.postProcessScriptRunTiming == rhs.postProcessScriptRunTiming
+            && lhs.postProcessScriptFailurePolicy == rhs.postProcessScriptFailurePolicy
+            && lhs.resolvedPostProcessScriptTimeoutMinutes
+                == rhs.resolvedPostProcessScriptTimeoutMinutes
+    }
 }
 
 extension ProcessingPreset {

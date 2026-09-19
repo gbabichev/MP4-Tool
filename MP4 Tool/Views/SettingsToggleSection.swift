@@ -11,11 +11,18 @@ import SwiftUI
 struct SettingsRow<Control: View>: View {
     let title: String
     let subtitle: String?
+    let isModified: Bool
     @ViewBuilder var control: Control
 
-    init(_ title: String, subtitle: String? = nil, @ViewBuilder control: () -> Control) {
+    init(
+        _ title: String,
+        subtitle: String? = nil,
+        isModified: Bool = false,
+        @ViewBuilder control: () -> Control
+    ) {
         self.title = title
         self.subtitle = subtitle
+        self.isModified = isModified
         self.control = control()
     }
 
@@ -29,9 +36,7 @@ struct SettingsRow<Control: View>: View {
     private var horizontalLayout: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center) {
-                Text(title)
-                    .font(.subheadline)
-                    .fixedSize(horizontal: true, vertical: false)
+                titleView
                 Spacer(minLength: 16)
                 styledControl
             }
@@ -43,8 +48,7 @@ struct SettingsRow<Control: View>: View {
 
     private var stackedLayout: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline)
+            titleView
 
             styledControl
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -57,6 +61,21 @@ struct SettingsRow<Control: View>: View {
         control
             .labelsHidden()
             .controlSize(.small)
+    }
+
+    private var titleView: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .fixedSize(horizontal: true, vertical: false)
+
+            if isModified {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     @ViewBuilder

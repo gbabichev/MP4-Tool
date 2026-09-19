@@ -82,6 +82,13 @@ struct SettingsView: View {
         ) != selectedProcessingPreset
     }
 
+    private func settingIsModified(
+        _ comparison: (ProcessingPreset) -> Bool
+    ) -> Bool {
+        guard let selectedProcessingPreset else { return false }
+        return comparison(selectedProcessingPreset)
+    }
+
     private var newPresetUsesReservedName: Bool {
         let name = newPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
         return ProcessingPreset.builtInPresets.contains {
@@ -106,7 +113,11 @@ struct SettingsView: View {
 
                 GroupBox {
                     VStack(spacing: 12) {
-                        SettingsRow("Mode", subtitle: "Choose automatic, encode, or remux processing") {
+                        SettingsRow(
+                            "Mode",
+                            subtitle: "Choose automatic, encode, or remux processing",
+                            isModified: settingIsModified { $0.mode != selectedMode }
+                        ) {
                             Picker("", selection: $selectedMode) {
                                 ForEach(ProcessingMode.allCases, id: \.self) { mode in
                                     Text(mode.description).tag(mode)
@@ -119,7 +130,12 @@ struct SettingsView: View {
                         if selectedMode == .smart {
                             SettingsRow(
                                 "Smart Target",
-                                subtitle: smartTargetSubtitle
+                                subtitle: smartTargetSubtitle,
+                                isModified: settingIsModified {
+                                    ($0.smartRemuxMegabytesPerMinute
+                                        ?? ProcessingMode.defaultSmartRemuxMegabytesPerMinute)
+                                        != smartRemuxMegabytesPerMinute
+                                }
                             ) {
                                 HStack {
                                     Slider(
@@ -138,13 +154,21 @@ struct SettingsView: View {
                         }
 
                         if selectedMode == .encodeH265 || selectedMode == .encodeH264 {
-                            SettingsRow("Encode Video", subtitle: "Turn off to copy video and only process audio") {
+                            SettingsRow(
+                                "Encode Video",
+                                subtitle: "Turn off to copy video and only process audio",
+                                isModified: settingIsModified { $0.encodeVideo != encodeVideo }
+                            ) {
                                 Toggle("", isOn: $encodeVideo)
                                     .toggleStyle(.switch)
                                     .disabled(isProcessing || !encodeAudio)
                             }
 
-                            SettingsRow("Encode Audio", subtitle: "Copies compatible audio; converts only incompatible formats") {
+                            SettingsRow(
+                                "Encode Audio",
+                                subtitle: "Copies compatible audio; converts only incompatible formats",
+                                isModified: settingIsModified { $0.encodeAudio != encodeAudio }
+                            ) {
                                 Toggle("", isOn: $encodeAudio)
                                     .toggleStyle(.switch)
                                     .disabled(isProcessing || !encodeVideo)
@@ -157,7 +181,8 @@ struct SettingsView: View {
                                 "Quality (CRF)",
                                 subtitle: selectedMode == .smart
                                     ? "Used when Smart chooses H.265 encoding"
-                                    : "Lower = better quality, larger file. Default 23."
+                                    : "Lower = better quality, larger file. Default 23.",
+                                isModified: settingIsModified { $0.crfValue != crfValue }
                             ) {
                                 HStack {
                                     Slider(value: $crfValue, in: 0...50, step: 1)
@@ -173,7 +198,8 @@ struct SettingsView: View {
                                 "Resolution",
                                 subtitle: selectedMode == .smart
                                     ? "Used when Smart chooses H.265 encoding"
-                                    : "Scale video to specified resolution"
+                                    : "Scale video to specified resolution",
+                                isModified: settingIsModified { $0.resolution != selectedResolution }
                             ) {
                                 Picker("", selection: $selectedResolution) {
                                     ForEach(ResolutionOption.allCases, id: \.self) { resolution in
@@ -188,7 +214,8 @@ struct SettingsView: View {
                                 "Encoder Preset",
                                 subtitle: selectedMode == .smart
                                     ? "Used when Smart chooses H.265 encoding"
-                                    : "Slower = better compression. Default: fast"
+                                    : "Slower = better compression. Default: fast",
+                                isModified: settingIsModified { $0.encoderPreset != selectedPreset }
                             ) {
                                 Picker("", selection: $selectedPreset) {
                                     ForEach(PresetOption.allCases, id: \.self) { preset in
@@ -200,25 +227,43 @@ struct SettingsView: View {
                             }
                         }
 
-                        SettingsRow("Create Subfolders", subtitle: "Each file will be saved in its own subfolder") {
+                        SettingsRow(
+                            "Create Subfolders",
+                            subtitle: "Each file will be saved in its own subfolder",
+                            isModified: settingIsModified { $0.createSubfolders != createSubfolders }
+                        ) {
                             Toggle("", isOn: $createSubfolders)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
                         }
 
-                        SettingsRow("Automatic Rename", subtitle: "Clean movie/TV output names when patterns are detected") {
+                        SettingsRow(
+                            "Automatic Rename",
+                            subtitle: "Clean movie/TV output names when patterns are detected",
+                            isModified: settingIsModified { $0.automaticRename != automaticRename }
+                        ) {
                             Toggle("", isOn: $automaticRename)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
                         }
 
-                        SettingsRow("Delete Original", subtitle: "Remove source files after successful conversion") {
+                        SettingsRow(
+                            "Delete Original",
+                            subtitle: "Remove source files after successful conversion",
+                            isModified: settingIsModified { $0.deleteOriginal != deleteOriginal }
+                        ) {
                             Toggle("", isOn: $deleteOriginal)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
                         }
 
-                        SettingsRow("Keep English Audio Only", subtitle: "Ignore non-English audio tracks during processing") {
+                        SettingsRow(
+                            "Keep English Audio Only",
+                            subtitle: "Ignore non-English audio tracks during processing",
+                            isModified: settingIsModified {
+                                $0.keepEnglishAudioOnly != keepEnglishAudioOnly
+                            }
+                        ) {
                             Toggle("", isOn: $keepEnglishAudioOnly)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
@@ -228,14 +273,24 @@ struct SettingsView: View {
                             "Keep All English Audio Tracks",
                             subtitle: keepEnglishAudioOnly
                                 ? "Keep commentary and alternate English mixes instead of choosing one main track"
-                                : "Keep every English track while leaving other languages unchanged"
+                                : "Keep every English track while leaving other languages unchanged",
+                            isModified: settingIsModified {
+                                ($0.keepAllEnglishAudioTracks ?? false)
+                                    != keepAllEnglishAudioTracks
+                            }
                         ) {
                             Toggle("", isOn: $keepAllEnglishAudioTracks)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
                         }
 
-                        SettingsRow("Keep English Subtitles Only", subtitle: "Ignore non-English subtitle tracks during processing") {
+                        SettingsRow(
+                            "Keep English Subtitles Only",
+                            subtitle: "Ignore non-English subtitle tracks during processing",
+                            isModified: settingIsModified {
+                                $0.keepEnglishSubtitlesOnly != keepEnglishSubtitlesOnly
+                            }
+                        ) {
                             Toggle("", isOn: $keepEnglishSubtitlesOnly)
                                 .toggleStyle(.switch)
                                 .disabled(isProcessing)
@@ -245,7 +300,11 @@ struct SettingsView: View {
                             "Keep All English Subtitle Tracks",
                             subtitle: keepEnglishSubtitlesOnly
                                 ? "Keep forced and SDH variants instead of choosing one complete subtitle track"
-                                : "Keep every English subtitle variant while leaving other languages unchanged"
+                                : "Keep every English subtitle variant while leaving other languages unchanged",
+                            isModified: settingIsModified {
+                                ($0.keepAllEnglishSubtitleTracks ?? false)
+                                    != keepAllEnglishSubtitleTracks
+                            }
                         ) {
                             Toggle("", isOn: $keepAllEnglishSubtitleTracks)
                                 .toggleStyle(.switch)
@@ -259,6 +318,7 @@ struct SettingsView: View {
                             runTiming: $postProcessScriptRunTiming,
                             failurePolicy: $postProcessScriptFailurePolicy,
                             timeoutMinutes: $postProcessScriptTimeoutMinutes,
+                            baselinePreset: selectedProcessingPreset,
                             isProcessing: isProcessing
                         )
                     }
@@ -538,6 +598,7 @@ private struct PostProcessScriptSettingsSection: View {
     @Binding var runTiming: PostProcessScriptRunTiming
     @Binding var failurePolicy: PostProcessScriptFailurePolicy
     @Binding var timeoutMinutes: Int
+    let baselinePreset: ProcessingPreset?
     let isProcessing: Bool
     @State private var isTestingScript = false
 
@@ -547,7 +608,11 @@ private struct PostProcessScriptSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SettingsRow("Post-Process Script", subtitle: scriptSubtitle) {
+            SettingsRow(
+                "Post-Process Script",
+                subtitle: scriptSubtitle,
+                isModified: baselinePreset.map { $0.postProcessScriptPath != scriptPath } ?? false
+            ) {
                 HStack(spacing: 6) {
                     Button("Choose...") {
                         chooseScript()
@@ -583,7 +648,13 @@ private struct PostProcessScriptSettingsSection: View {
             }
 
             if !scriptPath.isEmpty {
-                SettingsRow("Script Timing", subtitle: "Choose when the selected script runs") {
+                SettingsRow(
+                    "Script Timing",
+                    subtitle: "Choose when the selected script runs",
+                    isModified: baselinePreset.map {
+                        $0.postProcessScriptRunTiming != runTiming
+                    } ?? false
+                ) {
                     Picker("", selection: $runTiming) {
                         ForEach(PostProcessScriptRunTiming.allCases, id: \.self) { timing in
                             Text(timing.description).tag(timing)
@@ -593,7 +664,13 @@ private struct PostProcessScriptSettingsSection: View {
                     .disabled(isProcessing)
                 }
 
-                SettingsRow("On Script Failure", subtitle: "Choose whether script errors require attention") {
+                SettingsRow(
+                    "On Script Failure",
+                    subtitle: "Choose whether script errors require attention",
+                    isModified: baselinePreset.map {
+                        $0.postProcessScriptFailurePolicy != failurePolicy
+                    } ?? false
+                ) {
                     Picker("", selection: $failurePolicy) {
                         ForEach(PostProcessScriptFailurePolicy.allCases, id: \.self) { policy in
                             Text(policy.description).tag(policy)
@@ -603,7 +680,13 @@ private struct PostProcessScriptSettingsSection: View {
                     .disabled(isProcessing)
                 }
 
-                SettingsRow("Script Timeout", subtitle: "Stop a script that does not finish") {
+                SettingsRow(
+                    "Script Timeout",
+                    subtitle: "Stop a script that does not finish",
+                    isModified: baselinePreset.map {
+                        $0.resolvedPostProcessScriptTimeoutMinutes != timeoutMinutes
+                    } ?? false
+                ) {
                     Picker("", selection: $timeoutMinutes) {
                         ForEach([5, 15, 30, 60, 120], id: \.self) { minutes in
                             Text("\(minutes) min").tag(minutes)
