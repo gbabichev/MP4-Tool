@@ -29,67 +29,91 @@ struct AboutView: View {
     @ObservedObject private var updateCenter = AppUpdateCenter.shared
 
     var body: some View {
-        VStack(spacing: 18) {
-            
-            LiveAppIconView()
-            
-            VStack(spacing: 4) {
+        VStack(spacing: 20) {
+            VStack(spacing: 10) {
+                LiveAppIconView()
+
                 Text("MP4 Tool")
                     .font(.title.weight(.semibold))
-                Text("Video Conversion & Remux Utility")
-                    .foregroundColor(.secondary)
+
+                Text("Video conversion and remuxing for Apple-compatible playback.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 320)
             }
-            
+
             VStack(alignment: .leading, spacing: 6) {
                 AboutRow(label: "Version", value: appVersion)
                 AboutRow(label: "Build", value: appBuild)
                 AboutRow(label: "Developer", value: "George Babichev")
                 AboutRow(label: "Copyright", value: "© \(Calendar.current.component(.year, from: Date())) George Babichev")
             }
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            )
+
             if let devPhoto = NSImage(named: "gbabichev") {
                 HStack(spacing: 12) {
                     Image(nsImage: devPhoto)
                         .resizable()
                         .scaledToFill()
                         .frame(width: 64, height: 64)
-                        .offset(y: 6)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+
                     VStack(alignment: .leading, spacing: 4) {
                         Text("George Babichev")
                             .font(.headline)
-                        Link("georgebabichev.com", destination: URL(string: "https://georgebabichev.com")!)
+
+                        Link(destination: URL(string: "https://georgebabichev.com")!) {
+                            HStack(spacing: 4) {
+                                Text("georgebabichev.com")
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption2.weight(.semibold))
+                            }
                             .font(.subheadline)
+                        }
                     }
+
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Button {
-                updateCenter.checkForUpdates(trigger: .manual)
-            } label: {
-                Label("Check for Updates...", systemImage: "arrow.triangle.2.circlepath.circle")
-            }
-            .disabled(updateCenter.isChecking)
+            VStack(alignment: .center, spacing: 8) {
+                Button("Check for Updates…", systemImage: "arrow.triangle.2.circlepath.circle") {
+                    updateCenter.checkForUpdates(trigger: .manual)
+                }
+                .disabled(updateCenter.isChecking)
 
-            if let lastStatusMessage = updateCenter.lastStatusMessage {
-                Text(lastStatusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                if let lastStatusMessage = updateCenter.lastStatusMessage {
+                    Text(lastStatusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
-            
+
             Divider()
-            
-            Text("MP4 Tool is simple app that helps convert files to MP4 that are natively compatible on Apple Platforms.")
+
+            Text("MP4 Tool converts, remuxes, inspects, and repairs video files for reliable playback across Apple platforms.")
                 .font(.callout)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 330)
         }
-        .padding(24)
-        .frame(width: 380)
+        .padding(.horizontal, 26)
+        .padding(.vertical, 24)
+        .frame(width: 410)
     }
     
     private var appVersion: String {
@@ -106,14 +130,20 @@ private struct AboutRow: View {
     let value: String
     
     var body: some View {
-        HStack {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
             Text(label)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
-            Spacer()
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: true, vertical: false)
+
+            Spacer(minLength: 12)
+
             Text(value)
                 .font(.subheadline)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -131,7 +161,7 @@ struct AboutOverlayView: View {
             VStack {
                 ZStack(alignment: .topTrailing) {
                     AboutView()
-                        .frame(maxWidth: 380)
+                        .frame(maxWidth: 410)
                         .background(
                             RoundedRectangle(cornerRadius: 24, style: .continuous)
                                 .fill(Color(NSColor.windowBackgroundColor))
