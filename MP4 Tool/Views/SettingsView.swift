@@ -270,6 +270,7 @@ struct SettingsView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .nativePresetManagementBar()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             clearInvalidPresetSelection()
@@ -339,9 +340,6 @@ struct SettingsView: View {
                 }
             }
             .padding(.vertical, 4)
-        } label: {
-            Label("Preset Management", systemImage: "slider.horizontal.3")
-                .font(.subheadline.weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -735,6 +733,30 @@ private struct PostProcessScriptSettingsSection: View {
             return FileManager.default.isExecutableFile(atPath: path)
                 ? (path, [])
                 : ("/bin/zsh", [path])
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func nativePresetManagementBar() -> some View {
+        if #available(macOS 26.0, *) {
+            safeAreaBar(edge: .top, spacing: 0) {
+                Label("Preset Management", systemImage: "slider.horizontal.3")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+            }
+            .scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            VStack(spacing: 0) {
+                Label("Preset Management", systemImage: "slider.horizontal.3")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                self
+            }
         }
     }
 }

@@ -667,7 +667,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, alignment: .top)
     }
-    
+
     var body: some View {
         mainContent
             .overlay(alignment: .bottomTrailing) {
@@ -1119,13 +1119,17 @@ private struct CompactProcessingSetupView: View {
                         .frame(width: 220)
                         .disabled(isProcessing)
 
-                        Button("Customize Presets") {
+                        Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 isSettingsExpanded.toggle()
                             }
+                        } label: {
+                            Label("Manage…", systemImage: "sidebar.left")
                         }
+                        .buttonStyle(.borderless)
                         .controlSize(.small)
                         .disabled(isProcessing)
+                        .help("Open Preset Management in the sidebar")
 
                         Spacer(minLength: 0)
                     }
@@ -1460,55 +1464,75 @@ private struct LogInspectorView: View {
     let clearLog: () -> Void
     @State private var isAtBottom = true
     @State private var scrollToEndRequest = 0
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Label("Log", systemImage: "terminal")
-                    .font(.subheadline.weight(.semibold))
 
-                Spacer()
+    private var inspectorHeader: some View {
+        HStack(spacing: 8) {
+            Label("Log", systemImage: "terminal")
+                .font(.subheadline.weight(.semibold))
 
-                ControlGroup {
-                    Button(action: copyLog) {
-                        Label("Copy Log", systemImage: "doc.on.doc")
-                    }
-                    .help("Copy log to clipboard")
+            Spacer()
 
-                    Button(role: .destructive, action: clearLog) {
-                        Label("Clear Log", systemImage: "trash")
-                    }
-                    .help("Clear log")
+            ControlGroup {
+                Button(action: copyLog) {
+                    Label("Copy Log", systemImage: "doc.on.doc")
                 }
-                .labelStyle(.iconOnly)
-                .controlSize(.small)
-                .disabled(logText.isEmpty)
-            }
-            .padding(10)
+                .help("Copy log to clipboard")
 
-            Group {
-                if logText.isEmpty {
-                    ContentUnavailableView(
-                        "No Log Output",
-                        systemImage: "terminal",
-                        description: Text("Processing details will appear here.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    LogView(
-                        logText: logText,
-                        isAtBottom: $isAtBottom,
-                        scrollToEndRequest: scrollToEndRequest
-                    )
+                Button(role: .destructive, action: clearLog) {
+                    Label("Clear Log", systemImage: "trash")
                 }
+                .help("Clear log")
             }
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.secondary.opacity(0.06))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .padding(10)
+            .labelStyle(.iconOnly)
+            .controlSize(.small)
+            .disabled(logText.isEmpty)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var logContent: some View {
+        if logText.isEmpty {
+            ContentUnavailableView(
+                "No Log Output",
+                systemImage: "terminal",
+                description: Text("Processing details will appear here.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if #available(macOS 15.0, *) {
+            NativeLogView(
+                logText: logText,
+                isAtBottom: $isAtBottom,
+                scrollToEndRequest: scrollToEndRequest
+            )
+        } else {
+            LegacyLogView(
+                logText: logText,
+                isAtBottom: $isAtBottom,
+                scrollToEndRequest: scrollToEndRequest
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var inspectorContent: some View {
+        if #available(macOS 26.0, *) {
+            logContent
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    inspectorHeader
+                }
+                .scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            VStack(spacing: 0) {
+                inspectorHeader
+                logContent
+            }
+        }
+    }
+
+    var body: some View {
+        inspectorContent
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottomTrailing) {
             if !logText.isEmpty && !isAtBottom {
@@ -1590,8 +1614,132 @@ struct ExpandedSettingsPanel: View {
     }
 }
 
-// High-performance log view using NSTextView
-struct LogView: NSViewRepresentable {
+@available(macOS 15.0, *)
+private struct NativeLogView: View {
+    let logText: String
+    @Binding var isAtBottom: Bool
+    let scrollToEndRequest: Int
+
+    private static let bottomID = "log-bottom"
+
+    private var lines: [String] {
+        logText.components(separatedBy: "\n")
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(lines.indices, id: \.self) { index in
+                        let line = lines[index]
+                        Text(line.isEmpty ? " " : line)
+                            .font(.system(
+                                size: 11,
+                                weight: isEmphasizedLine(line) ? .semibold : .regular,
+                                design: .monospaced
+                            ))
+                            .foregroundStyle(color(for: line))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.bottomID)
+                }
+                .padding(12)
+                .textSelection(.enabled)
+            }
+            .onScrollGeometryChange(
+                for: Bool.self,
+                of: { geometry in
+                    geometry.contentSize.height <= geometry.containerSize.height + 1
+                        || geometry.visibleRect.maxY >= geometry.contentSize.height - 12
+                },
+                action: { _, newValue in
+                    guard isAtBottom != newValue else { return }
+                    isAtBottom = newValue
+                }
+            )
+            .onAppear {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                }
+            }
+            .onChange(of: logText) { _, _ in
+                guard isAtBottom else { return }
+                DispatchQueue.main.async {
+                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                }
+            }
+            .onChange(of: scrollToEndRequest) { _, _ in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    private func color(for line: String) -> Color {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let lowercase = trimmed.lowercased()
+
+        if isErrorLine(trimmed, lowercase: lowercase) {
+            return .red
+        }
+        if isWarningLine(trimmed, lowercase: lowercase) {
+            return .orange
+        }
+        if isSuccessLine(trimmed, lowercase: lowercase) {
+            return .green
+        }
+        if isDetailLine(trimmed) {
+            return .secondary
+        }
+        return .primary
+    }
+
+    private func isEmphasizedLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.hasPrefix("══") || trimmed.hasPrefix("━━")
+    }
+
+    private func isErrorLine(_ line: String, lowercase: String) -> Bool {
+        line.hasPrefix("❌")
+            || line.hasPrefix("[X]")
+            || line.contains("􀁡")
+            || lowercase.hasPrefix("failed:")
+            || lowercase.hasPrefix("reason:")
+            || (lowercase.contains(" failed") && !lowercase.contains("0 failed"))
+            || lowercase.contains("validation failed")
+    }
+
+    private func isWarningLine(_ line: String, lowercase: String) -> Bool {
+        line.hasPrefix("⚠")
+            || line.hasPrefix("[!]")
+            || lowercase.hasPrefix("warning:")
+            || lowercase.hasPrefix("skipped ")
+    }
+
+    private func isSuccessLine(_ line: String, lowercase: String) -> Bool {
+        line.hasPrefix("✅")
+            || line.hasPrefix("✓")
+            || lowercase.hasPrefix("success:")
+            || lowercase.hasPrefix("validated:")
+    }
+
+    private func isDetailLine(_ line: String) -> Bool {
+        let prefixes = [
+            "Started:", "Finished:", "Start time:", "End time:",
+            "Input:", "Output:", "FFmpeg Path:", "FFprobe Path:",
+            "Source Duration:", "Source Video:", "Selected Audio:",
+            "Selected Subtitles:"
+        ]
+        return prefixes.contains { line.hasPrefix($0) }
+    }
+}
+
+// Compatibility fallback for macOS 14, before SwiftUI exposed scroll geometry.
+private struct LegacyLogView: NSViewRepresentable {
     let logText: String
     @Binding var isAtBottom: Bool
     let scrollToEndRequest: Int
@@ -1794,7 +1942,7 @@ struct LogView: NSViewRepresentable {
 
         private func publishScrollPosition() {
             guard let scrollView else { return }
-            let newValue = LogView.isScrolledToBottom(scrollView)
+            let newValue = LegacyLogView.isScrolledToBottom(scrollView)
             guard isAtBottom.wrappedValue != newValue else { return }
             isAtBottom.wrappedValue = newValue
         }
