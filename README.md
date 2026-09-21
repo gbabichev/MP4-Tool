@@ -159,6 +159,61 @@ Run History. Captured output is bounded so a noisy script cannot grow memory or
 the persistent log without limit. Immediate Stop also terminates the active
 post-process script.
 
+## Command Line Tool
+
+Install `mp4toolctl` from **MP4 Tool > Install Command Line Tool…**. MP4 Tool
+must be open in the same macOS user session because the command line tool
+controls the app's queue, presets, and processing engine rather than maintaining
+a separate encoder configuration.
+
+List and select the same presets shown in the app:
+
+```bash
+mp4toolctl presets
+mp4toolctl use "Default"
+```
+
+Queue files or folders, then start them with the current app settings:
+
+```bash
+mp4toolctl add "/path/to/movie.mkv"
+mp4toolctl add "/path/to/folder"
+mp4toolctl start
+```
+
+For a self-contained run, supply a preset and output folder. Omit either option
+to keep its current value in the app:
+
+```bash
+mp4toolctl run --preset "Default" --output "/path/to/output" "/path/to/input"
+```
+
+Inspect and follow processing:
+
+```bash
+mp4toolctl queue
+mp4toolctl status
+mp4toolctl status --watch
+mp4toolctl wait
+```
+
+`wait` exits with a failure status when the completed run needs attention, which
+makes it suitable for shell scripts. Add `--json` to any command for structured
+output; `status --watch --json` emits one JSON object whenever status changes.
+
+Stop immediately, stop safely after the active file, or cancel a pending safe
+stop:
+
+```bash
+mp4toolctl stop
+mp4toolctl stop --after-current
+mp4toolctl resume
+```
+
+Use `mp4toolctl clear` to empty the queue while it is idle. Existing commands
+from earlier releases, including `add --start`, remain supported. Run
+`mp4toolctl help` for the complete command summary.
+
 ## 🖥️ Install & Minimum Requirements
 
 - macOS 14.0 or later
@@ -204,6 +259,7 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 - Added persistent Run History with runtime tracking, drill-down diagnostics, recorded FFmpeg commands, multi-selection, and deletion.
 - Added reusable encoding and remux presets.
 - Added Smart processing, which chooses remux or H.265 encoding per file using a customizable runtime-adjusted storage target (25 MB per minute by default) and compatibility fallback.
+- Expanded `mp4toolctl` with shared preset selection, one-command runs, output-folder selection, queue inspection, detailed progress, watch and JSON output, completion waiting, and graceful stop/resume controls.
 
 #### Processing improvements
 

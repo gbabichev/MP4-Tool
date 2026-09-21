@@ -67,6 +67,8 @@ struct ContentView: View {
     @AppStorage("mainProcessingSetupCollapsed") private var isProcessingSetupCollapsed = false
     @AppStorage("mainQueueCollapsed") private var isQueueCollapsed = false
     @AppStorage("mainProgressCollapsed") private var isProgressCollapsed = false
+    @AppStorage("processingPresets") private var cliEncodedPresets = ""
+    @AppStorage("selectedProcessingPresetID") private var cliSelectedPresetIDRawValue = ""
     @State private var isShowingLogCopyConfirmation = false
     @State private var logCopyConfirmationTask: Task<Void, Never>?
     @State private var isLogExpanded = false
@@ -324,17 +326,35 @@ struct ContentView: View {
                 addFiles: { paths, shouldStart in
                     addFilesFromCLI(paths: paths, shouldStart: shouldStart)
                 },
+                run: { paths, preset, outputFolder in
+                    runFromCLI(paths: paths, presetName: preset, outputFolder: outputFolder)
+                },
                 startProcessing: {
                     startProcessingFromCLI()
                 },
                 stopProcessing: {
                     stopProcessingFromCLI()
                 },
+                stopAfterCurrentFile: {
+                    stopAfterCurrentFileFromCLI()
+                },
+                resumeProcessing: {
+                    resumeProcessingFromCLI()
+                },
                 clearQueue: {
                     clearQueueFromCLI()
                 },
                 status: {
                     cliStatusResponse()
+                },
+                presets: {
+                    cliPresetsResponse()
+                },
+                usePreset: { name in
+                    usePresetFromCLI(name: name)
+                },
+                queue: {
+                    cliQueueResponse()
                 }
             )
         )
@@ -362,11 +382,9 @@ struct ContentView: View {
         if shouldStart {
             let startResponse = startProcessingFromCLI()
             messageParts.append(startResponse.message)
-            return MP4ToolCLIResponse(
-                success: startResponse.success,
-                message: messageParts.joined(separator: " "),
-                status: currentCLIStatus()
-            )
+            return startResponse.success
+                ? .success(messageParts.joined(separator: " "), status: currentCLIStatus())
+                : .failure(messageParts.joined(separator: " "), status: currentCLIStatus())
         }
 
         return .success(messageParts.joined(separator: " "), status: currentCLIStatus())
@@ -478,6 +496,36 @@ struct ContentView: View {
         return .success("Start requested.", status: currentCLIStatus())
     }
 
+    private func runFromCLI(
+        paths: [String],
+        presetName: String?,
+        outputFolder: String?
+    ) -> MP4ToolCLIResponse {
+        guard !viewModel.processor.isProcessing else {
+            return .failure("MP4 Tool is already processing.", status: currentCLIStatus())
+        }
+
+        if let presetName {
+            let response = usePresetFromCLI(name: presetName)
+            guard response.success else { return response }
+        }
+
+        if let outputFolder {
+            guard let outputURL = absoluteCLIURL(from: outputFolder) else {
+                return .failure("Output folder must be an absolute path.", status: currentCLIStatus())
+            }
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: outputURL.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                return .failure("Output folder does not exist: \(outputURL.path)", status: currentCLIStatus())
+            }
+            viewModel.setOutputFolder(path: outputURL.path)
+            lastOutputFolderPath = outputURL.path
+        }
+
+        return addFilesFromCLI(paths: paths, shouldStart: true)
+    }
+
     private func stopProcessingFromCLI() -> MP4ToolCLIResponse {
         guard viewModel.processor.isProcessing else {
             return .success("MP4 Tool is not currently processing.", status: currentCLIStatus())
@@ -485,6 +533,28 @@ struct ContentView: View {
 
         viewModel.processor.cancelScan()
         return .success("Stop requested.", status: currentCLIStatus())
+    }
+
+    private func stopAfterCurrentFileFromCLI() -> MP4ToolCLIResponse {
+        guard viewModel.processor.isProcessing else {
+            return .failure("MP4 Tool is not currently processing.", status: currentCLIStatus())
+        }
+        if viewModel.processor.stopAfterCurrentFileRequested {
+            return .success("The batch is already set to stop after the current file.", status: currentCLIStatus())
+        }
+        viewModel.processor.requestStopAfterCurrentFile()
+        return .success("The batch will stop after the current file.", status: currentCLIStatus())
+    }
+
+    private func resumeProcessingFromCLI() -> MP4ToolCLIResponse {
+        guard viewModel.processor.isProcessing else {
+            return .failure("MP4 Tool is not currently processing.", status: currentCLIStatus())
+        }
+        guard viewModel.processor.stopAfterCurrentFileRequested else {
+            return .success("The batch is already continuing normally.", status: currentCLIStatus())
+        }
+        viewModel.processor.cancelStopAfterCurrentFile()
+        return .success("Stop-after-current canceled; the batch will continue.", status: currentCLIStatus())
     }
 
     private func clearQueueFromCLI() -> MP4ToolCLIResponse {
@@ -524,8 +594,116 @@ struct ContentView: View {
         return .success(parts.joined(separator: "\n"), status: status)
     }
 
+    private var cliUserPresets: [ProcessingPreset] {
+        guard let data = cliEncodedPresets.data(using: .utf8),
+              let presets = try? JSONDecoder().decode([ProcessingPreset].self, from: data) else {
+            return []
+        }
+        return presets.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private var cliPresets: [ProcessingPreset] {
+        ProcessingPreset.builtInPresets + cliUserPresets
+    }
+
+    private func cliPresetsResponse() -> MP4ToolCLIResponse {
+        let selectedID = UUID(uuidString: cliSelectedPresetIDRawValue)
+        let presets = cliPresets.map { preset in
+            MP4ToolCLIPreset(
+                name: preset.name,
+                isBuiltIn: ProcessingPreset.builtInPresets.contains { $0.id == preset.id },
+                isSelected: preset.id == selectedID
+            )
+        }
+        let message = presets.map {
+            "\($0.isSelected ? "*" : " ") \($0.name)\($0.isBuiltIn ? " (Built-in)" : "")"
+        }.joined(separator: "\n")
+        return .success(message.isEmpty ? "No presets are available." : message, status: currentCLIStatus(), presets: presets)
+    }
+
+    private func usePresetFromCLI(name: String) -> MP4ToolCLIResponse {
+        guard !viewModel.processor.isProcessing else {
+            return .failure("Cannot change presets while processing.", status: currentCLIStatus())
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let preset = cliPresets.first(where: {
+            $0.name.compare(trimmedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }) else {
+            return .failure("Preset not found: \(name)", status: currentCLIStatus())
+        }
+
+        applyPresetFromCLI(preset)
+        cliSelectedPresetIDRawValue = preset.id.uuidString
+        return .success("Using preset: \(preset.name)", status: currentCLIStatus())
+    }
+
+    private func applyPresetFromCLI(_ preset: ProcessingPreset) {
+        selectedModeRaw = preset.mode.rawValue
+        smartRemuxMegabytesPerMinute = min(max(
+            preset.smartRemuxMegabytesPerMinute ?? ProcessingMode.defaultSmartRemuxMegabytesPerMinute,
+            5
+        ), 100)
+        crfValue = min(max(preset.crfValue, 0), 50)
+        selectedResolutionRaw = preset.resolution.rawValue
+        selectedPresetRaw = preset.encoderPreset.rawValue
+        encodeVideo = preset.encodeVideo
+        encodeAudio = preset.encodeAudio
+        createSubfolders = preset.createSubfolders
+        automaticRename = preset.automaticRename
+        deleteOriginal = preset.deleteOriginal
+        keepEnglishAudioOnly = preset.keepEnglishAudioOnly
+        keepAllEnglishAudioTracks = preset.keepAllEnglishAudioTracks ?? false
+        keepEnglishSubtitlesOnly = preset.keepEnglishSubtitlesOnly
+        keepAllEnglishSubtitleTracks = preset.keepAllEnglishSubtitleTracks ?? false
+        postProcessScriptPath = preset.postProcessScriptPath
+        postProcessScriptRunTimingRaw = preset.postProcessScriptRunTiming.rawValue
+        postProcessScriptFailurePolicyRaw = preset.postProcessScriptFailurePolicy.rawValue
+        postProcessScriptTimeoutMinutes = preset.resolvedPostProcessScriptTimeoutMinutes
+    }
+
+    private func cliQueueResponse() -> MP4ToolCLIResponse {
+        let items = viewModel.processor.videoFiles.enumerated().map { offset, file in
+            MP4ToolCLIQueueItem(
+                index: offset + 1,
+                fileName: file.fileName,
+                filePath: file.filePath,
+                status: cliStatusName(file.status)
+            )
+        }
+        let message = items.isEmpty
+            ? "Queue is empty."
+            : items.map { "\($0.index). [\($0.status)] \($0.filePath)" }.joined(separator: "\n")
+        return .success(message, status: currentCLIStatus(), queue: items)
+    }
+
+    private func cliStatusName(_ status: ProcessingStatus) -> String {
+        switch status {
+        case .pending: return "pending"
+        case .processing: return "processing"
+        case .completed: return "completed"
+        case .skipped: return "skipped"
+        case .failed: return "failed"
+        }
+    }
+
     private func currentCLIStatus() -> MP4ToolCLIStatus {
         let eta = viewModel.processor.processingETASnapshot()
+        let files = viewModel.processor.videoFiles
+        let completedCount = files.filter { $0.status == .completed }.count
+        let skippedCount = files.filter { $0.status == .skipped }.count
+        let failedCount = files.filter { $0.status == .failed }.count
+        let pendingCount = files.filter { $0.status == .pending }.count
+        let finishedCount = completedCount + skippedCount + failedCount
+        let overallProgress: Double
+        if viewModel.processor.isProcessing, !files.isEmpty {
+            overallProgress = min(
+                (Double(finishedCount) + viewModel.processor.currentFileProgressFraction) / Double(files.count),
+                1
+            )
+        } else {
+            overallProgress = files.isEmpty ? 0 : Double(finishedCount) / Double(files.count)
+        }
+        let selectedID = UUID(uuidString: cliSelectedPresetIDRawValue)
         return MP4ToolCLIStatus(
             isProcessing: viewModel.processor.isProcessing,
             queueCount: viewModel.processor.videoFiles.count,
@@ -536,7 +714,17 @@ struct ContentView: View {
             totalETASeconds: eta.totalSeconds,
             outputFolder: viewModel.outputFolderPath,
             ffmpegAvailable: viewModel.processor.ffmpegAvailable,
-            processingHadError: viewModel.processor.processingHadError
+            processingHadError: viewModel.processor.processingHadError,
+            selectedPreset: cliPresets.first(where: { $0.id == selectedID })?.name,
+            activeMode: (viewModel.processor.activeItemMode ?? viewModel.processor.activeMode)?.description,
+            currentFileProgress: viewModel.processor.currentFileProgressFraction,
+            overallProgress: overallProgress,
+            elapsedSeconds: max(Int(viewModel.processor.elapsedTime), 0),
+            pendingCount: pendingCount,
+            completedCount: completedCount,
+            skippedCount: skippedCount,
+            failedCount: failedCount,
+            stopAfterCurrentFileRequested: viewModel.processor.stopAfterCurrentFileRequested
         )
     }
 

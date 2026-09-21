@@ -23,7 +23,7 @@ enum CommandLineToolInstaller {
         }
 
         var message: String {
-            "You can now run `mp4toolctl status` or `mp4toolctl add --start file.mkv` from Terminal.\n\nInstalled at \(installedURL.path)."
+            "You can now run `mp4toolctl help`, `mp4toolctl presets`, or `mp4toolctl run --preset \"Default\" --output /path/to/output file.mkv` from Terminal.\n\nInstalled at \(installedURL.path)."
         }
 
         private var installedURL: URL {

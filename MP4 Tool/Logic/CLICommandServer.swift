@@ -10,6 +10,21 @@ nonisolated struct MP4ToolCLICommand: Codable, Sendable {
     let command: String
     let paths: [String]?
     let start: Bool?
+    let preset: String?
+    let outputFolder: String?
+}
+
+nonisolated struct MP4ToolCLIPreset: Codable, Sendable {
+    let name: String
+    let isBuiltIn: Bool
+    let isSelected: Bool
+}
+
+nonisolated struct MP4ToolCLIQueueItem: Codable, Sendable {
+    let index: Int
+    let fileName: String
+    let filePath: String
+    let status: String
 }
 
 nonisolated struct MP4ToolCLIStatus: Codable, Sendable {
@@ -23,29 +38,64 @@ nonisolated struct MP4ToolCLIStatus: Codable, Sendable {
     let outputFolder: String
     let ffmpegAvailable: Bool
     let processingHadError: Bool
+    let selectedPreset: String?
+    let activeMode: String?
+    let currentFileProgress: Double
+    let overallProgress: Double
+    let elapsedSeconds: Int
+    let pendingCount: Int
+    let completedCount: Int
+    let skippedCount: Int
+    let failedCount: Int
+    let stopAfterCurrentFileRequested: Bool
 }
 
 nonisolated struct MP4ToolCLIResponse: Codable, Sendable {
     let success: Bool
     let message: String
     let status: MP4ToolCLIStatus?
+    let presets: [MP4ToolCLIPreset]?
+    let queue: [MP4ToolCLIQueueItem]?
 
-    static func success(_ message: String, status: MP4ToolCLIStatus? = nil) -> MP4ToolCLIResponse {
-        MP4ToolCLIResponse(success: true, message: message, status: status)
+    static func success(
+        _ message: String,
+        status: MP4ToolCLIStatus? = nil,
+        presets: [MP4ToolCLIPreset]? = nil,
+        queue: [MP4ToolCLIQueueItem]? = nil
+    ) -> MP4ToolCLIResponse {
+        MP4ToolCLIResponse(
+            success: true,
+            message: message,
+            status: status,
+            presets: presets,
+            queue: queue
+        )
     }
 
     static func failure(_ message: String, status: MP4ToolCLIStatus? = nil) -> MP4ToolCLIResponse {
-        MP4ToolCLIResponse(success: false, message: message, status: status)
+        MP4ToolCLIResponse(
+            success: false,
+            message: message,
+            status: status,
+            presets: nil,
+            queue: nil
+        )
     }
 }
 
 @MainActor
 struct MP4ToolCLIHandler {
     let addFiles: ([String], Bool) -> MP4ToolCLIResponse
+    let run: ([String], String?, String?) -> MP4ToolCLIResponse
     let startProcessing: () -> MP4ToolCLIResponse
     let stopProcessing: () -> MP4ToolCLIResponse
+    let stopAfterCurrentFile: () -> MP4ToolCLIResponse
+    let resumeProcessing: () -> MP4ToolCLIResponse
     let clearQueue: () -> MP4ToolCLIResponse
     let status: () -> MP4ToolCLIResponse
+    let presets: () -> MP4ToolCLIResponse
+    let usePreset: (String) -> MP4ToolCLIResponse
+    let queue: () -> MP4ToolCLIResponse
 }
 
 @MainActor
@@ -69,14 +119,29 @@ final class CLICommandCenter {
         case "add":
             let paths = command.paths ?? []
             return handler.addFiles(paths, command.start ?? false)
+        case "run":
+            return handler.run(command.paths ?? [], command.preset, command.outputFolder)
         case "start":
             return handler.startProcessing()
         case "stop":
             return handler.stopProcessing()
+        case "stopAfterCurrent":
+            return handler.stopAfterCurrentFile()
+        case "resume":
+            return handler.resumeProcessing()
         case "clear":
             return handler.clearQueue()
         case "status":
             return handler.status()
+        case "presets":
+            return handler.presets()
+        case "use":
+            guard let preset = command.preset else {
+                return .failure("A preset name is required.")
+            }
+            return handler.usePreset(preset)
+        case "queue":
+            return handler.queue()
         default:
             return .failure("Unknown command: \(command.command)")
         }
