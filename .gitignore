@@ -9,10 +9,8 @@ VideoSamples/
 .derivedData/
 .DS_Store
 .home/
-
-# Resources
-Resources/
-MP4 Tool/Resources/
+__pycache__/
+*.pyc
 
 ## User settings
 xcuserdata/

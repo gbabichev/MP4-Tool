@@ -1343,14 +1343,13 @@ class VideoProcessor: ObservableObject {
             }
 
             let videoFormats = ["mkv", "mp4", "avi"]
-            let wordsToIgnore = ["sample", "SAMPLE", "Sample", ".DS_Store"]
 
             do {
                 let allFiles = try FileManager.default.contentsOfDirectory(atPath: inputPath)
                 let files = allFiles
                     .filter { file in
                         let ext = (file as NSString).pathExtension.lowercased()
-                        return videoFormats.contains(ext) && !wordsToIgnore.contains { file.contains($0) }
+                        return videoFormats.contains(ext)
                     }
                     .sorted()
 
@@ -4284,7 +4283,6 @@ class VideoProcessor: ObservableObject {
         }
 
         let videoFormats = ["mkv", "mp4", "avi", "mov", "m4v"]
-        let wordsToIgnore = ["sample", "SAMPLE", "Sample"]
 
         // Perform recursive scan in background
         let videoFileInfos: [VideoFileInfo] = await withCheckedContinuation { continuation in
@@ -4322,16 +4320,10 @@ class VideoProcessor: ObservableObject {
                         }
                     }
 
-                    let fileName = fileURL.lastPathComponent
                     let ext = fileURL.pathExtension.lowercased()
 
                     // Check if it's a supported video file
                     guard videoFormats.contains(ext) else { continue }
-
-                    // Skip files with ignored words
-                    if wordsToIgnore.contains(where: { fileName.contains($0) }) {
-                        continue
-                    }
 
                     // Get file size
                     if let attributes = try? fileManager.attributesOfItem(atPath: fileURL.path),
@@ -4339,7 +4331,7 @@ class VideoProcessor: ObservableObject {
                         let sizeMB = Int(fileSize / (1024 * 1024))
 
                         files.append(VideoFileInfo(
-                            fileName: fileName,
+                            fileName: fileURL.lastPathComponent,
                             filePath: fileURL.path,
                             fileExtension: ext.uppercased(),
                             fileSizeMB: sizeMB
