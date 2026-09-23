@@ -135,28 +135,24 @@ struct RunHistoryView: View {
                 }
                 .disabled(selection.count != 1)
 
-                Menu {
-                    Button("Clear History…", role: .destructive) {
-                        showingClearConfirmation = true
-                    }
-                    .disabled(history.entries.isEmpty)
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
-                }
-
                 Button(role: .destructive) {
-                    delete(selection)
+                    if selection.isEmpty {
+                        showingClearConfirmation = true
+                    } else {
+                        delete(selection)
+                    }
                 } label: {
-                    Label("Delete Selected", systemImage: "trash")
+                    Label(selection.isEmpty ? "Delete All…" : "Delete Selected", systemImage: "trash")
                 }
-                .disabled(selection.isEmpty)
+                .disabled(history.entries.isEmpty)
+                .help(selection.isEmpty ? "Delete all history entries" : "Delete selected history entries")
             }
         }
         .confirmationDialog(
-            "Clear all processing history?",
+            "Delete all processing history?",
             isPresented: $showingClearConfirmation
         ) {
-            Button("Clear History", role: .destructive) {
+            Button("Delete All", role: .destructive) {
                 history.clear()
             }
             Button("Cancel", role: .cancel) {}
