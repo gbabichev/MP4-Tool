@@ -18,46 +18,60 @@
     <a href="docs/App3.png"><img src="docs/App3.png" width="35%"></a>
 </p>
 
-MP4 Tool is a simple ffmpeg frontend that lets you convert or remux video files into MP4 containers with a streamlined macOS interface.
+MP4 Tool is a native macOS media-processing app for creating clean,
+Apple-compatible MP4 files. It can automatically choose between remuxing and
+H.265 encoding, validate every output, inspect or repair existing libraries,
+and expose the same processing queue through its command line companion.
 
-<b>You must have ffmpeg & ffprobe in your $PATH</b>, or compile the app with ffmpeg & ffprobe in the Resources directory.
-<a href="docs/build-ffmpeg-arm64.sh">FFmpeg ARM64 Build script is in the repo</a>
+<b>FFmpeg and FFprobe are required.</b> MP4 Tool can use a supported system
+installation, or the app can be compiled with both binaries in its Resources
+directory. An <a href="docs/build-ffmpeg-arm64.sh">FFmpeg ARM64 build script</a>
+is included in the repository.
 
 ## Features
-- Batch Processing.
-- H264 & H265 Encoding Support.
-- Remux support.
-- Customization options to strip out non-english audio & subtitle tracks.
-- System notification support.
-- Thorough logging.
-- Post-processing script support.
-- CLI tool for managing the app queue from Terminal or SSH.
-- Tool for recursively scanning a directory for non-MP4 files.
-- Tool for validating that MP4 files are valid & playable.
+
+- Smart processing that automatically chooses remux or H.265 encoding using each file's size and runtime.
+- H.264, H.265, and lossless remux workflows with reusable built-in and custom presets.
+- Batch queues with live progress, ETA, frame previews, graceful stopping, and validated outputs.
+- Intelligent English audio and subtitle selection, including automatic sibling SRT discovery.
+- Automatic movie and TV naming, optional matching subfolders, and safe original-file replacement.
+- Inspect & Repair checks for Apple compatibility, metadata, timing, subtitles, audio layouts, and clearly degraded audio.
+- Track editing, video splitting, non-MP4 scanning, persistent Run History, and rotating logs.
+- Configurable post-process scripts with validation-aware failure handling.
+- `mp4toolctl` for controlling the app's queue, presets, processing, and status from Terminal or SSH.
+- System notifications, configurable staging storage, and protection against system sleep during long runs.
 
 ## Built in additional tools
 
+### Inspect & Repair
+
+Recursively scan MP4 files for Apple playback compatibility, unwanted metadata,
+timing offsets, subtitle coverage, audio-layout problems, and clearly degraded
+audio. Safe repairs are written to temporary files and validated before the
+original is replaced. Long scan sessions can be exported and imported later.
+
+### Track Editor
+
+Inspect the video, audio, and subtitle tracks in an MP4. Add external audio or
+SRT files, edit track language and accessibility metadata, remove unwanted
+tracks, and create a validated replacement without re-encoding compatible media.
+
 ### Video Splitter
-Some video files have multiple episodes in one file. This tool scans the video for black space, and attempts to automatically determine the split.
-- Advanced Features:
-  - Scan around half-time.
-  - Change how black the frame must be.
-  - Manually input the split time.
-  - Automatic episode naming.
 
-### Check Offset Starts
-Some videos have their first frame not at 00:00, which makes certain video players not start the video exactly at 00:00.
-If you use the Video Splitter and you don't encode, you may run into this issue. This tool punts the start as close as possible, and notifies if you have to re-encode a video.
-
-### Subtitle Merger
-Select MP4. Select SRT. Create a single file.
-Multiple languages supported.
+Find black space around episode boundaries, preview or adjust the proposed split,
+and create sequentially named files. Detection thresholds and the scan window are
+customizable.
 
 ### Scan for Non-MP4 Files
-Scans your given directory for files that are not MP4.
 
-### Validate MP4 Files
-Scans your given directory to ensure that MP4 files are in a format natively readable by Apple platforms for full compatibility.
+Recursively find common video files that are not already in MP4 containers and
+send them directly to the main processing queue.
+
+### Run History
+
+Review completed runs, encode speed, runtime, storage savings, input and output
+locations, FFmpeg commands, and post-process diagnostics. Run History also tracks
+all-time original size, current size, and total space saved.
 
 ## Tutorial Summary
 
@@ -65,24 +79,31 @@ Scans your given directory to ensure that MP4 files are in a format natively rea
 - brew install ffmpeg
 - or however else you want to do it.
 
-### 2. Select Folders
-- Use the toolbar folder buttons to pick input and output directories. (or drag and drop)
-- Keyboard shortcuts: `⌘O` for input and `⌘⇧O` for output.
+### 2. Build the Queue
 
-### 2. Choose Mode
+- Drag video files or folders into the Queue, use Add Files, or choose Open File/Open Folder from the File menu.
+- Folders are scanned recursively and pending items can be reordered.
+- Choose the output folder from Processing Setup or with `⌘⇧O`.
+
+### 3. Choose a Preset or Mode
+
+- Start with a built-in preset or save your own reusable configuration.
 - `Smart`: Measures each file's size against its runtime. Its adjustable storage target defaults to 25 MB per minute; files at or below the target are remuxed, while larger or incompatible files fall back to H.265 encoding.
-- `Encode`: Converts videos to H.265/H.264 (HEVC) for smaller files while preserving good quality.
+- `Encode`: Converts video to H.265 (HEVC) or H.264 (AVC) for broad Apple playback compatibility.
 - `Remux`: Copies existing streams without re-encoding for a fast, lossless workflow.
 - All modes save results as MP4 files.
 
-### 3. Adjust Settings
-- In Encode mode, configure the CRF quality (recommended range 18–28, where lower values produce higher quality).
-- Optional settings let you manage subfolders and control whether original files are deleted after processing.
-- Optional settings let you remove any non-english Audio tracks and Subtitles.
+### 4. Adjust Settings
 
-### 4. Start Processing
-- Click **Start Processing** or press `⌘P` to run the selected jobs.
-- Watch progress and logs in the lower section of the window.
+- Configure quality, resolution, encoder speed, automatic naming, and optional subfolders.
+- Choose whether to retain only the preferred English audio and subtitle tracks or every English track.
+- Configure notifications, frame previews, staging storage, and an optional post-process script.
+
+### 5. Process and Monitor
+
+- Click **Process** or press `⌘P` to start the queue.
+- Follow batch progress, current-file progress, ETA, previews, and storage information.
+- Open the Log inspector for detailed FFmpeg output or use Run History after completion.
 
 ## Post-Process Scripts
 
@@ -236,48 +257,118 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ### 2.0.0
 
+This is a major update focused on smarter processing, safer outputs, improved
+Apple compatibility, and a redesigned native macOS interface.
+
+#### Smart processing and presets
+
+- Added Smart Mode, which chooses between remuxing and H.265 encoding based on each file's size and runtime.
+- Smart Mode uses an adjustable storage target of 25 MB per minute by default.
+- The Default preset now uses Smart Mode.
+- Added reusable custom presets and new built-in presets for fast H.264, fast H.265, animation, space-saving 720p, and remux workflows.
+- Added modified-state indicators for the active preset and each individual setting that differs from it.
+- Improved preset reset behavior and made it easier to move between presets while editing.
+- Improved Smart Mode progress and ETA estimates by accounting for files that only require a quick remux.
+
+#### Better audio handling
+
+- Compatible AAC, AC-3, E-AC-3, and ALAC audio can now be copied without quality loss during video encoding; MP3 and other incompatible audio use the high-quality AAC fallback.
+- Improved support for mono, stereo, 5.1, 6.1, and 7.1 channel layouts.
+- MP4 Tool now prefers one complete main English audio track by default while avoiding commentary, audio-description, dubbed, and incomplete tracks.
+- Added an option to retain every English audio track.
+- Added automatic recovery for audio tracks that become truncated during encoding.
+- Added conservative low-quality audio reporting to Inspect & Repair.
+
+#### Smarter subtitle selection
+
+- MP4 Tool now selects one best English subtitle track by default.
+- Selection prefers full ordinary English subtitles, then full English SDH subtitles, and finally forced-only subtitles.
+- Cue counts and accessibility markers help identify poorly labelled subtitle tracks.
+- Embedded subtitles take priority over external files.
+- Matching sibling SRT files are automatically embedded when no usable internal subtitle exists.
+- Improved subtitle language, title, role, and default-track metadata for Apple playback.
+- Added handling for malformed or unusually long subtitle durations.
+- Long encodes now process video and audio first, then add subtitles with a fast separate remux to avoid premature FFmpeg completion.
+
+#### Inspect & Repair
+
+- Replaced several separate utilities with a unified Inspect & Repair window.
+- Added dedicated checks for Apple playback compatibility, unsupported auxiliary data tracks, audio and channel-layout problems, low-quality audio, redundant English tracks, unwanted metadata, playback timing offsets, and missing or incorrectly labelled English subtitles.
+- Added safe in-place repairs with validation before replacing the original.
+- Improved cancellation behavior, particularly when working across slower network shares.
+- Added clear result counts, filtering, labelled actions, individual removal, and Reset All across every tab.
+- Removed selection controls from subtitle findings that do not support automatic repair.
+- Added CSV session export and import, including completion state, so long scans can resume without scanning the library again.
+- Accelerated compatibility scans by performing expensive subtitle inspection only when track metadata is inconclusive.
+
+#### Track Editor
+
+- Added Track Editor for inspecting and modifying individual video, audio, and subtitle tracks.
+- Added external audio and SRT subtitles using the file picker or drag and drop.
+- Added editing for language, title, default, forced, and accessibility properties.
+- Track titles can now be explicitly cleared.
+- Improved handling of malformed subtitle timing during remuxes.
+- All edited outputs are validated before replacing their originals.
+
+#### Run History and diagnostics
+
+- Added persistent Run History with start and completion times, runtime, encode speed, original and output sizes, storage saved, processing mode, file locations, complete FFmpeg commands, and per-file details.
+- Added an all-time storage summary showing original size, current size, and total space saved.
+- History entries can be selected, inspected, and deleted.
+- Added persistent rotating processing logs.
+- Redesigned the Log inspector with wrapping, semantic colors, copy controls, and Jump to Latest.
+
+#### Command line tool
+
+- Expanded `mp4toolctl` into a controller for the same queue, presets, settings, and processing engine used by the app.
+- Added `presets` and `use` commands for listing and selecting app presets.
+- Added `run` for starting files or folders with an optional preset and output folder in one command.
+- Added `queue` and richer `status` output with progress, ETA, processing mode, result counts, active preset, output folder, and FFmpeg availability.
+- Added `status --watch` for live terminal monitoring and `--json` for automation-friendly output.
+- Added `wait`, including a failure exit status when a completed run needs attention.
+- Added `stop --after-current` and `resume` for requesting or cancelling a graceful stop.
+
+#### Post-process scripts
+
+- Reworked post-process scripts with dedicated Test and Reveal controls.
+- Scripts can run after each successful file or once after the batch finishes.
+- Added configurable failure policies and timeouts.
+- Added documented environment variables and per-file positional arguments.
+- Added JSON manifests for large end-of-batch runs, avoiding macOS process argument limits.
+- Added script exit status, runtime, output, errors, timeout state, and diagnostics to the processing log and Run History.
+- Original files are retained until required post-processing succeeds, and immediate Stop terminates an active script.
+- Removed the confusing legacy advanced-script interface.
+
+#### Processing safety and reliability
+
+- Added comprehensive output validation for stream presence, duration, readability, audio integrity, and truncated output.
+- Improved support for unusual and malformed files from the FFmpeg test suite.
+- Added safer handling for missing video or usable audio tracks.
+- Added configurable staging storage, available-space reporting, and abandoned temporary-file cleanup.
+- Added pending queue reordering and inline removal.
+- Added Stop After Current File, plus the ability to cancel that pending stop.
+- Improved immediate cancellation and FFmpeg process termination.
+- Prevented macOS from sleeping during active processing.
+- Added a quit warning while processing is active.
+- Improved output-folder availability checks.
+- Automatic naming now applies consistently to both output files and generated subfolders.
+
 #### Interface improvements
 
-- Rebuilt the main window and Inspect & Repair around native, responsive split views that adapt as sidebars and the Log inspector open, close, and resize.
-- Added live frame previews, richer progress reporting, ETA, and completion summaries.
-- Modernized the selectable Log inspector with wrapping, semantic colors, “Jump to Latest,” and a card-based layout.
-- Standardized selection, filtering, repair, and CSV export controls across tools.
-- Added Reset All and individual result removal to every Inspect & Repair category.
-- Improved file and folder selection throughout the app.
+- Rebuilt the main app and Inspect & Repair using native, responsive macOS split views.
+- Added collapsible Processing Setup, Progress, and Queue sections whose state is remembered.
+- Redesigned progress reporting with a compact layout, previews, batch progress, current-file progress, ETA, and storage information.
+- Added richer completion summaries and an Open in Finder action.
+- Standardized controls, selection behavior, stop buttons, toolbar separators, cards, and colors across tools.
+- File and folder dialogs now open as native sheets attached to their parent windows.
+- Added native safe-area bars and toolbar-edge scrolling materials to the Preset Management sidebar and Log inspector.
+- Improved layouts for smaller windows and responsive sidebars.
+- Improved Video Splitter and Track Editor descriptions and controls.
+- Refreshed the About window.
 - Added native Dock behavior for reopening the main window.
-- Improved performance for large tables and file lists.
 - Fixed completion-overlay presentation on newer macOS releases.
+- Improved performance for large queues, scans, and result tables.
 
-#### New tools and features
-
-- Added the unified Inspect & Repair tool for compatibility, metadata, timing, and subtitle checks.
-- Added Track Editor to inspect, add, remove, and edit media tracks.
-- Added Metadata Cleaner for detecting and removing unwanted attribution metadata.
-- Added subtitle auditing, including missing-subtitle and English-subtitle checks.
-- Added automatic detection and repair of redundant English audio and subtitle tracks, with suggested next steps when an issue cannot be repaired automatically.
-- Added conservative codec- and channel-aware audio-quality reporting that flags only tracks clearly degraded enough to warrant replacement, with sortable priority and recommendation fields in CSV exports.
-- Added persistent Run History with runtime tracking, drill-down diagnostics, recorded FFmpeg commands, multi-selection, and deletion.
-- Added reusable encoding and remux presets.
-- Added Smart processing, which chooses remux or H.265 encoding per file using a customizable runtime-adjusted storage target (25 MB per minute by default) and compatibility fallback.
-- Expanded `mp4toolctl` with shared preset selection, one-command runs, output-folder selection, queue inspection, detailed progress, watch and JSON output, completion waiting, and graceful stop/resume controls.
-
-#### Processing improvements
-
-- Added output validation for stream presence, duration, readability, and truncation.
-- Compatible AAC, AC-3, E-AC-3, ALAC, and MP3 audio is now copied without re-encoding during video encodes; incompatible audio uses a higher-quality, channel-aware AAC fallback.
-- Improved AAC multichannel encoding and Apple playback compatibility.
-- Encoding and remuxing now keep one preferred main English audio track by default, avoiding commentary, audio-description, and dubbed tracks; a new setting can preserve every English track when needed.
-- Encoding and remuxing now choose one complete English subtitle track by default, preferring ordinary subtitles over SDH and forced-only variants. When labels are unclear, cue counts and accessibility markers help identify the best track.
-- Accelerated compatibility scans by performing deeper subtitle-content analysis only when track metadata cannot identify a clear choice.
-- Improved subtitle titles, roles, language metadata, and default-track selection for Apple playback.
-- Added Stop After Current File and faster immediate stopping.
-- Added pending Queue reordering and inline item removal.
-- Added configurable staging storage, disk-space reporting, and abandoned-file cleanup.
-- Prevented system sleep during long-running operations.
-- Improved handling of missing audio tracks and premature FFmpeg completion.
-- Reworked post-process scripts with Test and Reveal controls, explicit timing,
-  failure policy and timeout settings, Run History diagnostics, large-batch JSON
-  manifests, and safe original-file retention until scripts succeed.
 
 ### 1.8.2
 - Fixed UI lag when adding items to the table.

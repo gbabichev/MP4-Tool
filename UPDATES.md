@@ -1,6 +1,7 @@
 # UPDATES.md
 
-This guide explains how to add Zippy-style "Check for Updates" to another macOS Swift app.
+This guide explains how to reuse MP4 Tool's "Check for Updates" implementation
+in another macOS Swift app.
 
 ## What This Uses
 
@@ -16,8 +17,8 @@ This guide explains how to add Zippy-style "Check for Updates" to another macOS 
 
 From this project, copy:
 
-- `Zippy/Logic/AppUpdateCenter.swift`
-- `Zippy/UI/UpdateAvailableOverlayView.swift` (or equivalent)
+- `MP4 Tool/Logic/AppUpdateCenter.swift`
+- `MP4 Tool/Views/UpdateAvailableOverlayView.swift`
 
 You can rename it or keep the same filename/class name.
 
@@ -34,7 +35,7 @@ Example:
 
 ```xml
 <key>UpdateCheckReleasesURL</key>
-<string>https://github.com/georgebabichev/Zippy/releases</string>
+<string>https://github.com/gbabichev/MP4-Tool/releases</string>
 ```
 
 `AppUpdateCenter` will parse `OWNER/REPO` from this URL and check tags from:
@@ -63,9 +64,9 @@ func applicationDidFinishLaunching(_ notification: Notification) {
 }
 ```
 
-Current Zippy reference:
+Current MP4 Tool reference:
 
-- `Zippy/Logic/AppTerminationDelegate.swift`
+- `MP4 Tool/MP4_ToolApp.swift`
 
 Behavior:
 
@@ -82,9 +83,9 @@ Button("Check for Updates…", systemImage: "arrow.triangle.2.circlepath.circle"
 }
 ```
 
-Current Zippy reference:
+Current MP4 Tool reference:
 
-- `Zippy/UI/AppCommands.swift`
+- `MP4 Tool/MP4_ToolApp.swift`
 
 Behavior:
 
@@ -167,9 +168,9 @@ if let lastStatusMessage = updateCenter.lastStatusMessage {
 }
 ```
 
-Current Zippy reference:
+Current MP4 Tool reference:
 
-- `Zippy/UI/AboutView.swift`
+- `MP4 Tool/Views/AboutView.swift`
 
 ## Versioning Expectations
 

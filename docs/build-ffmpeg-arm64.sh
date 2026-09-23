@@ -75,12 +75,12 @@ fi
 
 # Build FFmpeg
 echo "==================================="
-echo "Building FFmpeg (8.0)..."
+echo "Building FFmpeg (9.0.2)..."
 echo "==================================="
 
 FFMPEG_REMOTE="https://git.ffmpeg.org/ffmpeg.git"
 FFMPEG_DIR="ffmpeg"
-FFMPEG_TAG="${FFMPEG_TAG:-n8.1}"                  # expected FFmpeg tag name
+FFMPEG_TAG="${FFMPEG_TAG:-n9.0.2}"                  # expected FFmpeg tag name
 FFMPEG_BRANCH="${FFMPEG_BRANCH:-release/8.0.1}"     # fallback branch name
 FFMPEG_OID="${FFMPEG_OID:-a4044e04486d1136022498891088a90baf5b2775}" # your link's object id
 
@@ -167,12 +167,12 @@ cat > "$ENTITLEMENTS_FILE" << 'ENTITLEMENTS_EOF'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-	<true/>
-	<key>com.apple.security.cs.allow-jit</key>
-	<true/>
-	<key>com.apple.security.cs.disable-executable-page-protection</key>
-	<true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.disable-executable-page-protection</key>
+  <true/>
 </dict>
 </plist>
 ENTITLEMENTS_EOF

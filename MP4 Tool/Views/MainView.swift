@@ -648,38 +648,48 @@ struct ProcessingProgressCard: View {
                             .progressViewStyle(.linear)
                     } else {
                         VStack(spacing: 5) {
-                            HStack(spacing: 10) {
-                                Text("Overall progress")
-                                Spacer(minLength: 12)
-                                Text("\(completedCount) completed")
-                                if failedCount > 0 {
-                                    Text("• \(failedCount) failed")
-                                        .foregroundStyle(.red)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 12) {
+                                    progressSummary
+                                    Divider().frame(height: 30)
+                                    progressMetrics(
+                                        elapsed: batchElapsed,
+                                        remaining: eta.totalSeconds
+                                    )
                                 }
+                                .fixedSize(horizontal: true, vertical: false)
 
-                                Divider()
-                                    .frame(height: 30)
+                                VStack(spacing: 8) {
+                                    progressSummary
+                                    ViewThatFits(in: .horizontal) {
+                                        progressMetrics(
+                                            elapsed: batchElapsed,
+                                            remaining: eta.totalSeconds
+                                        )
+                                        .fixedSize(horizontal: true, vertical: false)
 
-                                ProcessingMetric(
-                                    icon: "film.stack",
-                                    title: "Batch",
-                                    value: "\(completedCount + failedCount) / \(processor.totalFiles)"
-                                )
-                                Divider()
-                                    .frame(height: 30)
-                                ProcessingMetric(
-                                    icon: "clock",
-                                    title: "Elapsed",
-                                    value: formattedDuration(batchElapsed)
-                                )
-                                Divider()
-                                    .frame(height: 30)
-                                ProcessingMetric(
-                                    icon: "hourglass",
-                                    title: "Remaining",
-                                    value: eta.totalSeconds.map { formattedDuration(TimeInterval($0)) }
-                                        ?? "Calculating…"
-                                )
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            progressMetric(
+                                                icon: "film.stack",
+                                                title: "Batch",
+                                                value: "\(completedCount + failedCount) / \(processor.totalFiles)"
+                                            )
+                                            progressMetric(
+                                                icon: "clock",
+                                                title: "Elapsed",
+                                                value: formattedDuration(batchElapsed)
+                                            )
+                                            progressMetric(
+                                                icon: "hourglass",
+                                                title: "Remaining",
+                                                value: eta.totalSeconds.map {
+                                                    formattedDuration(TimeInterval($0))
+                                                } ?? "Calculating…"
+                                            )
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                }
                             }
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -772,6 +782,44 @@ struct ProcessingProgressCard: View {
             )
             .shadow(color: .black.opacity(0.12), radius: 14, x: 0, y: 7)
         }
+    }
+
+    private var progressSummary: some View {
+        HStack(spacing: 8) {
+            Text("Overall progress")
+                .fontWeight(.medium)
+            Spacer(minLength: 12)
+            Text("\(completedCount) completed")
+            if failedCount > 0 {
+                Text("• \(failedCount) failed")
+                    .foregroundStyle(.red)
+            }
+        }
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func progressMetrics(elapsed: TimeInterval, remaining: Int?) -> some View {
+        HStack(spacing: 12) {
+            progressMetric(
+                icon: "film.stack",
+                title: "Batch",
+                value: "\(completedCount + failedCount) / \(processor.totalFiles)"
+            )
+            Divider().frame(height: 30)
+            progressMetric(icon: "clock", title: "Elapsed", value: formattedDuration(elapsed))
+            Divider().frame(height: 30)
+            progressMetric(
+                icon: "hourglass",
+                title: "Remaining",
+                value: remaining.map { formattedDuration(TimeInterval($0)) } ?? "Calculating…"
+            )
+        }
+    }
+
+    private func progressMetric(icon: String, title: String, value: String) -> some View {
+        ProcessingMetric(icon: icon, title: title, value: value)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
