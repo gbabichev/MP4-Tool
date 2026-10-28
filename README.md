@@ -256,6 +256,10 @@ git clone https://github.com/gbabichev/MP4-Tool.git
 
 ## 📝 Changelog
 
+### 2.0.1
+- Improved remux in certain edge cases.
+- Improved drop detection for files.
+
 ### 2.0.0
 
 This is a major update focused on smarter processing, safer outputs, improved
