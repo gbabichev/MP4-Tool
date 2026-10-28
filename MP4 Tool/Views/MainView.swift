@@ -123,10 +123,19 @@ struct MainContentView: View {
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .modifier(
-                                PendingQueueReorderModifier(
+                                PendingQueueDragModifier(
                                     file: file,
-                                    processor: viewModel.processor,
                                     draggedFileID: $draggedPendingFileID
+                                )
+                            )
+                            .contentShape(Rectangle())
+                            .onDrop(
+                                of: [.fileURL, .text],
+                                delegate: QueueRowDropDelegate(
+                                    targetFileID: file.id,
+                                    processor: viewModel.processor,
+                                    draggedFileID: $draggedPendingFileID,
+                                    onFileDrop: { handleFileDrop(providers: $0) }
                                 )
                             )
                             .contextMenu {
@@ -475,9 +484,8 @@ struct MainContentView: View {
     }
 }
 
-private struct PendingQueueReorderModifier: ViewModifier {
+private struct PendingQueueDragModifier: ViewModifier {
     let file: VideoFileInfo
-    let processor: VideoProcessor
     @Binding var draggedFileID: UUID?
 
     @ViewBuilder
@@ -488,32 +496,30 @@ private struct PendingQueueReorderModifier: ViewModifier {
                     draggedFileID = file.id
                     return NSItemProvider(object: file.id.uuidString as NSString)
                 }
-                .onDrop(
-                    of: [.text],
-                    delegate: PendingQueueDropDelegate(
-                        targetFileID: file.id,
-                        processor: processor,
-                        draggedFileID: $draggedFileID
-                    )
-                )
         } else {
             content
         }
     }
 }
 
-private struct PendingQueueDropDelegate: DropDelegate {
+private struct QueueRowDropDelegate: DropDelegate {
     let targetFileID: UUID
     let processor: VideoProcessor
     @Binding var draggedFileID: UUID?
+    let onFileDrop: ([NSItemProvider]) -> Bool
 
     func validateDrop(info: DropInfo) -> Bool {
+        if info.hasItemsConforming(to: [.fileURL]) { return true }
+        guard info.hasItemsConforming(to: [.text]) else { return false }
         guard let draggedFileID, draggedFileID != targetFileID else { return false }
         return processor.videoFiles.contains { $0.id == draggedFileID && $0.status == .pending }
             && processor.videoFiles.contains { $0.id == targetFileID && $0.status == .pending }
     }
 
     func dropEntered(info: DropInfo) {
+        // Finder also offers text representations. File URLs take precedence so
+        // an external file drag can never reorder an existing queue item.
+        guard !info.hasItemsConforming(to: [.fileURL]), validateDrop(info: info) else { return }
         guard let draggedFileID, draggedFileID != targetFileID else { return }
         withAnimation(.easeInOut(duration: 0.15)) {
             processor.movePendingFile(draggedFileID, relativeTo: targetFileID)
@@ -521,10 +527,18 @@ private struct PendingQueueDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        if info.hasItemsConforming(to: [.fileURL]) {
+            return DropProposal(operation: .copy)
+        }
+        return DropProposal(operation: validateDrop(info: info) ? .move : .forbidden)
     }
 
     func performDrop(info: DropInfo) -> Bool {
+        if info.hasItemsConforming(to: [.fileURL]) {
+            draggedFileID = nil
+            return onFileDrop(info.itemProviders(for: [.fileURL]))
+        }
+        guard validateDrop(info: info) else { return false }
         draggedFileID = nil
         return true
     }
