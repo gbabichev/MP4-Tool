@@ -1,5 +1,14 @@
 # MP4 Tool manual video test suite
 
+For converter recovery regression tests on macOS, run
+`python3 Resources/tests/manual/test_remux_recovery.py` from the repository root
+with Xcode and FFmpeg installed. The script generates temporary media, compiles
+the converter with an isolated test entry point, and checks short subtitle
+progress, remux/validation failures, bounded H.265 fallback, cancellation,
+unwritable/full-disk diagnostics, and incompatible codecs. Add
+`--samples /path/to/folder` to also remux and validate existing MKV samples without
+changing them.
+
 This suite includes short fixture clips in `tests/manual/videos/`; the original `VideoSamples/` folder is **not required**. It creates isolated input and output folders for each run, so MP4 Tool can safely process copies without changing the bundled fixtures. It is a **manual regression checklist**, not a guarantee that every downloaded edge-case sample is valid.
 
 ## Run a profile

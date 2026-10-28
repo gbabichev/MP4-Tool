@@ -33,6 +33,7 @@ is included in the repository.
 - Smart processing that automatically chooses remux or H.265 encoding using each file's size and runtime.
 - H.264, H.265, and lossless remux workflows with reusable built-in and custom presets.
 - Batch queues with live progress, ETA, frame previews, graceful stopping, and validated outputs.
+- Failed or incompatible remuxes automatically fall back to one H.265 MP4 encode attempt. Short subtitle progress timestamps are checked against the completed media; failed validation preserves the original.
 - Intelligent English audio and subtitle selection, including automatic sibling SRT discovery.
 - Automatic movie and TV naming, optional matching subfolders, and safe original-file replacement.
 - Inspect & Repair checks for Apple compatibility, metadata, timing, subtitles, audio layouts, and clearly degraded audio.

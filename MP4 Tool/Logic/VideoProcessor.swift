@@ -1668,8 +1668,8 @@ class VideoProcessor: ObservableObject {
                             : effectiveMode.description,
                         sourceDurationSeconds: sourceDuration,
                         encodingRuntimeSeconds: effectiveMode == .remux ? nil : encodingRuntime,
-                        encodeVideo: effectiveMode == .remux ? false : (mode == .smart ? true : encodeVideo),
-                        encodeAudio: effectiveMode == .remux ? false : (mode == .smart ? true : encodeAudio),
+                        encodeVideo: effectiveMode == .remux ? false : (mode == .smart || mode == .remux ? true : encodeVideo),
+                        encodeAudio: effectiveMode == .remux ? false : (mode == .smart || mode == .remux ? true : encodeAudio),
                         crfValue: effectiveMode == .remux ? nil : crfValue,
                         resolution: effectiveMode == .remux ? nil : resolution.description,
                         encoderPreset: effectiveMode == .remux ? nil : preset.description,
@@ -2330,6 +2330,10 @@ class VideoProcessor: ObservableObject {
         sourceDuration: TimeInterval?,
         smartPreflightMode: ProcessingMode? = nil
     ) async -> ConversionOutcome {
+        guard !shouldCancelProcessing, !Task.isCancelled else {
+            return .failed(reason: "Cancelled by user")
+        }
+
         // Probe streams
         guard let audioStreams = await probeStreams(inputFile: inputFile, selectStreams: "a"),
               let videoStreams = await probeStreams(inputFile: inputFile, selectStreams: nil),
@@ -2345,8 +2349,8 @@ class VideoProcessor: ObservableObject {
         }
         let sourceVideoDuration = streamDurationSeconds(sourceVideoStream) ?? sourceDuration
 
-        let shouldEncodeVideo = mode == .smart ? true : encodeVideo
-        let shouldEncodeAudio = mode == .smart ? true : encodeAudio
+        var shouldEncodeVideo = mode == .smart ? true : encodeVideo
+        var shouldEncodeAudio = mode == .smart ? true : encodeAudio
 
         // Determine audio stream mappings
         let audioMappings = getAudioMappings(
@@ -2445,8 +2449,10 @@ class VideoProcessor: ObservableObject {
                     audioStreams: audioStreams,
                     selectedAudioStreamIndexes: Set(audioMappings.map(\.index))
                   ) {
-            addLog("􀁡 \(compatibilityIssue). Please use encode mode.")
-            return .failed(reason: "\(compatibilityIssue) - use encode mode instead")
+            addLog("Remux unavailable: \(compatibilityIssue). Falling back to H.265 MP4 encoding.")
+            effectiveMode = .encodeH265
+            shouldEncodeVideo = true
+            shouldEncodeAudio = true
         }
 
         await MainActor.run {
@@ -2520,6 +2526,59 @@ class VideoProcessor: ObservableObject {
             if let rationale = subtitleMappings.compactMap(\.selectionRationale).first {
                 addLog("Subtitle Selection: \(rationale)")
             }
+        }
+
+        // A failed remux gets one encode attempt using the original input. The
+        // recursive call explicitly selects H.265, so it cannot retry as remux.
+        func recoverFromRemuxFailure(_ reason: String) async -> ConversionOutcome {
+            guard !shouldCancelProcessing, !Task.isCancelled else {
+                return .failed(reason: "Cancelled by user")
+            }
+            guard effectiveMode == .remux else {
+                return .failed(reason: reason)
+            }
+
+            // Encoding cannot repair a full disk or an unwritable destination.
+            let diagnostic = reason.lowercased()
+            if ["no space left", "disk full", "permission denied", "read-only file system"]
+                .contains(where: diagnostic.contains) {
+                return .failed(reason: reason)
+            }
+
+            addLog("Remux failed: \(reason)")
+            addLog("Retrying from the original input as H.265 MP4; compatible audio will be preserved.")
+            do {
+                if FileManager.default.fileExists(atPath: tempFile) {
+                    try FileManager.default.removeItem(atPath: tempFile)
+                }
+            } catch {
+                return .failed(reason: "Remux failed: \(reason). Could not clear temporary output: \(error.localizedDescription)")
+            }
+            await MainActor.run {
+                self.currentEncodedTimeSeconds = 0
+                self.currentFileProgressFraction = 0
+                self.ffmpegProgressTail = ""
+            }
+            let outcome = await convertToMP4(
+                inputFile: inputFile,
+                tempFile: tempFile,
+                mode: .encodeH265,
+                smartRemuxMegabytesPerMinute: smartRemuxMegabytesPerMinute,
+                crfValue: crfValue,
+                resolution: resolution,
+                preset: preset,
+                encodeVideo: true,
+                encodeAudio: true,
+                keepEnglishAudioOnly: keepEnglishAudioOnly,
+                keepAllEnglishAudioTracks: keepAllEnglishAudioTracks,
+                keepEnglishSubtitlesOnly: keepEnglishSubtitlesOnly,
+                keepAllEnglishSubtitleTracks: keepAllEnglishSubtitleTracks,
+                sourceDuration: sourceDuration
+            )
+            if case .failed(let encodeReason) = outcome {
+                return .failed(reason: "Remux failed: \(reason). H.265 MP4 fallback failed: \(encodeReason)")
+            }
+            return outcome
         }
 
         // FFmpeg 9 can let sparse subtitle streams run far ahead of a slow video
@@ -2613,7 +2672,7 @@ class VideoProcessor: ObservableObject {
         }
 
         guard success else {
-            return .failed(reason: ffmpegError)
+            return await recoverFromRemuxFailure(ffmpegError)
         }
 
         guard !shouldCancelProcessing else {
@@ -2666,7 +2725,7 @@ class VideoProcessor: ObservableObject {
                 sourceDuration: sourceDuration
             ) {
                 addLog("􀁡 Intermediate output validation failed: \(validationFailure)")
-                return .failed(reason: "Encoded video/audio validation failed: \(validationFailure)")
+                return await recoverFromRemuxFailure("Encoded video/audio validation failed: \(validationFailure)")
             }
 
             guard let encodedAVFile else {
@@ -2687,7 +2746,7 @@ class VideoProcessor: ObservableObject {
 
             let (muxSucceeded, muxError) = await runCommand(arguments: subtitleMuxCommand)
             guard muxSucceeded else {
-                return .failed(reason: "Subtitle remux failed: \(muxError)")
+                return await recoverFromRemuxFailure("Subtitle remux failed: \(muxError)")
             }
             guard !shouldCancelProcessing else {
                 return .failed(reason: "Cancelled by user")
@@ -2704,7 +2763,7 @@ class VideoProcessor: ObservableObject {
             sourceDuration: sourceDuration
         ) {
             addLog("􀁡 Output validation failed: \(validationFailure)")
-            return .failed(reason: "Output validation failed: \(validationFailure)")
+            return await recoverFromRemuxFailure("Output validation failed: \(validationFailure)")
         }
 
         addLog("􀁢 Output validation passed")
@@ -3864,23 +3923,22 @@ class VideoProcessor: ObservableObject {
                     }
 
                     if exitCode == 0 {
-                        // FFmpeg's media timestamp is authoritative when available.
-                        // Frame count divided by a nominal frame rate is only a
-                        // fallback because malformed/VFR sources frequently report
-                        // a rate that does not match their packet timeline.
+                        // Progress can end at the last subtitle cue even when all
+                        // video/audio packets were written. Frame count / nominal
+                        // rate can also understate VFR duration. Warn here and let
+                        // outputValidationFailure inspect the actual media tracks.
+                        // Every conversion/recovery caller validates before success.
                         if let expectedDuration, let finalMediaTime {
                             let tolerance = max(5, min(30, expectedDuration * 0.005))
                             if expectedDuration - finalMediaTime > tolerance {
                                 let message = String(
-                                    format: "FFmpeg exited successfully but ended prematurely at %.2fs of %.2fs",
+                                    format: "FFmpeg progress ended at %.2fs of %.2fs; checking the completed output",
                                     finalMediaTime,
                                     expectedDuration
                                 )
                                 DispatchQueue.main.async {
-                                    self.addLog("􀁡 \(message)")
+                                    self.addLog("􀇾 \(message)")
                                 }
-                                continuation.resume(returning: (false, message))
-                                return
                             }
                         } else if let expectedDuration,
                                   let expectedFrameRate,
@@ -3889,16 +3947,14 @@ class VideoProcessor: ObservableObject {
                             let videoTime = TimeInterval(finalFrame) / expectedFrameRate
                             if expectedDuration - videoTime > tolerance {
                                 let message = String(
-                                    format: "FFmpeg exited successfully but video ended prematurely at frame %d (%.2fs of %.2fs)",
+                                    format: "FFmpeg progress ended at frame %d (%.2fs of %.2fs); checking the completed output",
                                     finalFrame,
                                     videoTime,
                                     expectedDuration
                                 )
                                 DispatchQueue.main.async {
-                                    self.addLog("􀁡 \(message)")
+                                    self.addLog("􀇾 \(message)")
                                 }
-                                continuation.resume(returning: (false, message))
-                                return
                             }
                         }
                         continuation.resume(returning: (true, ""))
